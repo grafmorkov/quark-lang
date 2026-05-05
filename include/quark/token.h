@@ -26,6 +26,7 @@ namespace quark{
         TOKEN_VAR,
         TOKEN_MUT,
         TOKEN_AT, // @
+        TOKEN_DOT, // .
 
         // types
         TOKEN_VOID,

@@ -154,25 +154,68 @@ func main() void {
 | Optimizations | planned |
 
 ---
+## TODO
+
+### Core language features
+
+- [x] Structs
+  - [x] basic struct definition
+  - [x] field parsing
+  - [x] struct in AST
+  - [ ] struct checking in semantic
+  - [ ] struct methods (optional future)
+
+- [x] Attributes
+  - [x] AST representation for attributes(currently demo representation)
+  - [ ] parser support (@attr style)
+  - [ ] attach to:
+    - [ ] structs
+    - [ ] functions
+    - [ ] variables
+  - [ ] semantic validation pass
+
+---
+
+### Memory
+
+- [ ] Arena Allocator
+  - [ ] bump allocator implementation
+  - [ ] scoped lifetime (reset / pop state)
+  - [ ] integration with AST allocation
+  - [ ] replace raw new/delete in parser
+  - [ ] benchmark vs std::unique_ptr approach
+
+---
+
+### Standard / ecosystem libs
+
+- [ ] stream lib
+  - [ ] basic output stream
+  - [ ] input stream abstraction
+  - [ ] error stream
+  - [ ] formatting utilities (printf-like or safe format API)
+
+- [ ] opt lib
+  - [ ] optional type (like std::optional)
+  - [ ] has_value / unwrap API
+  - [ ] error-safe unwrap patterns
+  - [ ] integration with parser & semantic errors
+---
 
 ## Future roadmap
 
-### Short-term plan
+### Short-term (P0)
+- Better error messages
+- Variable validation
 
-* Better error messages
-* Enhanced validation for variables
-* Improvements in IR
+### Mid-term (P1)
+- IR improvements
+- Modules
+- Std
 
-### Mid-term plan
-
-* Modules
-* Standard library
-* Improved memory model (regions)
-
-### Long-term plan
-
-* Backends for LLVM or WASM
-* Self-hosted compiler
+### Long-term (P2)
+- LLVM/WASM backend
+- Self-hosted compiler
 
 ---
 

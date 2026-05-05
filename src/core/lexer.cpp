@@ -87,6 +87,7 @@ namespace quark::lx {
             case '*': return make_token(TOKEN_STAR);
             case ';': return make_token(TOKEN_SEMICOLON);
             case '@': return make_token(TOKEN_AT);
+            case '.': return make_token(TOKEN_DOT);
             case '?': 
                 if(match('?')){
                     return make_token(TOKEN_QUESTION_QUESTION);

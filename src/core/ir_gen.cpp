@@ -170,6 +170,35 @@ IRValue IRGenerator::gen_node(const VarExpr& node) {
         crash("Undefined variable: " + node.name);
     return it->second;
 }
+IRValue IRGenerator::gen_node(const FieldAccessExpr& node) {
+    IRValue base = gen_expr(*node.base);
+
+    if (!base.type || base.type->kind != Type::Struct) {
+        crash("Field access base must be a struct");
+    }
+
+    auto it = builder.struct_layouts.find(base.type->struct_name);
+    if (it == builder.struct_layouts.end()) {
+        crash("Unknown struct layout: " + base.type->struct_name);
+    }
+
+    const auto& layout = it->second;
+    auto f = layout.field_index.find(node.field);
+    if (f == layout.field_index.end()) {
+        crash("Unknown field: " + node.field);
+    }
+
+    IRValue dst = builder.make_temp();
+    dst.type = layout.field_types[f->second];
+
+    builder.current_block->inst.push_back(IRGetField{
+        dst,
+        base,
+        f->second
+    });
+
+    return dst;
+}
 IRValue IRGenerator::gen_node(const CallExpr& node) {
     std::vector<IRValue> args;
     for (const auto& arg : node.args) {
@@ -187,14 +216,41 @@ IRValue IRGenerator::gen_node(const CallExpr& node) {
 }
 
 IRValue IRGenerator::gen_node(const AssignExpr& node) {
-    auto value = gen_expr(*node.value);
+    IRValue value = gen_expr(*node.value);
 
-    auto* var = std::get_if<VarExpr>(&node.target->kind);
-    if (!var)
-        crash("Assignment target must be variable");
+    if (auto* var = std::get_if<VarExpr>(&node.target->kind)) {
+        builder.create_store(var->name, value);
+        return value;
+    }
 
-    builder.create_store(var->name, value);
-    return value;
+    if (auto* field = std::get_if<FieldAccessExpr>(&node.target->kind)) {
+        IRValue base = gen_expr(*field->base);
+
+        if (!base.type || base.type->kind != Type::Struct) {
+            crash("Field assignment base must be a struct");
+        }
+
+        auto it = builder.struct_layouts.find(base.type->struct_name);
+        if (it == builder.struct_layouts.end()) {
+            crash("Unknown struct layout: " + base.type->struct_name);
+        }
+
+        const auto& layout = it->second;
+        auto f = layout.field_index.find(field->field);
+        if (f == layout.field_index.end()) {
+            crash("Unknown field: " + field->field);
+        }
+
+        builder.current_block->inst.push_back(IRSetField{
+            base,
+            value,
+            f->second
+        });
+
+        return value;
+    }
+
+    crash("Assignment target must be variable or field access");
 }
 
 //  STATEMENTS
@@ -204,9 +260,11 @@ void IRGenerator::gen_stmt_node(const ExprStmt& node) {
 }
 
 void IRGenerator::gen_stmt_node(const VarDecl& node) {
-    IRValue value = node.value ? gen_expr(*node.value) : builder.create_const(0);
     builder.create_alloc(node.name, node.type);
-    builder.create_store(node.name, value);
+
+    if (node.value) {
+        builder.create_store(node.name, gen_expr(*node.value));
+    }
 }
 
 void IRGenerator::gen_stmt_node(const ReturnStmt& node) {
@@ -268,6 +326,18 @@ void IRGenerator::gen_stmt_node(const WhileStmt& node) {
     builder.create_jump(cond_block);
     
     builder.set_insert_point(end_block);
+}
+void IRGenerator::gen_stmt_node(const StructDecl& node) {
+    StructLayout layout;
+
+    for (int i = 0; i < node.fields.size(); i++) {
+        const auto& field = node.fields[i];
+
+        layout.field_index[field->name] = i;
+        layout.field_types.push_back(field->type);
+    }
+
+    builder.struct_layouts[node.name] = std::move(layout);
 }
 
 // OPS 

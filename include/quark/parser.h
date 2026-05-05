@@ -37,6 +37,7 @@ namespace quark::ps {
             // statements
             ast::Stmt parse_statement();
             ast::VarDecl parse_var_decl();
+            ast::StructDecl parse_struct_decl();
             ast::BlockExpr parse_block();
             ast::IfStmt parse_if();
             std::vector<ast::Attribute> parse_attributes();

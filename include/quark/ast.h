@@ -2,6 +2,7 @@
 
 #include <variant>
 #include <vector>
+#include <unordered_map>
 #include <string>
 #include <memory>
 #include <optional>
@@ -21,10 +22,11 @@ namespace quark::ast {
             Float,
             String,
             Void,
+            Struct,
         } kind;
+        std::string struct_name; // if struct
     };
-    struct Field;
-
+    
     struct IntLit {
         int value;
     };
@@ -69,19 +71,12 @@ namespace quark::ast {
         std::vector<std::unique_ptr<Stmt>> statements;
     };
     struct Attribute {
-        std::string name;
-        std::vector<std::unique_ptr<Expr>> args;
-
-        Attribute() = default;
-
-        Attribute(std::string name_, std::vector<std::unique_ptr<Expr>> args_)
-            : name(std::move(name_)), args(std::move(args_)) {}
-
-        Attribute(const Attribute&) = delete;
-        Attribute& operator=(const Attribute&) = delete;
-        Attribute(Attribute&&) noexcept = default;
-        Attribute& operator=(Attribute&&) noexcept = default;
+        std::string name; // TODO: Checks in semantic
     }; 
+    struct FieldAccessExpr {
+        std::unique_ptr<Expr> base;
+        std::string field;
+    };
 
     using ExprKind = std::variant<
         IntLit,
@@ -90,6 +85,7 @@ namespace quark::ast {
         BinaryExpr,
         CallExpr,
         NoneExpr,
+        FieldAccessExpr,
         AssignExpr
     >;
 
@@ -135,30 +131,33 @@ namespace quark::ast {
     };
     struct Decl {
         virtual ~Decl() = default;
-    };
-
-    struct NamedDecl : Decl {
         std::string name;
         std::vector<Attribute> attributes;
     };
 
-    struct Field {
-        std::string name;
-        const Type* type;
-        std::unique_ptr<Expr> default_value;
-    };
-
-    struct VarDecl : NamedDecl {
+    struct VarDecl : Decl {
         const Type* type;
         std::unique_ptr<Expr> value;
         bool is_mut;
     };
+    struct FieldDecl : Decl {
+        const Type* type;
+        std::unique_ptr<Expr> default_value;
+        bool is_mut;
+    };
 
-    struct StructDecl : NamedDecl {
-        std::vector<Field> fields;
+    struct StructDecl : Decl {
+        std::vector<std::unique_ptr<FieldDecl>> fields;
+        bool is_mut;
+    };
+    struct StructLayout {
+        std::vector<const ast::Type*> field_types;
+        std::unordered_map<std::string, int> field_index;
     };
     using StmtKind = std::variant<
-        Decl,
+        VarDecl,
+        StructDecl,
+        FieldDecl,
         IfStmt,
         WhileStmt,
         ReturnStmt,

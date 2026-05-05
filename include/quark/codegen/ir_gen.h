@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "quark/ast.h"
+
 using namespace quark::ast;
 
 namespace quark::codegen {
@@ -18,6 +19,8 @@ struct IRBuilder {
 
     std::vector<std::unique_ptr<IRBlock>> blocks;
     std::unordered_map<std::string, IRValue> variables;
+    std::unordered_map<std::string, StructLayout> struct_layouts;
+    std::vector<std::unique_ptr<IRStruct>> strs;
     IRBlock* current_block = nullptr;
 
     void ensure_block();
@@ -60,6 +63,7 @@ private:
     IRValue gen_node(const VarExpr& node);
     IRValue gen_node(const AssignExpr& node);
     IRValue gen_node(const CallExpr& node);
+    IRValue gen_node(const FieldAccessExpr& node);
 
     // STATEMENTS
 
@@ -68,6 +72,7 @@ private:
     void gen_stmt_node(const ReturnStmt& node);
     void gen_stmt_node(const IfStmt& node);
     void gen_stmt_node(const WhileStmt& node);
+    void gen_stmt_node(const StructDecl& node);
 
     // FALLBACKS
 

@@ -15,46 +15,65 @@ namespace quark::symb_t {
         }
         scopes.pop_back();
     }
-
-    bool SymbolTable::declare(const ast::VarDecl& decl) {
+    bool SymbolTable::declare_symbol(const std::string& name, Symbol symbol) {
         if (scopes.empty()) {
             error("No active scope");
             return false;
         }
+
         auto& current = scopes.back();
 
-        if (current.find(decl.name) != current.end()) {
+        if (current.find(name) != current.end()){
             return false;
         }
 
-        current[decl.name] = Symbol{
-            decl.name,
-            decl.type,
-            decl.is_mut,
-            decl.value != nullptr,
-            &decl.attributes
-        };
+        current.emplace(name, std::move(symbol));
         return true;
     }
-    bool SymbolTable::declare(const ast::FuncArg& fnArg){
-        if (scopes.empty()) {
-            error("No active scope");
-            return false;
-        }
-        auto& current = scopes.back();
+    bool SymbolTable::declare(const ast::VarDecl& decl) {
+        return declare_symbol(decl.name, Symbol{
+            decl.name,
+            VarSymbol{
+                decl.type,
+                decl.is_mut,
+                decl.value != nullptr
+            },
+            decl.attributes
+        });
+    }
 
-        if (current.find(fnArg.name) != current.end()) {
-            return false;
+    bool SymbolTable::declare(const ast::FuncArg& arg) {
+        return declare_symbol(arg.name, Symbol{
+            arg.name,
+            FuncArgSymbol{
+                arg.type,
+                arg.is_mut
+            },
+            {}
+        });
+    }
+
+    bool SymbolTable::declare(const ast::StructDecl& str) {
+        symb_t::StructSymbol sym;
+
+        sym.field_names.reserve(str.fields.size());
+        sym.field_types.reserve(str.fields.size());
+
+        for (const auto& field_ptr : str.fields) {
+            const auto& field = *field_ptr;
+
+            sym.field_names.push_back(field.name);
+            sym.field_types.push_back(field.type);
         }
 
-        current[fnArg.name] = Symbol{
-            fnArg.name,
-            fnArg.type,
-            fnArg.is_mut,
-            true,
-            &std::vector<ast::Attribute>()
-        };
-        return true;
+        return declare_symbol(
+            str.name,
+            Symbol{
+                str.name,
+                sym,
+                str.attributes
+            }
+        );
     }
 
     Symbol* SymbolTable::lookup(const std::string& name) {
@@ -74,7 +93,14 @@ namespace quark::symb_t {
             return;
         }
 
-        sym->initialized = true;
-    }
+        std::visit([&](auto& s) {
+            using T = std::decay_t<decltype(s)>;
 
+            if constexpr (std::is_same_v<T, VarSymbol>) {
+                s.is_initialized = true;
+            } else {
+                error("Symbol is not a variable: " + name);
+            }
+        }, sym->data);
+    }
 }

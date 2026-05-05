@@ -50,7 +50,7 @@ int main(int argc, char **argv)
             irgen.builder.dump();
         }
         // Codegen
-        quark::codegen::CGenerator cgen(ctx.types);
+        quark::codegen::CGenerator cgen(ctx.types, irgen.builder);
         std::string c_code;
 
         c_code = cgen.generate(irgen.builder);

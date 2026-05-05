@@ -106,11 +106,12 @@ Token Parser::peek(int n) {
 // Stmts
 
 ast::Stmt Parser::parse_statement() {
-    if (is_var_decl())  return ast::Stmt{ parse_var_decl() };
     if (match(TOKEN_RETURN)) return ast::Stmt{ parse_return() };
     if (match(TOKEN_IF))     return ast::Stmt{ parse_if() };
     if (match(TOKEN_WHILE))  return ast::Stmt{ parse_while() };
     if (match(TOKEN_FUNC))   return ast::Stmt{ parse_func() };
+    if (match(TOKEN_STRUCT)) return ast::Stmt{ parse_struct_decl() };
+    if (is_var_decl()) return ast::Stmt{ parse_var_decl() };
 
     ast::Expr expr = parse_expr(0);
     expect(TOKEN_SEMICOLON, "Expected ';' after expression");
@@ -129,9 +130,7 @@ bool Parser::is_var_decl() {
 }
 ast::VarDecl Parser::parse_var_decl() {
     ast::VarDecl ret;
-    if(match(TOKEN_MUT)){
-        ret.is_mut = true;
-    }
+    ret.is_mut = match(TOKEN_MUT);
 
     Token name = expect(TOKEN_IDENT, "Expected the name of the variable");
     ret.name = name.text;
@@ -151,6 +150,46 @@ ast::VarDecl Parser::parse_var_decl() {
     expect(TOKEN_SEMICOLON, "Expected ';' after declaration");
     return ret;
 }
+ast::StructDecl Parser::parse_struct_decl() {
+    ast::StructDecl ret;
+
+
+    Token name = expect(TOKEN_IDENT, "Expected the name of the struct");
+    ret.name = name.text;
+
+    expect(TOKEN_LBRACE, "Expected '{' after struct name");
+
+    while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
+
+        auto field = std::make_unique<ast::FieldDecl>();
+
+        field->is_mut = match(TOKEN_MUT);
+
+        Token field_name = expect(TOKEN_IDENT, "Expected field name");
+        field->name = field_name.text;
+
+        expect(TOKEN_COLON, "Expected ':' after field name");
+        field->type = parse_type();
+
+        field->default_value = nullptr;
+
+        if (match(TOKEN_EQ)) {
+            field->default_value =
+                std::make_unique<ast::Expr>(parse_expr(0));
+        }
+
+        field->attributes = parse_attributes();
+
+        expect(TOKEN_SEMICOLON, "Expected ';' after field");
+
+        ret.fields.push_back(std::move(field));
+    }
+
+    expect(TOKEN_RBRACE, "Expected '}' after struct body");
+    expect(TOKEN_SEMICOLON, "Expected ';' after struct body");
+
+    return ret;
+}
 std::vector<ast::Attribute> Parser::parse_attributes() {
     std::vector<ast::Attribute> attrs;
 
@@ -159,18 +198,7 @@ std::vector<ast::Attribute> Parser::parse_attributes() {
 
         ast::Attribute attr;
         attr.name = name.text;
-
-        if (match(TOKEN_LPAREN)) {
-            if (!check(TOKEN_RPAREN)) {
-                do {
-                    attr.args.push_back(
-                        std::make_unique<ast::Expr>(parse_expr(0))
-                    );
-                } while (match(TOKEN_COMMA));
-            }
-            expect(TOKEN_RPAREN, "Expected ')'");
-        }
-
+        
         attrs.push_back(std::move(attr));
     }
 
@@ -289,8 +317,8 @@ ast::Expr Parser::parse_expr(int min_prec) {
         Token op = advance();
 
         if (op.type == TOKEN_EQ) {
-
-            if (!std::holds_alternative<ast::VarExpr>(left.kind)) {
+            if (!std::holds_alternative<ast::VarExpr>(left.kind) &&
+                !std::holds_alternative<ast::FieldAccessExpr>(left.kind)) {
                 error(op.loc, "Invalid assignment target");
                 return left;
             }
@@ -347,18 +375,14 @@ ast::Expr Parser::parse_prefix() {
 }
 
 ast::Expr Parser::parse_postfix(ast::Expr left) {
-
     while (true) {
-
+        // a(b, c)
         if (match(TOKEN_LPAREN)) {
-
             std::vector<std::unique_ptr<ast::Expr>> args;
 
             if (!check(TOKEN_RPAREN)) {
                 do {
-                    args.push_back(
-                        std::make_unique<ast::Expr>(parse_expr(0))
-                    );
+                    args.push_back(std::make_unique<ast::Expr>(parse_expr(0)));
                 } while (match(TOKEN_COMMA));
             }
 
@@ -368,6 +392,20 @@ ast::Expr Parser::parse_postfix(ast::Expr left) {
             e.kind = ast::CallExpr{
                 std::make_unique<ast::Expr>(std::move(left)),
                 std::move(args)
+            };
+
+            left = std::move(e);
+            continue;
+        }
+
+        // a.b
+        if (match(TOKEN_DOT)) {
+            Token field = expect(TOKEN_IDENT, "Expected field name after '.'");
+
+            ast::Expr e;
+            e.kind = ast::FieldAccessExpr{
+                std::make_unique<ast::Expr>(std::move(left)),
+                std::string(field.text)
             };
 
             left = std::move(e);
@@ -398,10 +436,13 @@ ast::Expr Parser::make_binary(ast::Expr left, ast::Expr right, TokenType op) {
 // Types
 
 const ast::Type* Parser::parse_type() {
-
     if (match(TOKEN_INT)) return ctx.types.get_int();
     if (match(TOKEN_STRING)) return ctx.types.get_string();
     if (match(TOKEN_VOID)) return ctx.types.get_void();
+
+    if (match(TOKEN_IDENT)) {
+        return ctx.types.get_struct(std::string(previous.text));
+    }
 
     error(current.loc, "Expected type");
     return ctx.types.get_int();

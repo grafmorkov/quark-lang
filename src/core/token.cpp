@@ -25,6 +25,7 @@ namespace quark{
             case TOKEN_MUT: return "MUT";
             case TOKEN_STRUCT: return "STRUCT";
             case TOKEN_AT: return "@";
+            case TOKEN_DOT: return ".";
 
             // types
             case TOKEN_VOID: return "VOID";

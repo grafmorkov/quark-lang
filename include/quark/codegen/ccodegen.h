@@ -1,6 +1,10 @@
 #pragma once
 #include <iostream>
 #include <sstream>
+#include <unordered_map>
+#include <vector>
+#include <string>
+
 #include "codegen.h"
 #include "quark/ast.h"
 #include "quark/type_context.h"
@@ -12,12 +16,16 @@ using namespace utils::logger;
 
 namespace quark::codegen {
     namespace {
+
         std::string type_to_string(const Type* type) {
+            if (!type) return "void";
+
             switch (type->kind) {
                 case Type::Int:    return "int";
                 case Type::String: return "char*";
                 case Type::Void:   return "void";
-                default: return "void"; 
+                case Type::Struct: return type->struct_name;
+                default:           return "void";
             }
         }
 
@@ -33,19 +41,25 @@ namespace quark::codegen {
                 case IRBinaryOp::Lte:   return "<=";
                 case IRBinaryOp::Gt:    return ">";
                 case IRBinaryOp::Gte:   return ">=";
-                default: return "?";
+                default:                return "?";
             }
+        }
+
+        std::string field_name_for_index(size_t idx) {
+            return "field" + std::to_string(idx);
         }
     }
 
     struct CGenerator : CodeGenerator {
         std::ostringstream out;
         const TypeContext& type_ctx;
+        const IRBuilder* builder;
 
-        CGenerator(const TypeContext& ctx) : type_ctx(ctx) {}
+        CGenerator(const TypeContext& ctx, const IRBuilder& _builder) : type_ctx(ctx), builder(&_builder) {}
 
         std::string generate(const IRBuilder& builder) override {
-            for (auto& block_ptr : builder.blocks) {
+            this->builder = &builder;
+            for (const auto& block_ptr : builder.blocks) {
                 if (!block_ptr->terminated) {
                     crash("Block not terminated: " + block_ptr->name);
                 }
@@ -54,20 +68,34 @@ namespace quark::codegen {
             out << "#include <stdint.h>\n";
             out << "#include <stdbool.h>\n\n";
 
-            out << "int main() {\n";
+            emit_struct_defs(builder);
 
-            for (auto& block_ptr : builder.blocks) {
+            out << "\nint main() {\n";
+            for (const auto& block_ptr : builder.blocks) {
                 emit_block(*block_ptr);
             }
-
             out << "}\n";
+
             return out.str();
+        }
+
+        void emit_struct_defs(const IRBuilder& builder) {
+            for (const auto& [name, layout] : builder.struct_layouts) {
+                out << "typedef struct " << name << " {\n";
+
+                for (size_t i = 0; i < layout.field_types.size(); ++i) {
+                    out << "    " << type_to_string(layout.field_types[i]) << " "
+                        << field_name_for_index(i) << ";\n";
+                }
+
+                out << "} " << name << ";\n";
+            }
         }
 
         void emit_block(const IRBlock& block) {
             out << block.name << ":\n";
 
-            for (auto& inst : block.inst) {
+            for (const auto& inst : block.inst) {
                 std::visit([this](auto& node) {
                     emit_inst(node);
                 }, inst);
@@ -107,14 +135,14 @@ namespace quark::codegen {
         }
 
         void emit_inst(const IRCall& node) {
-            if (node.dst.type->kind == Type::Void) {
-                out << "    " << node.callee.name << "(";
-            } else {
+            if (node.dst.type && node.dst.type->kind != Type::Void) {
                 out << "    " << type_to_string(node.dst.type) << " "
-                    << node.dst.name << " = "
-                    << node.callee.name << "(";
+                    << node.dst.name << " = ";
+            } else {
+                out << "    ";
             }
 
+            out << node.callee.name << "(";
             for (size_t i = 0; i < node.args.size(); ++i) {
                 if (i > 0) out << ", ";
                 out << node.args[i].name;
@@ -125,6 +153,48 @@ namespace quark::codegen {
         void emit_inst(const IRAlloc& node) {
             out << "    " << type_to_string(node.type) << " "
                 << node.name << ";\n";
+        }
+
+        void emit_inst(const IRGetField& node) {
+            if (!node.base.type || node.base.type->kind != Type::Struct) {
+                crash("IRGetField base is not a struct");
+            }
+
+            auto it = builder->struct_layouts.find(node.base.type->struct_name);
+            if (it == builder->struct_layouts.end()) {
+                crash("Unknown struct type: " + node.base.type->struct_name);
+            }
+
+            const auto& layout = it->second;
+            if (node.index < 0 || static_cast<size_t>(node.index) >= layout.field_types.size()) {
+                crash("IRGetField index out of range");
+            }
+
+            out << "    " << type_to_string(node.dst.type) << " "
+                << node.dst.name << " = "
+                << node.base.name << "."
+                << field_name_for_index(static_cast<size_t>(node.index))
+                << ";\n";
+        }
+
+        void emit_inst(const IRSetField& node) {
+            if (!node.base.type || node.base.type->kind != Type::Struct) {
+                crash("IRSetField base is not a struct");
+            }
+
+            auto it = builder->struct_layouts.find(node.base.type->struct_name);
+            if (it == builder->struct_layouts.end()) {
+                crash("Unknown struct type: " + node.base.type->struct_name);
+            }
+
+            const auto& layout = it->second;
+            if (node.index < 0 || static_cast<size_t>(node.index) >= layout.field_types.size()) {
+                crash("IRSetField index out of range");
+            }
+
+            out << "    " << node.base.name << "."
+                << field_name_for_index(static_cast<size_t>(node.index))
+                << " = " << node.value.name << ";\n";
         }
     };
 }
