@@ -60,7 +60,7 @@ You also need:
 
 **Clang (or another C compiler)**
 **CMake 3.20+**
-```
+---
 
 ## Build(Compilation)
 
