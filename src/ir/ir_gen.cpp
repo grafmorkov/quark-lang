@@ -1,4 +1,4 @@
-#include "quark/codegen/ir_gen.h"
+#include "quark/backend/ir_gen.h"
 #include "utils/logger.h"
 #include <utility>
 

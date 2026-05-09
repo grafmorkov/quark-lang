@@ -1,5 +1,5 @@
-#include "quark/semantic.h"
-#include "quark/compiler_context.h"
+#include "quark/semantic/semantic.h"
+#include "quark/support/compiler_context.h"
 #include "utils/logger.h"
 
 #include <type_traits>

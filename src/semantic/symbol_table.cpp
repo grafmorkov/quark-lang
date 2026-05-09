@@ -1,4 +1,4 @@
-#include "quark/symbol_table.h"
+#include "quark/semantic/symbol_table.h"
 #include "utils/logger.h"
 
 using namespace utils::logger;
