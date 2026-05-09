@@ -5,7 +5,7 @@
 #include <unordered_map>
 
 #include "symbol_table.h"
-#include "compiler_context.h"
+#include "quark/support/compiler_context.h"
 
 namespace quark::sm{
     class SemanticAnalyzer {

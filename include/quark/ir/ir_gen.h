@@ -1,13 +1,13 @@
 #pragma once
 
-#include "ir.h"
 #include <stdexcept>
 #include <vector>
 #include <memory>
 #include <unordered_map>
 
-#include "quark/ast.h"
-#include "quark/compiler_context.h"
+#include "ir.h"
+#include "quark/frontend/ast.h"
+#include "quark/support/compiler_context.h"
 
 using namespace quark::ast;
 

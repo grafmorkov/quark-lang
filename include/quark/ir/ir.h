@@ -5,7 +5,7 @@
 #include <vector>
 #include <memory>
 
-#include "quark/ast.h"
+#include "quark/frontend/ast.h"
 
 namespace quark::codegen {
 

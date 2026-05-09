@@ -10,20 +10,21 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Library libquark (C++ files)
 add_library(libquark
-    src/core/lexer.cpp
-    src/core/parser.cpp
-    src/core/token.cpp
-    src/core/semantic.cpp
-    src/core/symbol_table.cpp
+    src/frontend/lexer.cpp
+    src/frontend/parser.cpp
+    src/semantic/semantic.cpp
+    src/semantic/symbol_table.cpp
     src/utils/logger.cpp
-    src/core/ir_gen.cpp
-    src/core/ir_dump.cpp
+    src/ir/ir_gen.cpp
+    src/ir/ir_dump.cpp
+    src/backend/ccodegen.cpp
 )
 
 target_include_directories(libquark
     PUBLIC
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/include/utils
+        ${PROJECT_SOURCE_DIR}/include/third_party/
 )
 
 # Executable file Quark (main.cpp)

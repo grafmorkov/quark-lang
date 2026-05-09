@@ -3,16 +3,16 @@
 #include <fstream>
 #include <cstdlib>
 
-#include "quark/lexer.h"
-#include "quark/parser.h"
-#include "quark/semantic.h"
-#include "quark/compiler_context.h"
+#include "quark/frontend/lexer.h"
+#include "quark/frontend/parser.h"
+#include "quark/semantic/semantic.h"
+#include "quark/support/compiler_context.h"
 
 #include "utils/options.h"
 #include "utils/logger.h"
 
-#include "quark/codegen/ir.h"
-#include "quark/codegen/ccodegen.h"
+#include "quark/ir/ir.h"
+#include "quark/backend/ccodegen.h"
 
 int main(int argc, char **argv)
 {

@@ -1,8 +1,9 @@
 #pragma once
 
-#include "type_context.h"
-#include "symbol_table.h"
-#include "quark-alloc/memory/alloc.h"
+#include "quark/support/type_context.h"
+#include "quark/semantic/symbol_table.h"
+#include "third_party/quark-alloc/memory/alloc.h"
+
 namespace quark{
     class CompilerContext{
         public:

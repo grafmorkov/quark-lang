@@ -2,7 +2,7 @@
 
 #include <unordered_map>
 
-#include "ast.h"
+#include "quark/frontend/ast.h"
 
 namespace quark::symb_t{
     struct VarSymbol {

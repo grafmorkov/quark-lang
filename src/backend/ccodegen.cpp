@@ -1,20 +1,6 @@
-#pragma once
-#include <iostream>
-#include <sstream>
-#include <unordered_map>
-#include <vector>
-#include <string>
+#include "quark/codegen/ccodegen.h"
 
-#include "codegen.h"
-#include "quark/ast.h"
-#include "quark/type_context.h"
-#include "utils/logger.h"
-
-using namespace quark::ast;
-using namespace quark::types;
-using namespace utils::logger;
-
-namespace quark::codegen {
+namespace quark::codegen{
     namespace {
 
         std::string type_to_string(const Type* type) {
@@ -49,15 +35,7 @@ namespace quark::codegen {
             return "field" + std::to_string(idx);
         }
     }
-
-    struct CGenerator : CodeGenerator {
-        std::ostringstream out;
-        const TypeContext& type_ctx;
-        const IRBuilder* builder;
-
-        CGenerator(const TypeContext& ctx, const IRBuilder& _builder) : type_ctx(ctx), builder(&_builder) {}
-
-        std::string generate(const IRBuilder& builder) override {
+    std::string CGenerator::generate(const IRBuilder& builder) {
             this->builder = &builder;
             for (const auto& block_ptr : builder.blocks) {
                 if (!block_ptr->terminated) {
@@ -79,7 +57,7 @@ namespace quark::codegen {
             return out.str();
         }
 
-        void emit_struct_defs(const IRBuilder& builder) {
+        void CGenerator::emit_struct_defs(const IRBuilder& builder) {
             for (const auto& [name, layout] : builder.struct_layouts) {
                 out << "typedef struct " << name << " {\n";
 
@@ -92,7 +70,7 @@ namespace quark::codegen {
             }
         }
 
-        void emit_block(const IRBlock& block) {
+        void CGenerator::emit_block(const IRBlock& block) {
             out << block.name << ":\n";
 
             for (const auto& inst : block.inst) {
@@ -103,11 +81,11 @@ namespace quark::codegen {
         }
 
         template<typename T>
-        void emit_inst(const T&) {
+        void CGenerator::emit_inst(const T&) {
             static_assert(sizeof(T) == 0, "Unhandled IR node");
         }
 
-        void emit_inst(const IRBinary& node) {
+        void CGenerator::emit_inst(const IRBinary& node) {
             out << "    " << type_to_string(node.dst.type) << " "
                 << node.dst.name << " = "
                 << node.lhs.name << " "
@@ -115,26 +93,26 @@ namespace quark::codegen {
                 << node.rhs.name << ";\n";
         }
 
-        void emit_inst(const IRStore& node) {
+        void CGenerator::emit_inst(const IRStore& node) {
             out << "    " << node.target.name
                 << " = " << node.value.name << ";\n";
         }
 
-        void emit_inst(const IRReturn& node) {
+        void CGenerator::emit_inst(const IRReturn& node) {
             out << "    return " << node.value.name << ";\n";
         }
 
-        void emit_inst(const IRJump& node) {
+        void CGenerator::emit_inst(const IRJump& node) {
             out << "    goto " << node.target->name << ";\n";
         }
 
-        void emit_inst(const IRBranch& node) {
+        void CGenerator::emit_inst(const IRBranch& node) {
             out << "    if (" << node.cond.name << ") goto "
                 << node.then_block->name << "; else goto "
                 << node.else_block->name << ";\n";
         }
 
-        void emit_inst(const IRCall& node) {
+        void CGenerator::emit_inst(const IRCall& node) {
             if (node.dst.type && node.dst.type->kind != Type::Void) {
                 out << "    " << type_to_string(node.dst.type) << " "
                     << node.dst.name << " = ";
@@ -150,12 +128,12 @@ namespace quark::codegen {
             out << ");\n";
         }
 
-        void emit_inst(const IRAlloc& node) {
+        void CGenerator::emit_inst(const IRAlloc& node) {
             out << "    " << type_to_string(node.type) << " "
                 << node.name << ";\n";
         }
 
-        void emit_inst(const IRGetField& node) {
+        void CGenerator::emit_inst(const IRGetField& node) {
             if (!node.base.type || node.base.type->kind != Type::Struct) {
                 crash("IRGetField base is not a struct");
             }
@@ -177,7 +155,7 @@ namespace quark::codegen {
                 << ";\n";
         }
 
-        void emit_inst(const IRSetField& node) {
+        void CGenerator::emit_inst(const IRSetField& node) {
             if (!node.base.type || node.base.type->kind != Type::Struct) {
                 crash("IRSetField base is not a struct");
             }
@@ -196,5 +174,4 @@ namespace quark::codegen {
                 << field_name_for_index(static_cast<size_t>(node.index))
                 << " = " << node.value.name << ";\n";
         }
-    };
 }

@@ -1,7 +1,7 @@
 #pragma once
 #include <iostream>
 
-namespace quark::colors {
+namespace utils::colors {
 
 #ifdef _WIN32
 #include <windows.h>

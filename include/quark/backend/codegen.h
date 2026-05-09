@@ -2,7 +2,7 @@
 #include <iostream>
 #include <string>
 
-#include "ir_gen.h"
+#include "quark/ir/ir_gen.h"
 
 namespace quark::codegen{
     struct CodeGenerator {

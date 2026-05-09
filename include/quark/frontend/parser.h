@@ -4,10 +4,9 @@
 #include <vector>
 #include <queue>
 
-#include "quark/token.h"
-#include "quark/ast.h"
-#include "quark/lexer.h"
-#include "quark/compiler_context.h"
+#include "token.h"
+#include "lexer.h"
+#include "ast.h"
 
 namespace quark::ps {
 

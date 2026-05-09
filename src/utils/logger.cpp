@@ -1,7 +1,9 @@
 #include <iostream>
 
 #include "utils/logger.h"
+#include "utils/colors.h"
 
+using namespace utils::colors;
 namespace utils::logger {
 
 void print_location(const SourceLocation& loc) {

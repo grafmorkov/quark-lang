@@ -5,8 +5,6 @@
 #include <chrono>
 #include <sstream>
 
-#include "quark/colors.h" 
-
 using namespace quark::colors;
 
 namespace quark{

@@ -6,8 +6,8 @@
 #include <string> 
 #include <vector>
 
-#include "quark/token.h"
-#include "quark/compiler_context.h"
+#include "token.h"
+#include "quark/support/compiler_context.h"
 
 #include "utils/logger.h"
 

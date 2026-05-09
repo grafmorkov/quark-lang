@@ -2,7 +2,7 @@
 #include <unordered_map>
 #include <vector>
 #include <string>
-#include "quark/ast.h"
+#include "quark/frontend/ast.h"
 
 using namespace quark::ast;
 
