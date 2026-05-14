@@ -27,6 +27,7 @@ namespace quark{
         TOKEN_MUT,
         TOKEN_AT, // @
         TOKEN_DOT, // .
+        TOKEN_NAMESPACE,
 
         // types
         TOKEN_VOID,
@@ -52,6 +53,7 @@ namespace quark{
         TOKEN_GTE,       // >=
         TOKEN_QUESTION, // ?
         TOKEN_QUESTION_QUESTION, // ??
+        TOKEN_COLON_COLON,
 
         // delimiters
         TOKEN_LPAREN,    // (

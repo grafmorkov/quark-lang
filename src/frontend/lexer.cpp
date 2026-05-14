@@ -93,7 +93,7 @@ namespace quark::lx {
                     return make_token(TOKEN_QUESTION_QUESTION);
                 }
                 return make_token(TOKEN_QUESTION);
-            case ':': return make_token(TOKEN_COLON);
+            case ':': return make_token(match(':') ? TOKEN_COLON_COLON: TOKEN_COLON);
             case '/':
                 if (match('/')) {
                     while (peek() != '\n' && !is_at_end()) advance();
@@ -168,6 +168,7 @@ namespace quark::lx {
             case str_hash("void"): return make_token(TOKEN_VOID);
             case str_hash("mut"): return make_token(TOKEN_MUT);
             case str_hash("struct"): return make_token(TOKEN_STRUCT);
+            case str_hash("namespace"): return make_token(TOKEN_NAMESPACE);
         }
         return make_token(TOKEN_IDENT);
     }

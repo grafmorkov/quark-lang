@@ -11,8 +11,7 @@
 #include "utils/options.h"
 #include "utils/logger.h"
 
-#include "quark/ir/ir.h"
-#include "quark/backend/ccodegen.h"
+#include "quark/ir/ir_gen.h"
 
 int main(int argc, char **argv)
 {
@@ -46,25 +45,24 @@ int main(int argc, char **argv)
         irgen.gen_program(ast);
 
         if (opts.emit_ir) {
-            utils::logger::info("IR");
-            irgen.builder.dump();
+             utils::logger::info("IR");
         }
-        // Codegen
+        /*Codegen
         quark::codegen::CGenerator cgen(ctx.types, irgen.builder);
         std::string c_code;
 
         c_code = cgen.generate(irgen.builder);
 
         if (opts.emit_c) {
-            utils::logger::info("C Code gen:");
-            utils::logger::info(c_code);
+          //  utils::logger::info("C Code gen:");
+            //utils::logger::info(c_code);
         }
         // Write C File
         std::ofstream file("out.c");
         file << c_code;
         file.close();
 
-        // Build clang
+         Build clang
         if (opts.build || opts.run) {
             std::string cmd = "clang out.c -o out";
 
@@ -77,7 +75,7 @@ int main(int argc, char **argv)
         // Run
         if (opts.run) {
             std::system("./out");
-        }
+        }*/
 
         auto end = high_resolution_clock::now();
 

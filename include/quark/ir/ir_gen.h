@@ -1,97 +1,92 @@
 #pragma once
 
-#include <stdexcept>
-#include <vector>
-#include <memory>
-#include <unordered_map>
-
 #include "ir.h"
 #include "quark/frontend/ast.h"
 #include "quark/support/compiler_context.h"
 
-using namespace quark::ast;
+#include <vector>
+#include <unordered_map>
+#include <string>
+#include <cstdint>
 
 namespace quark::codegen {
 
-// IRBuilder 
+struct IRGenerator {
+    CompilerContext& ctx;
 
-struct IRBuilder {
-    int temp_id = 0;
-    CompilerContext& ctx; 
+    IRProgram program;
 
-    std::vector<IRBlock*> blocks;
-    std::unordered_map<std::string, IRValue> variables;
-    std::unordered_map<std::string, StructLayout> struct_layouts;
-    std::vector<IRStruct*> strs;
-    IRBlock* current_block = nullptr;
+    IRFunction* current_func = nullptr;
 
-    void ensure_block();
-    IRValue make_temp();
+    Reg next_reg = 0;
+    Label next_label = 0;
 
-    IRBlock* create_block(const std::string& name);
-    void set_insert_point(IRBlock* block);
+    uint32_t next_func_id = 0;
 
-    IRValue create_const(int value);
+    // local variable -> register slot
+    std::unordered_map<std::string, Reg> locals;
 
-    IRValue create_binary(IRBinaryOp op, IRValue lhs, IRValue rhs);
-    void create_store(const std::string& name, IRValue value);
-    void create_alloc(const std::string& name, const quark::ast::Type* t);
-    void create_return(IRValue value);
-    void create_branch(IRValue cond, IRBlock* then_block, IRBlock* else_block);
-    void create_jump(IRBlock* target);
-    void dump() const;
+    // function name -> id
+    std::unordered_map<std::string, uint32_t> function_ids;
 
-    IRBuilder(CompilerContext& c)
+    explicit IRGenerator(CompilerContext& c)
         : ctx(c) {}
 
-};
+    // Entry
 
-// IRGenerator
+    void gen_program(const std::vector<ast::Stmt*>& stmts);
 
-struct IRGenerator {
-    IRBuilder builder;
-    CompilerContext& ctx;
-    // ENTRY POINT
-    void gen_program(const std::vector<Stmt*>& program);
+    // Functions
 
-    // TOP LEVEL
-    void gen_stmt(const Stmt& stmt);
-    void gen_function(const FuncStmt& func);
+    void gen_function(const ast::FuncStmt& fn);
 
-    // EXPRESSIONS
-    IRValue gen_expr(const Expr& expr);
-    IRGenerator(CompilerContext& _ctx)
-        : builder(_ctx), ctx(_ctx) {}
+    // Stmts
+
+    void gen_stmt(const ast::Stmt& stmt);
+    void gen_block(const ast::Block& block);
+
+    // Exprs
+
+    Reg gen_expr(const ast::Expr& expr);
+
 private:
-    // EXPRESSIONS 
 
-    IRValue gen_node(const IntLit& node);
-    IRValue gen_node(const BinaryExpr& node);
-    IRValue gen_node(const VarExpr& node);
-    IRValue gen_node(const AssignExpr& node);
-    IRValue gen_node(const CallExpr& node);
-    IRValue gen_node(const FieldAccessExpr& node);
+    // Helpers
 
-    // STATEMENTS
+    Reg new_reg();
+    Label new_label();
 
-    void gen_stmt_node(const ExprStmt& node);
-    void gen_stmt_node(const VarDecl& node);
-    void gen_stmt_node(const ReturnStmt& node);
-    void gen_stmt_node(const IfStmt& node);
-    void gen_stmt_node(const WhileStmt& node);
-    void gen_stmt_node(const StructDecl& node);
+    void emit(const IRInst& inst);
 
-    // FALLBACKS
+    IRBinaryOp map_op(ast::BinaryOp op);
 
-    template<typename T>
-    IRValue gen_node(const T&);
+    uint32_t resolve_function_id(const std::string& name);
 
-    template<typename T>
-    void gen_stmt_node(const T&);
+    std::unordered_map<std::string, uint32_t> function_ids;
+    std::vector<std::unordered_map<std::string, uint32_t>> local_scopes;
+    std::vector<std::unordered_map<std::string, const ast::Type*>> type_scopes;
+    std::vector<std::string> namespace_stack;
+    bool current_terminated = false;
 
-    // HELPERS 
+    // Expressions
 
-    IRBinaryOp map_op(BinaryOp op);
+    Reg gen_int(const ast::IntExpr& n);
+    Reg gen_string(const ast::StringExpr& n);
+    Reg gen_var(const ast::VarExpr& n);
+    Reg gen_binary(const ast::BinaryExpr& n);
+    Reg gen_assign(const ast::AssignExpr& n);
+    Reg gen_call(const ast::CallExpr& n);
+    Reg gen_field(const ast::FieldExpr& n);
+
+    // Statements
+
+    void gen_expr_stmt(const ast::ExprStmt& n);
+    void gen_var_decl(const ast::VarDecl& n);
+    void gen_return(const ast::ReturnStmt& n);
+    void gen_if(const ast::IfStmt& n);
+    void gen_while(const ast::WhileStmt& n);
+    void gen_struct(const ast::StructDecl& n);
+    void gen_namespace(const ast::NamespaceStmt& n);
 };
 
 } // namespace quark::codegen

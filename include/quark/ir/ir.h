@@ -1,130 +1,97 @@
 #pragma once
 
-#include <string>
-#include <variant>
+#include <cstdint>
 #include <vector>
-#include <memory>
-
-#include "quark/frontend/ast.h"
+#include <variant>
+#include <string>
 
 namespace quark::codegen {
 
-// VALUES
-struct IRValue {
-    std::string name;
-    const quark::ast::Type* type; 
-};
+using Reg = uint32_t;
+using Label = uint32_t;
 
-// OPS
 enum class IRBinaryOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Eq,      // ==
-    NotEq,   // !=
-    Lt,      // <
-    Lte,     // <=
-    Gt,      // >
-    Gte,     // >=
+    Add, Sub, Mul, Div,
+    Eq, NotEq,
+    Lt, Lte, Gt, Gte
 };
 
-// INST FORWARD DECL
-struct IRBinary;
-struct IRStore;
-struct IRReturn;
-struct IRBranch;
-struct IRAlloc;
-struct IRJump;
-struct IRCall;
-struct IRStruct;
-struct IRGetField;
-struct IRSetField;
-
-// INST VARIANT
-using IRInst = std::variant<
-    IRBinary,
-    IRStore,
-    IRReturn,
-    IRBranch,
-    IRAlloc,
-    IRJump,
-    IRGetField,
-    IRSetField,
-    IRCall
->;
-
-// BLOCK
-struct IRBlock {
-    std::string name;
-    std::vector<IRInst> inst;
-    bool terminated = false;
-
-    void dump() const;
+struct IRConst {
+    Reg dst;
+    int64_t value;
 };
-// INSTRUCTIONS
+
 struct IRBinary {
     IRBinaryOp op;
-    IRValue dst;
-    IRValue lhs;
-    IRValue rhs;
+    Reg dst;
+    Reg lhs;
+    Reg rhs;
 };
 
-struct IRAlloc {
-    std::string name;
-    const quark::ast::Type* type;
-
-    IRAlloc(std::string n, const quark::ast::Type* t) : name(n), type(t) {}
-};
-
-struct IRStore {
-    IRValue target;
-    IRValue value;
-};
-
-struct IRReturn {
-    IRValue value;
-};
-
-struct IRBranch {
-    IRValue cond;
-    IRBlock* then_block;
-    IRBlock* else_block;
-};
-
-struct IRJump {
-    IRBlock* target;
+struct IRAssign {
+    Reg dst;
+    Reg src;
 };
 
 struct IRCall {
-    IRValue callee;
-    std::vector<IRValue> args;
-    IRValue dst;
+    Reg dst;
+    uint32_t func_id;
+    std::vector<Reg> args;
 };
-struct IRStruct {
-    std::string name;
-    std::vector<std::string> field_names;
-    std::vector<const ast::Type*> field_types;
+
+struct IRReturn {
+    Reg value;
+};
+
+struct IRJump {
+    Label target;
+};
+
+struct IRBranch {
+    Reg cond;
+    Label then_label;
+    Label else_label;
+};
+
+struct IRLabel {
+    Label id;
 };
 
 struct IRGetField {
-    IRValue dst;
-    IRValue base;
+    Reg dst;
+    Reg base;
     int index;
 };
 
 struct IRSetField {
-    IRValue base;
-    IRValue value;
+    Reg base;
+    Reg value;
     int index;
 };
 
-// ---- INSTRUCTION DUMP ----
-void dump_instr(const IRBinary& i);
-void dump_instr(const IRStore& i);
-void dump_instr(const IRReturn& i);
-void dump_instr(const IRBranch& i);
-void dump_instr(const IRJump& i);
-void dump_instr(const IRCall& i);
-void dump_instr(const IRStruct& i);
+using IRInst = std::variant<
+    IRConst,
+    IRBinary,
+    IRAssign,
+    IRCall,
+    IRReturn,
+    IRJump,
+    IRBranch,
+    IRLabel,
+    IRGetField,
+    IRSetField
+>;
+
+struct IRFunction {
+    uint32_t id;
+    std::string name;
+    std::vector<IRInst> body;
+};
+
+struct IRProgram {
+    std::vector<IRFunction> functions;
+
+    void dump() const;
+};
+
 } // namespace quark::codegen

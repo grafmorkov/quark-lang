@@ -13,44 +13,50 @@ namespace quark::ast {
 
     struct Expr;
     struct Stmt;
+    struct Block;
 
-    struct ASTVisitor;
+    // Types
+
+    enum class TypeKind {
+        Int,
+        Float,
+        String,
+        Void,
+        Struct
+    };
 
     struct Type {
-        enum Kind {
-            Int,
-            Float,
-            String,
-            Void,
-            Struct,
-        } kind;
-        std::string struct_name; // if struct
+        TypeKind kind;
+        std::string struct_name;
     };
-    
-    struct IntLit {
+
+    // Expressions
+
+    struct IntExpr {
         int value;
     };
 
-    struct StringLit {
+    struct StringExpr {
         std::string value;
     };
 
     struct VarExpr {
         std::string name;
     };
+
     enum class BinaryOp {
         Add,
         Sub,
         Mul,
         Div,
         Eq,
-        NotEq,
+        Neq,
         Lt,
         Lte,
         Gt,
         Gte
-        // ...
     };
+
     struct BinaryExpr {
         Expr* lhs;
         Expr* rhs;
@@ -61,115 +67,120 @@ namespace quark::ast {
         Expr* target;
         Expr* value;
     };
-    struct NoneExpr{};
+
     struct CallExpr {
         Expr* callee;
         std::vector<Expr*> args;
     };
 
-    struct BlockExpr {
-        std::vector<Stmt*> statements;
-    };
-    struct Attribute {
-        std::string name; // TODO: Checks in semantic
-    }; 
-    struct FieldAccessExpr {
+    struct FieldExpr {
         Expr* base;
         std::string field;
     };
 
+    struct NamespaceExpr {
+        std::string ns;
+        std::string name;
+    };
+
     using ExprKind = std::variant<
-        IntLit,
-        StringLit,
+        IntExpr,
+        StringExpr,
         VarExpr,
         BinaryExpr,
+        AssignExpr,
         CallExpr,
-        NoneExpr,
-        FieldAccessExpr,
-        AssignExpr
+        FieldExpr,
+        NamespaceExpr
     >;
 
     struct Expr {
         ExprKind kind;
-        SourceLocation loc{};
-
-        Expr() = default;
-        Expr(const Expr&) = delete;
-        Expr& operator=(const Expr&) = delete;
-
-        Expr(Expr&&) = default;
-        Expr& operator=(Expr&&) = default;
+        SourceLocation loc;
     };
+
+    // Statements
 
     struct ExprStmt {
         Expr* expr;
-    };
-    struct IfStmt {
-        Expr* condition;
-        BlockExpr* thenBranch;
-        BlockExpr* elseBranch;
-    };
-
-    struct WhileStmt {
-        Expr* condition;
-        BlockExpr* body;
     };
 
     struct ReturnStmt {
         Expr* value;
     };
+
+    struct IfStmt {
+        Expr* condition;
+        Block* then_block;
+        Block* else_block;
+    };
+
+    struct WhileStmt {
+        Expr* condition;
+        Block* body;
+    };
+
     struct FuncArg {
         std::string name;
         const Type* type;
         bool is_mut;
     };
-    struct FuncStmt {
+
+    struct StructField {
         std::string name;
-        BlockExpr* body;
-        std::vector<FuncArg> args;
-        const Type* return_t;
-    };
-    struct Decl {
-        virtual ~Decl() = default;
-        std::string name;
+        const Type* type;
+        bool is_mut = false;
+        Expr* default_value = nullptr;
         std::vector<Attribute> attributes;
     };
 
-    struct VarDecl : Decl {
-        const Type* type;
-        Expr* value;
-        bool is_mut;
-    };
-    struct FieldDecl : Decl {
-        const Type* type;
-        Expr* default_value;
-        bool is_mut;
+    struct VarDecl {
+        std::string name;
+        const Type* type = nullptr;
+        Expr* value = nullptr;
+        bool is_mut = false;
+        std::vector<Attribute> attributes;
     };
 
-    struct StructDecl : Decl {
-        std::vector<FieldDecl*> fields;
-        bool is_mut;
+    struct StructDecl {
+        std::string name;
+        std::vector<StructField> fields;
+        std::vector<Attribute> attributes;
     };
-    struct StructLayout {
-        std::vector<const ast::Type*> field_types;
-        std::unordered_map<std::string, int> field_index;
+
+    struct FuncStmt {
+        std::string name;
+        std::vector<FuncArg> args;
+        const Type* return_type;
+        Block* body;
     };
+    struct Attribute { 
+        std::string name; // TODO: Checks in semantic 
+    };
+    struct NamespaceStmt { 
+        std::string name; 
+        Block* body; 
+    };
+
     using StmtKind = std::variant<
-        VarDecl,
-        StructDecl,
-        FieldDecl,
+        ExprStmt,
+        ReturnStmt,
         IfStmt,
         WhileStmt,
-        ReturnStmt,
+        VarDecl,
+        StructDecl,
         FuncStmt,
-        ExprStmt
+        NamespaceStmt,
+
     >;
 
     struct Stmt {
         StmtKind kind;
-        SourceLocation loc{};
-
-        Stmt() = default;
-        explicit Stmt(StmtKind k) : kind(std::move(k)) {}
+        SourceLocation loc;
     };
+
+    struct Block {
+        std::vector<Stmt*> stmts;
+    };
+
 }

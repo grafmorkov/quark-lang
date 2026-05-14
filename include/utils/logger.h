@@ -5,8 +5,6 @@
 #include <chrono>
 #include <sstream>
 
-using namespace quark::colors;
-
 namespace quark{
 
     struct SourceLocation {

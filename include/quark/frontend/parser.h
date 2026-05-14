@@ -37,23 +37,23 @@ namespace quark::ps {
             ast::Stmt parse_statement();
             ast::VarDecl parse_var_decl();
             ast::StructDecl parse_struct_decl();
-            ast::BlockExpr parse_block();
+            ast::Block* parse_block();
+            ast::NamespaceStmt parse_namespace_stmt();
             ast::IfStmt parse_if();
             std::vector<ast::Attribute> parse_attributes();
             ast::WhileStmt parse_while();
             ast::ReturnStmt parse_return();
             ast::FuncStmt parse_func();
             std::vector<ast::FuncArg> parse_func_args();
-
-            // expressions (Pratt)
-            ast::Expr parse_expr(int precedence = 0);
-            ast::Expr parse_prefix();
-            ast::Expr parse_postfix(ast::Expr left);
+            
+            // expressions(Pratt)
+            ast::Expr* parse_expr(int precedence = 0);
+            ast::Expr* parse_prefix();
+            ast::Expr* parse_postfix(ast::Expr* left);
 
             // helpers
-            ast::Expr make_binary(ast::Expr left, ast::Expr right, TokenType op);
+            ast::Expr* make_binary(ast::Expr* left, ast::Expr* right, TokenType op);
             const ast::Type* parse_type();
-            const ast::Type* get_type_from_token(Token t);
             bool is_var_decl();
         };
 

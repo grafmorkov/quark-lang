@@ -1,6 +1,8 @@
 #include "quark/frontend/parser.h"
 #include "utils/logger.h"
 
+#include <utility>
+
 using namespace utils::logger;
 
 namespace quark::ps {
@@ -13,23 +15,20 @@ ast::BinaryOp get_op_from_token(TokenType type) {
         case TOKEN_MINUS: return ast::BinaryOp::Sub;
         case TOKEN_STAR:  return ast::BinaryOp::Mul;
         case TOKEN_SLASH: return ast::BinaryOp::Div;
-
-        case TOKEN_EQEQ:  return ast::BinaryOp::Eq;
-        case TOKEN_NEQ:   return ast::BinaryOp::NotEq;
-        case TOKEN_LT:    return ast::BinaryOp::Lt;
-        case TOKEN_LTE:   return ast::BinaryOp::Lte;
-        case TOKEN_GT:    return ast::BinaryOp::Gt;
-        case TOKEN_GTE:   return ast::BinaryOp::Gte;
-
-        default:
-            return ast::BinaryOp::Add;
+        case TOKEN_EQEQ:   return ast::BinaryOp::Eq;
+        case TOKEN_NEQ:    return ast::BinaryOp::Neq;
+        case TOKEN_LT:     return ast::BinaryOp::Lt;
+        case TOKEN_LTE:    return ast::BinaryOp::Lte;
+        case TOKEN_GT:     return ast::BinaryOp::Gt;
+        case TOKEN_GTE:    return ast::BinaryOp::Gte;
+        default:           return ast::BinaryOp::Add;
     }
 }
 
 int get_precedence(TokenType t) {
     switch (t) {
         case TOKEN_EQ:
-            return 1; // right-associative assignment
+            return 1; 
 
         case TOKEN_EQEQ:
         case TOKEN_NEQ:
@@ -50,6 +49,14 @@ int get_precedence(TokenType t) {
         default:
             return -1;
     }
+}
+
+template <class T>
+ast::Expr* make_expr(CompilerContext& ctx, T&& kind, SourceLocation loc = {}) {
+    auto* e = memory::make_default<ast::Expr>(ctx.arena);
+    e->kind = std::forward<T>(kind);
+    e->loc = loc;
+    return e;
 }
 
 } // namespace
@@ -107,26 +114,47 @@ Token Parser::expect(TokenType type, const char* msg) {
 }
 
 Token Parser::peek(int n) {
-    while (buffer.size() <= n) {
+    while (buffer.size() <= (size_t)n) {
         buffer.push_back(lexer.next_token());
     }
     return buffer[n];
 }
 
-ast::Stmt Parser::parse_statement() {
-    if (match(TOKEN_RETURN))  return ast::Stmt{ parse_return() };
-    if (match(TOKEN_IF))      return ast::Stmt{ parse_if() };
-    if (match(TOKEN_WHILE))   return ast::Stmt{ parse_while() };
-    if (match(TOKEN_FUNC))    return ast::Stmt{ parse_func() };
-    if (match(TOKEN_STRUCT))  return ast::Stmt{ parse_struct_decl() };
-    if (is_var_decl())        return ast::Stmt{ parse_var_decl() };
+// Statements
 
-    ast::Expr* expr = memory::make<ast::Expr>(ctx.arena, parse_expr(0));
+ast::Stmt Parser::parse_statement() {
+    if (match(TOKEN_RETURN)) {
+        return ast::Stmt{ ast::ReturnStmt{ parse_return() } };
+    }
+
+    if (match(TOKEN_IF)) {
+        return ast::Stmt{ ast::IfStmt{ parse_if() } };
+    }
+
+    if (match(TOKEN_WHILE)) {
+        return ast::Stmt{ ast::WhileStmt{ parse_while() } };
+    }
+
+    if (match(TOKEN_FUNC)) {
+        return ast::Stmt{ ast::FuncStmt{ parse_func() } };
+    }
+
+    if (match(TOKEN_STRUCT)) {
+        return ast::Stmt{ ast::StructDecl{ parse_struct_decl() } };
+    }
+
+    if (match(TOKEN_NAMESPACE)) {
+        return ast::Stmt{ ast::NamespaceStmt{ parse_namespace_stmt() } };
+    }
+
+    if (is_var_decl()) {
+        return ast::Stmt{ parse_var_decl() };
+    }
+
+    ast::Expr* expr = parse_expr(0);
     expect(TOKEN_SEMICOLON, "Expected ';' after expression");
 
-    return ast::Stmt{
-        ast::ExprStmt{ expr }
-    };
+    return ast::Stmt{ ast::ExprStmt{ expr } };
 }
 
 bool Parser::is_var_decl() {
@@ -140,7 +168,7 @@ ast::VarDecl Parser::parse_var_decl() {
     ast::VarDecl ret;
     ret.is_mut = match(TOKEN_MUT);
 
-    Token name = expect(TOKEN_IDENT, "Expected the name of the variable");
+    Token name = expect(TOKEN_IDENT, "Expected variable name");
     ret.name = name.text;
 
     ret.type = nullptr;
@@ -150,48 +178,49 @@ ast::VarDecl Parser::parse_var_decl() {
         ret.type = parse_type();
 
         if (match(TOKEN_EQ)) {
-            ret.value = memory::make<ast::Expr>(ctx.arena, parse_expr(0));
+            ret.value = parse_expr(0);
         }
     }
 
     ret.attributes = parse_attributes();
     expect(TOKEN_SEMICOLON, "Expected ';' after declaration");
+
     return ret;
 }
 
 ast::StructDecl Parser::parse_struct_decl() {
     ast::StructDecl ret;
 
-    Token name = expect(TOKEN_IDENT, "Expected the name of the struct");
+    Token name = expect(TOKEN_IDENT, "Expected struct name");
     ret.name = name.text;
 
     expect(TOKEN_LBRACE, "Expected '{' after struct name");
 
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
-        auto field = memory::make_default<FieldDecl>(ctx.arena);
+        ast::StructField field;
 
-        field->is_mut = match(TOKEN_MUT);
+        field.is_mut = match(TOKEN_MUT);
 
         Token field_name = expect(TOKEN_IDENT, "Expected field name");
-        field->name = field_name.text;
+        field.name = field_name.text;
 
         expect(TOKEN_COLON, "Expected ':' after field name");
-        field->type = parse_type();
+        field.type = parse_type();
 
-        field->default_value = nullptr;
-
+        field.default_value = nullptr;
         if (match(TOKEN_EQ)) {
-            field->default_value = memory::make<ast::Expr>(ctx.arena, parse_expr(0));
+            field.default_value = parse_expr(0);
         }
 
-        field->attributes = parse_attributes();
+        field.attributes = parse_attributes();
 
         expect(TOKEN_SEMICOLON, "Expected ';' after field");
 
-        ret.fields.push_back(field);
+        ret.fields.push_back(std::move(field));
     }
 
     expect(TOKEN_RBRACE, "Expected '}' after struct body");
+    ret.attributes = parse_attributes();
     expect(TOKEN_SEMICOLON, "Expected ';' after struct body");
 
     return ret;
@@ -216,13 +245,15 @@ ast::IfStmt Parser::parse_if() {
     ast::IfStmt ret;
 
     expect(TOKEN_LPAREN, "Expected '('");
-    ret.condition = memory::make<ast::Expr>(ctx.arena, parse_expr(0));
+    ret.condition = parse_expr(0);
     expect(TOKEN_RPAREN, "Expected ')'");
 
-    ret.thenBranch = memory::make<ast::BlockExpr>(ctx.arena, parse_block());
+    ret.then_block = parse_block();
 
     if (match(TOKEN_ELSE)) {
-        ret.elseBranch = memory::make<ast::BlockExpr>(ctx.arena, parse_block());
+        ret.else_block = parse_block();
+    } else {
+        ret.else_block = nullptr;
     }
 
     return ret;
@@ -232,19 +263,20 @@ ast::WhileStmt Parser::parse_while() {
     ast::WhileStmt ret;
 
     expect(TOKEN_LPAREN, "Expected '('");
-    ret.condition = memory::make<ast::Expr>(ctx.arena, parse_expr(0));
+    ret.condition = parse_expr(0);
     expect(TOKEN_RPAREN, "Expected ')'");
 
-    ret.body = memory::make<ast::BlockExpr>(ctx.arena, parse_block());
+    ret.body = parse_block();
 
     return ret;
 }
 
 ast::ReturnStmt Parser::parse_return() {
     ast::ReturnStmt ret;
+    ret.value = nullptr;
 
     if (!check(TOKEN_SEMICOLON)) {
-        ret.value = memory::make<ast::Expr>(ctx.arena, parse_expr(0));
+        ret.value = parse_expr(0);
     }
 
     expect(TOKEN_SEMICOLON, "Expected ';'");
@@ -262,8 +294,8 @@ ast::FuncStmt Parser::parse_func() {
     ret.args = parse_func_args();
     expect(TOKEN_RPAREN, "Expected ')'");
 
-    ret.return_t = parse_type();
-    ret.body = memory::make<ast::BlockExpr>(ctx.arena, parse_block());
+    ret.return_type = parse_type();
+    ret.body = parse_block();
 
     return ret;
 }
@@ -293,13 +325,20 @@ std::vector<ast::FuncArg> Parser::parse_func_args() {
     return args;
 }
 
-ast::BlockExpr Parser::parse_block() {
+ast::NamespaceStmt Parser::parse_namespace_stmt() {
+    ast::NamespaceStmt ret;
+    ret.name = expect(TOKEN_IDENT, "Expected namespace name").text;
+    ret.body = parse_block();
+    return ret;
+}
+
+ast::Block* Parser::parse_block() {
     expect(TOKEN_LBRACE, "Expected '{'");
 
-    ast::BlockExpr block;
+    auto* block = memory::make_default<ast::Block>(ctx.arena);
 
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
-        block.statements.push_back(
+        block->stmts.push_back(
             memory::make<ast::Stmt>(ctx.arena, parse_statement())
         );
     }
@@ -309,14 +348,13 @@ ast::BlockExpr Parser::parse_block() {
     return block;
 }
 
-ast::Expr Parser::parse_expr(int min_prec) {
-    ast::Expr left = parse_prefix();
+// Expressions
 
-    if (std::holds_alternative<ast::NoneExpr>(left.kind)) {
-        return left;
-    }
+ast::Expr* Parser::parse_expr(int min_prec) {
+    ast::Expr* left = parse_prefix();
+    if (!left) return nullptr;
 
-    left = parse_postfix(std::move(left));
+    left = parse_postfix(left);
 
     while (true) {
         int prec = get_precedence(current.type);
@@ -325,50 +363,54 @@ ast::Expr Parser::parse_expr(int min_prec) {
         Token op = advance();
 
         if (op.type == TOKEN_EQ) {
-            if (!std::holds_alternative<ast::VarExpr>(left.kind) &&
-                !std::holds_alternative<ast::FieldAccessExpr>(left.kind)) {
+            if (!std::holds_alternative<ast::VarExpr>(left->kind) &&
+                !std::holds_alternative<ast::FieldExpr>(left->kind)) {
                 error(op.loc, "Invalid assignment target");
-                (void)parse_expr(prec); // consume right side for recovery
+                (void)parse_expr(prec);
                 return left;
             }
 
-            ast::Expr right = parse_expr(prec); // right-associative
-            ast::Expr e;
-            e.kind = ast::AssignExpr{
-                memory::make<ast::Expr>(ctx.arena, std::move(left)),
-                memory::make<ast::Expr>(ctx.arena, std::move(right))
-            };
-            return e;
+            ast::Expr* right = parse_expr(prec);
+            return make_expr(ctx, ast::AssignExpr{ left, right }, left->loc);
         }
 
-        ast::Expr right = parse_expr(prec + 1);
-        left = make_binary(std::move(left), std::move(right), op.type);
+        ast::Expr* right = parse_expr(prec + 1);
+        left = make_binary(left, right, op.type);
     }
 
     return left;
 }
 
-ast::Expr Parser::parse_prefix() {
+ast::Expr* Parser::parse_prefix() {
     if (match(TOKEN_NUMBER)) {
-        ast::Expr e;
-        e.kind = ast::IntLit{ (int)previous.number };
-        return e;
+        return make_expr(ctx, ast::IntExpr{ (int)previous.number }, previous.loc);
     }
 
     if (match(TOKEN_STRING)) {
-        ast::Expr e;
-        e.kind = ast::StringLit{ std::string(previous.text) };
-        return e;
+        return make_expr(ctx, ast::StringExpr{ std::string(previous.text) }, previous.loc);
     }
 
     if (match(TOKEN_IDENT)) {
-        ast::Expr e;
-        e.kind = ast::VarExpr{ std::string(previous.text) };
+        std::string first = std::string(previous.text);
+
+        if (match(TOKEN_COLON_COLON)) {
+            Token name = expect(TOKEN_IDENT, "Expected name after ::");
+
+            ast::Expr* e;
+            e->kind = ast::NamespaceExpr{
+                first,
+                std::string(name.text)
+            };
+            return e;
+        }
+
+        ast::Expr* e;
+        e->kind = ast::VarExpr{ first };
         return e;
     }
 
     if (match(TOKEN_LPAREN)) {
-        ast::Expr e = parse_expr(0);
+        ast::Expr* e = parse_expr(0);
         expect(TOKEN_RPAREN, "Expected ')'");
         return e;
     }
@@ -377,42 +419,34 @@ ast::Expr Parser::parse_prefix() {
     if (!check(TOKEN_EOF)) {
         advance();
     }
-    return ast::Expr{ ast::NoneExpr{} };
+    return nullptr;
 }
 
-ast::Expr Parser::parse_postfix(ast::Expr left) {
+ast::Expr* Parser::parse_postfix(ast::Expr* left) {
     while (true) {
         if (match(TOKEN_LPAREN)) {
             std::vector<ast::Expr*> args;
 
             if (!check(TOKEN_RPAREN)) {
                 do {
-                    args.push_back(memory::make<ast::Expr>(ctx.arena, parse_expr(0)));
+                    args.push_back(parse_expr(0));
                 } while (match(TOKEN_COMMA));
             }
 
             expect(TOKEN_RPAREN, "Expected ')'");
 
-            ast::Expr e;
-            e.kind = ast::CallExpr{
-                memory::make<ast::Expr>(ctx.arena, std::move(left)),
-                args
-            };
-
-            left = std::move(e);
+            left = make_expr(ctx, ast::CallExpr{ left, args }, left ? left->loc : SourceLocation{});
             continue;
         }
 
         if (match(TOKEN_DOT)) {
             Token field = expect(TOKEN_IDENT, "Expected field name after '.'");
 
-            ast::Expr e;
-            e.kind = ast::FieldAccessExpr{
-                memory::make<ast::Expr>(ctx.arena, std::move(left)),
+            left = make_expr(ctx, ast::FieldExpr{
+                left,
                 std::string(field.text)
-            };
+            }, left ? left->loc : field.loc);
 
-            left = std::move(e);
             continue;
         }
 
@@ -422,17 +456,13 @@ ast::Expr Parser::parse_postfix(ast::Expr left) {
     return left;
 }
 
-ast::Expr Parser::make_binary(ast::Expr left, ast::Expr right, TokenType op) {
-    ast::Expr e;
-    e.loc = left.loc;
-
-    e.kind = ast::BinaryExpr{
-        memory::make<ast::Expr>(ctx.arena, std::move(left)),
-        memory::make<ast::Expr>(ctx.arena, std::move(right)),
+ast::Expr* Parser::make_binary(ast::Expr* left, ast::Expr* right, TokenType op) {
+    SourceLocation loc = left ? left->loc : SourceLocation{};
+    return make_expr(ctx, ast::BinaryExpr{
+        left,
+        right,
         get_op_from_token(op)
-    };
-
-    return e;
+    }, loc);
 }
 
 const ast::Type* Parser::parse_type() {
@@ -446,17 +476,6 @@ const ast::Type* Parser::parse_type() {
 
     error(current.loc, "Expected type");
     return ctx.types.get_int();
-}
-
-const ast::Type* Parser::get_type_from_token(Token t) {
-    switch (t.type) {
-        case TOKEN_INT:    return ctx.types.get_int();
-        case TOKEN_STRING: return ctx.types.get_string();
-        case TOKEN_VOID:   return ctx.types.get_void();
-        default:
-            error(t.loc, "Unknown type");
-            return ctx.types.get_int();
-    }
 }
 
 } // namespace quark::ps

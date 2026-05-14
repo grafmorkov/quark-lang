@@ -1,360 +1,673 @@
-#include "quark/backend/ir_gen.h"
+#include "quark/ir/ir_gen.h"
 #include "utils/logger.h"
+
+#include <functional>
 #include <utility>
+#include <variant>
 
 using namespace utils::logger;
-// IRBuilder 
 
 namespace quark::codegen {
 
-void IRBuilder::ensure_block() {
-    if (!current_block)
-        crash("No current IR block set");
+namespace {
 
-    if (current_block->terminated)
-        crash("Block already terminated: " + current_block->name);
+template<class... Ts>
+struct overloaded : Ts... {
+    using Ts::operator()...;
+};
+
+template<class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
+
+std::string join_namespace(const std::vector<std::string>& ns) {
+    if (ns.empty()) return {};
+
+    std::string out;
+    for (size_t i = 0; i < ns.size(); ++i) {
+        if (i) out += "::";
+        out += ns[i];
+    }
+    return out;
 }
 
-IRValue IRBuilder::make_temp() {
-    return IRValue{ "t" + std::to_string(temp_id++) };
+std::string qualify_name(
+    const std::vector<std::string>& ns,
+    const std::string& name
+) {
+    const std::string prefix = join_namespace(ns);
+    if (prefix.empty()) return name;
+    return prefix + "::" + name;
 }
 
-IRBlock* IRBuilder::create_block(const std::string& name) {
-    blocks.push_back(memory::make_default<IRBlock>(ctx.arena));
-    auto* block = blocks.back();
-    block->name = name;
-    return block;
+const ast::Type* symbol_type(const quark::symb_t::Symbol& sym) {
+    if (const auto* v = std::get_if<quark::symb_t::VarSymbol>(&sym.data)) {
+        return v->type;
+    }
+    if (const auto* a = std::get_if<quark::symb_t::FuncArgSymbol>(&sym.data)) {
+        return a->type;
+    }
+    return nullptr;
 }
 
-void IRBuilder::set_insert_point(IRBlock* block) {
-    current_block = block;
+bool symbol_is_mutable(const quark::symb_t::Symbol& sym) {
+    if (const auto* v = std::get_if<quark::symb_t::VarSymbol>(&sym.data)) {
+        return v->is_mut;
+    }
+    if (const auto* a = std::get_if<quark::symb_t::FuncArgSymbol>(&sym.data)) {
+        return a->is_mut;
+    }
+    return false;
 }
 
-IRValue IRBuilder::create_const(int value) {
-    return IRValue{ std::to_string(value) };
-}
-
-IRValue IRBuilder::create_binary(IRBinaryOp op, IRValue lhs, IRValue rhs) {
-    ensure_block();
-
-    IRValue res = make_temp();
-    res.type = lhs.type;
-
-    current_block->inst.push_back(IRBinary{
-        op, res, lhs, rhs
-    });
-
-    return res;
-}
-
-void IRBuilder::create_alloc(const std::string& name, const quark::ast::Type* t) {
-    ensure_block();
-
-    if (variables.find(name) != variables.end()) {
-        crash("The variable '" + name + "' has been already declared");
+std::pair<int, const ast::Type*> resolve_struct_field(
+    CompilerContext& ctx,
+    const ast::Type* base_type,
+    const std::string& field_name
+) {
+    if (!base_type) {
+        crash("Field access base type is null");
     }
 
-    IRValue v = make_temp();
-    v.type = t;
-    variables[name] = v;
-
-    current_block->inst.push_back(IRAlloc{v.name, t});
-}
-void IRBuilder::create_store(const std::string& name, IRValue value) {
-    ensure_block();
-
-    auto it = variables.find(name);
-    if (it == variables.end()) {
-        crash("Undefined variable: '" + name + "'" );
+    if (base_type->kind != ast::TypeKind::Struct) {
+        crash("Field access on non-struct type");
     }
 
-    current_block->inst.push_back(IRStore{
-        it->second,
-        value
-    });
-}
+    auto* sym = ctx.symbols.lookup(base_type->struct_name);
+    if (!sym) {
+        crash("Unknown struct: " + base_type->struct_name);
+    }
 
-void IRBuilder::create_return(IRValue value) {
-    ensure_block();
+    auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
+    if (!ss) {
+        crash("Invalid struct symbol: " + base_type->struct_name);
+    }
 
-    current_block->inst.push_back(IRReturn{ value });
-
-    current_block->terminated = true;
-    current_block = nullptr;
-}
-
-void IRBuilder::create_branch(IRValue cond, IRBlock* then_block, IRBlock* else_block) {
-    ensure_block();
-
-    current_block->inst.push_back(IRBranch{
-        cond, then_block, else_block
-    });
-
-    current_block->terminated = true;
-    current_block = nullptr;
-}
-
-void IRBuilder::create_jump(IRBlock* target) {
-    ensure_block();
-
-    current_block->inst.push_back(IRJump{ target });
-
-    current_block->terminated = true;
-    current_block = nullptr;
-}
-
-// IRGenerator 
-void IRGenerator::gen_program(const std::vector<Stmt*>& program) {
-    auto* entry = builder.create_block("entry");
-    builder.set_insert_point(entry);
-    
-    for (const auto& stmt : program) {
-        if (std::holds_alternative<FuncStmt>(stmt->kind)) {
-            gen_function(std::get<FuncStmt>(stmt->kind));
-        } else {
-            gen_stmt(*stmt);
+    for (size_t i = 0; i < ss->field_names.size(); ++i) {
+        if (ss->field_names[i] == field_name) {
+            return { static_cast<int>(i), ss->field_types[i] };
         }
     }
+
+    crash("Unknown field: " + field_name);
 }
 
-IRValue IRGenerator::gen_expr(const Expr& expr) {
-    return std::visit([this](auto& node) {
-        return gen_node(node);
-    }, expr.kind);
+} // namespace
+
+IRGenerator::IRGenerator(CompilerContext& c)
+    : ctx(c) {}
+
+uint32_t IRGenerator::new_reg() {
+    return next_reg++;
 }
 
-void IRGenerator::gen_stmt(const Stmt& stmt) {
-    std::visit([this](auto& node) {
-        gen_stmt_node(node);
+uint32_t IRGenerator::new_label() {
+    return next_label++;
+}
+
+void IRGenerator::emit(const IRInst& inst) {
+    if (!current_func) {
+        crash("No current IR function set");
+    }
+
+    current_func->body.push_back(inst);
+}
+
+IRBinaryOp IRGenerator::map_op(ast::BinaryOp op) {
+    switch (op) {
+        case ast::BinaryOp::Add:  return IRBinaryOp::Add;
+        case ast::BinaryOp::Sub:  return IRBinaryOp::Sub;
+        case ast::BinaryOp::Mul:  return IRBinaryOp::Mul;
+        case ast::BinaryOp::Div:  return IRBinaryOp::Div;
+        case ast::BinaryOp::Eq:   return IRBinaryOp::Eq;
+        case ast::BinaryOp::Neq:  return IRBinaryOp::NotEq;
+        case ast::BinaryOp::Lt:   return IRBinaryOp::Lt;
+        case ast::BinaryOp::Lte:  return IRBinaryOp::Lte;
+        case ast::BinaryOp::Gt:   return IRBinaryOp::Gt;
+        case ast::BinaryOp::Gte:  return IRBinaryOp::Gte;
+        default:
+            crash("Unsupported binary op");
+    }
+}
+
+void IRGenerator::gen_program(const std::vector<ast::Stmt*>& program_stmts) {
+    program.functions.clear();
+    function_ids.clear();
+    namespace_stack.clear();
+    local_scopes.clear();
+    type_scopes.clear();
+
+    next_reg = 0;
+    next_label = 0;
+    current_terminated = false;
+    current_func = nullptr;
+
+    auto register_function = [&](const std::string& qname) -> uint32_t {
+        auto it = function_ids.find(qname);
+        if (it != function_ids.end()) {
+            return it->second;
+        }
+
+        const uint32_t id = static_cast<uint32_t>(program.functions.size());
+        function_ids.emplace(qname, id);
+
+        IRFunction fn;
+        fn.id = id;
+        fn.name = qname;
+        program.functions.push_back(std::move(fn));
+
+        return id;
+    };
+
+    std::function<void(const std::vector<ast::Stmt*>&)> collect_functions;
+    collect_functions = [&](const std::vector<ast::Stmt*>& stmts) {
+        for (const auto* stmt : stmts) {
+            if (!stmt) continue;
+
+            std::visit(overloaded {
+                [&](const ast::FuncStmt& fn) {
+                    register_function(qualify_name(namespace_stack, fn.name));
+                },
+                [&](const ast::NamespaceStmt& ns) {
+                    namespace_stack.push_back(ns.name);
+                    if (ns.body) {
+                        collect_functions(ns.body->stmts);
+                    }
+                    namespace_stack.pop_back();
+                },
+                [&](const auto&) {
+                    // other statements do not register functions
+                }
+            }, stmt->kind);
+        }
+    };
+
+    // Create toplevel function first.
+    register_function("__toplevel");
+    collect_functions(program_stmts);
+
+    const uint32_t toplevel_id = function_ids.at("__toplevel");
+    current_func = &program.functions[toplevel_id];
+    current_func->body.clear();
+
+    next_reg = 0;
+    next_label = 0;
+    current_terminated = false;
+
+    local_scopes.emplace_back();
+    type_scopes.emplace_back();
+
+    for (const auto* stmt : program_stmts) {
+        if (!stmt || current_terminated) continue;
+        gen_stmt(*stmt);
+    }
+
+    // Make toplevel always terminate cleanly.
+    if (!current_terminated) {
+        const uint32_t zero = new_reg();
+        emit(IRConst{ zero, 0 });
+        emit(IRReturn{ zero });
+        current_terminated = true;
+    }
+
+    type_scopes.pop_back();
+    local_scopes.pop_back();
+}
+
+void IRGenerator::gen_function(const ast::FuncStmt& func) {
+    const std::string qname = qualify_name(namespace_stack, func.name);
+
+    auto it = function_ids.find(qname);
+    if (it == function_ids.end()) {
+        crash("Function was not pre-collected: " + qname);
+    }
+
+    IRFunction* saved_func = current_func;
+    uint32_t saved_next_reg = next_reg;
+    uint32_t saved_next_label = next_label;
+    bool saved_terminated = current_terminated;
+    auto saved_namespace = namespace_stack;
+    auto saved_locals = local_scopes;
+    auto saved_types = type_scopes;
+
+    current_func = &program.functions[it->second];
+    current_func->body.clear();
+
+    next_reg = 0;
+    next_label = 0;
+    current_terminated = false;
+
+    local_scopes.clear();
+    type_scopes.clear();
+    local_scopes.emplace_back();
+    type_scopes.emplace_back();
+
+    for (const auto& arg : func.args) {
+        uint32_t reg = new_reg();
+        local_scopes.back()[arg.name] = reg;
+        type_scopes.back()[arg.name] = arg.type;
+    }
+
+    if (func.body) {
+        gen_block(*func.body);
+    }
+
+    if (!current_terminated) {
+        if (func.return_type && func.return_type->kind == ast::TypeKind::Void) {
+            const uint32_t zero = new_reg();
+            emit(IRConst{ zero, 0 });
+            emit(IRReturn{ zero });
+            current_terminated = true;
+        } else {
+            crash("Missing return in non-void function: " + func.name);
+        }
+    }
+
+    current_func = saved_func;
+    next_reg = saved_next_reg;
+    next_label = saved_next_label;
+    current_terminated = saved_terminated;
+    namespace_stack = std::move(saved_namespace);
+    local_scopes = std::move(saved_locals);
+    type_scopes = std::move(saved_types);
+}
+
+void IRGenerator::gen_block(const ast::Block& block) {
+    const bool outer_terminated = current_terminated;
+    current_terminated = false;
+
+    local_scopes.emplace_back();
+    type_scopes.emplace_back();
+
+    for (const auto* stmt : block.stmts) {
+        if (!stmt || current_terminated) {
+            break;
+        }
+        gen_stmt(*stmt);
+    }
+
+    const bool block_terminated = current_terminated;
+
+    type_scopes.pop_back();
+    local_scopes.pop_back();
+
+    current_terminated = outer_terminated || block_terminated;
+}
+
+void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
+    if (current_terminated) {
+        return;
+    }
+
+    std::visit(overloaded {
+        [&](const ast::ExprStmt& node) {
+            if (node.expr) {
+                (void)gen_expr(*node.expr);
+            }
+        },
+
+        [&](const ast::VarDecl& node) {
+            if (!node.type) {
+                crash("Variable declaration missing type: " + node.name);
+            }
+
+            uint32_t reg = new_reg();
+            local_scopes.back()[node.name] = reg;
+            type_scopes.back()[node.name] = node.type;
+
+            if (node.value) {
+                const uint32_t value = gen_expr(*node.value);
+                emit(IRAssign{ reg, value });
+            }
+        },
+
+        [&](const ast::ReturnStmt& node) {
+            if (!current_func) {
+                crash("Return outside function");
+            }
+
+            if (node.value) {
+                const uint32_t value = gen_expr(*node.value);
+                emit(IRReturn{ value });
+            } else {
+                const uint32_t zero = new_reg();
+                emit(IRConst{ zero, 0 });
+                emit(IRReturn{ zero });
+            }
+
+            current_terminated = true;
+        },
+
+        [&](const ast::IfStmt& node) {
+            if (!node.condition) {
+                crash("If statement missing condition");
+            }
+
+            const uint32_t cond = gen_expr(*node.condition);
+
+            const uint32_t then_label = new_label();
+            const uint32_t end_label  = new_label();
+            const uint32_t else_label = node.else_block ? new_label() : end_label;
+
+            emit(IRBranch{
+                cond,
+                then_label,
+                else_label
+            });
+
+            emit(IRLabel{ then_label });
+            current_terminated = false;
+            if (node.then_block) {
+                gen_block(*node.then_block);
+            }
+            const bool then_terminated = current_terminated;
+            if (!then_terminated) {
+                emit(IRJump{ end_label });
+            }
+
+            bool else_terminated = false;
+            if (node.else_block) {
+                emit(IRLabel{ else_label });
+                current_terminated = false;
+                gen_block(*node.else_block);
+                else_terminated = current_terminated;
+                if (!else_terminated) {
+                    emit(IRJump{ end_label });
+                }
+            }
+
+            emit(IRLabel{ end_label });
+
+            current_terminated = node.else_block && then_terminated && else_terminated;
+        },
+
+        [&](const ast::WhileStmt& node) {
+            if (!node.condition) {
+                crash("While statement missing condition");
+            }
+
+            const uint32_t cond_label = new_label();
+            const uint32_t body_label = new_label();
+            const uint32_t end_label  = new_label();
+
+            emit(IRJump{ cond_label });
+
+            emit(IRLabel{ cond_label });
+            const uint32_t cond = gen_expr(*node.condition);
+            emit(IRBranch{ cond, body_label, end_label });
+
+            emit(IRLabel{ body_label });
+            current_terminated = false;
+            if (node.body) {
+                gen_block(*node.body);
+            }
+
+            if (!current_terminated) {
+                emit(IRJump{ cond_label });
+            }
+
+            emit(IRLabel{ end_label });
+
+            current_terminated = false;
+        },
+
+        [&](const ast::StructDecl&) {
+            // Compile-time only. Layout is already validated in semantic.
+        },
+
+        [&](const ast::FuncStmt& fn) {
+            gen_function(fn);
+        },
+
+        [&](const ast::NamespaceStmt& ns) {
+            namespace_stack.push_back(ns.name);
+
+            // Namespace is a declaration scope, not a runtime flow barrier.
+            const bool saved_terminated = current_terminated;
+            current_terminated = false;
+
+            local_scopes.emplace_back();
+            type_scopes.emplace_back();
+
+            if (ns.body) {
+                for (const auto* child : ns.body->stmts) {
+                    if (!child || current_terminated) {
+                        break;
+                    }
+                    gen_stmt(*child);
+                }
+            }
+
+            type_scopes.pop_back();
+            local_scopes.pop_back();
+
+            current_terminated = saved_terminated;
+            namespace_stack.pop_back();
+        },
+
+        [&](const auto&) {
+            crash("Unsupported statement node in IR generation");
+        }
     }, stmt.kind);
 }
 
-void IRGenerator::gen_function(const FuncStmt& func) {
-    for (auto& stmt : func.body->statements)
-        gen_stmt(*stmt);
-
-    if (builder.current_block && !builder.current_block->terminated) {
-        if (func.return_t->kind == Type::Void) {
-            builder.create_return(builder.create_const(0));
-        } else {
-            crash("Missing return in non-void function");
+uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
+    auto lookup_local = [&](const std::string& name, uint32_t& reg_out, const ast::Type*& type_out) -> bool {
+        for (int i = static_cast<int>(local_scopes.size()) - 1; i >= 0; --i) {
+            auto rit = local_scopes[i].find(name);
+            if (rit != local_scopes[i].end()) {
+                reg_out = rit->second;
+                auto tit = type_scopes[i].find(name);
+                if (tit != type_scopes[i].end()) {
+                    type_out = tit->second;
+                } else {
+                    type_out = nullptr;
+                }
+                return true;
+            }
         }
-    }
-}
+        return false;
+    };
 
-// EXPRESSIONS
-template<typename T>
-IRValue IRGenerator::gen_node(const T&) {
-    return IRValue{"unhandled"}; // TODO
-}
-template<typename T>
-void IRGenerator::gen_stmt_node(const T&) {
-    // TODO
-}
-IRValue IRGenerator::gen_node(const IntLit& node) {
-    return builder.create_const(node.value);
-}
-
-IRValue IRGenerator::gen_node(const BinaryExpr& node) {
-    return builder.create_binary(
-        map_op(node.op),
-        gen_expr(*node.lhs),
-        gen_expr(*node.rhs)
-    );
-}
-
-IRValue IRGenerator::gen_node(const VarExpr& node) {
-    auto it = builder.variables.find(node.name);
-
-    if (it == builder.variables.end())
-        crash("Undefined variable: " + node.name);
-    return it->second;
-}
-IRValue IRGenerator::gen_node(const FieldAccessExpr& node) {
-    IRValue base = gen_expr(*node.base);
-
-    if (!base.type || base.type->kind != Type::Struct) {
-        crash("Field access base must be a struct");
-    }
-
-    auto it = builder.struct_layouts.find(base.type->struct_name);
-    if (it == builder.struct_layouts.end()) {
-        crash("Unknown struct layout: " + base.type->struct_name);
-    }
-
-    const auto& layout = it->second;
-    auto f = layout.field_index.find(node.field);
-    if (f == layout.field_index.end()) {
-        crash("Unknown field: " + node.field);
-    }
-
-    IRValue dst = builder.make_temp();
-    dst.type = layout.field_types[f->second];
-
-    builder.current_block->inst.push_back(IRGetField{
-        dst,
-        base,
-        f->second
-    });
-
-    return dst;
-}
-IRValue IRGenerator::gen_node(const CallExpr& node) {
-    std::vector<IRValue> args;
-    for (const auto& arg : node.args) {
-        args.push_back(gen_expr(*arg));
-    }
-
-    IRValue callee = gen_expr(*node.callee);
-    IRValue dst = builder.make_temp();
-
-    builder.current_block->inst.push_back(IRCall{
-        callee, args, dst
-    });
-
-    return dst;
-}
-
-IRValue IRGenerator::gen_node(const AssignExpr& node) {
-    IRValue value = gen_expr(*node.value);
-
-    if (auto* var = std::get_if<VarExpr>(&node.target->kind)) {
-        builder.create_store(var->name, value);
-        return value;
-    }
-
-    if (auto* field = std::get_if<FieldAccessExpr>(&node.target->kind)) {
-        IRValue base = gen_expr(*field->base);
-
-        if (!base.type || base.type->kind != Type::Struct) {
-            crash("Field assignment base must be a struct");
+    auto resolve_function_id = [&](const std::string& name) -> uint32_t {
+        const std::string qname = qualify_name(namespace_stack, name);
+        auto it = function_ids.find(qname);
+        if (it == function_ids.end()) {
+            crash("Undefined function: " + qname);
         }
+        return it->second;
+    };
 
-        auto it = builder.struct_layouts.find(base.type->struct_name);
-        if (it == builder.struct_layouts.end()) {
-            crash("Unknown struct layout: " + base.type->struct_name);
+    return std::visit(overloaded {
+        [&](const ast::IntExpr& node) -> uint32_t {
+            const uint32_t dst = new_reg();
+            emit(IRConst{ dst, node.value });
+            return dst;
+        },
+
+        [&](const ast::StringExpr&) -> uint32_t {
+            crash("String lowering is not implemented in this IR yet");
+        },
+
+        [&](const ast::VarExpr& node) -> uint32_t {
+            uint32_t reg = 0;
+            const ast::Type* type = nullptr;
+
+            if (lookup_local(node.name, reg, type)) {
+                (void)type;
+                return reg;
+            }
+
+            auto* sym = ctx.symbols.lookup(node.name);
+            if (!sym) {
+                crash("Undefined variable: " + node.name);
+            }
+
+            if (!symbol_type(*sym)) {
+                crash("Symbol is not a value: " + node.name);
+            }
+
+            crash("Global value lowering is not implemented yet: " + node.name);
+        },
+
+        [&](const ast::BinaryExpr& node) -> uint32_t {
+            const uint32_t lhs = gen_expr(*node.lhs);
+            const uint32_t rhs = gen_expr(*node.rhs);
+            const uint32_t dst = new_reg();
+
+            emit(IRBinary{
+                map_op(node.op),
+                dst,
+                lhs,
+                rhs
+            });
+
+            return dst;
+        },
+
+        [&](const ast::AssignExpr& node) -> uint32_t {
+            if (!node.target || !node.value) {
+                crash("Assignment target or value is missing");
+            }
+
+            const uint32_t value = gen_expr(*node.value);
+
+            if (const auto* var = std::get_if<ast::VarExpr>(&node.target->kind)) {
+                bool updated = false;
+
+                for (int i = static_cast<int>(local_scopes.size()) - 1; i >= 0; --i) {
+                    auto it = local_scopes[i].find(var->name);
+                    if (it != local_scopes[i].end()) {
+                        const uint32_t dst = new_reg();
+                        emit(IRAssign{ dst, value });
+                        it->second = dst;
+                        updated = true;
+                        return dst;
+                    }
+                }
+
+                if (!updated) {
+                    auto* sym = ctx.symbols.lookup(var->name);
+                    if (!sym) {
+                        crash("Undefined variable: " + var->name);
+                    }
+
+                    if (!symbol_is_mutable(*sym)) {
+                        crash("Cannot assign to immutable variable: " + var->name);
+                    }
+
+                    crash("Global assignment lowering is not implemented yet: " + var->name);
+                }
+            }
+
+            if (const auto* field = std::get_if<ast::FieldExpr>(&node.target->kind)) {
+                const uint32_t base = gen_expr(*field->base);
+                const ast::Type* base_type = nullptr;
+
+                {
+                    if (const auto* base_var = std::get_if<ast::VarExpr>(&field->base->kind)) {
+                        for (int i = static_cast<int>(local_scopes.size()) - 1; i >= 0; --i) {
+                            auto tit = type_scopes[i].find(base_var->name);
+                            if (tit != type_scopes[i].end()) {
+                                base_type = tit->second;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!base_type) {
+                    if (const auto* base_var = std::get_if<ast::VarExpr>(&field->base->kind)) {
+                        auto* sym = ctx.symbols.lookup(base_var->name);
+                        if (sym) {
+                            base_type = symbol_type(*sym);
+                        }
+                    }
+                }
+
+                const auto [index, field_type] = resolve_struct_field(ctx, base_type, field->field);
+                (void)field_type;
+
+                emit(IRSetField{
+                    base,
+                    value,
+                    index
+                });
+
+                return value;
+            }
+
+            crash("Assignment target must be variable or field access");
+        },
+
+        [&](const ast::FieldExpr& node) -> uint32_t {
+            const uint32_t base = gen_expr(*node.base);
+            const ast::Type* base_type = nullptr;
+
+            if (const auto* base_var = std::get_if<ast::VarExpr>(&node.base->kind)) {
+                for (int i = static_cast<int>(local_scopes.size()) - 1; i >= 0; --i) {
+                    auto tit = type_scopes[i].find(base_var->name);
+                    if (tit != type_scopes[i].end()) {
+                        base_type = tit->second;
+                        break;
+                    }
+                }
+            }
+
+            if (!base_type) {
+                if (const auto* base_var = std::get_if<ast::VarExpr>(&node.base->kind)) {
+                    auto* sym = ctx.symbols.lookup(base_var->name);
+                    if (sym) {
+                        base_type = symbol_type(*sym);
+                    }
+                }
+            }
+
+            const auto [index, field_type] = resolve_struct_field(ctx, base_type, node.field);
+            (void)field_type;
+
+            const uint32_t dst = new_reg();
+            emit(IRGetField{
+                dst,
+                base,
+                index
+            });
+
+            return dst;
+        },
+
+        [&](const ast::CallExpr& node) -> uint32_t {
+            std::vector<uint32_t> args;
+            args.reserve(node.args.size());
+
+            for (const auto* arg : node.args) {
+                if (!arg) {
+                    crash("Null call argument");
+                }
+                args.push_back(gen_expr(*arg));
+            }
+
+            if (!node.callee) {
+                crash("Call callee is missing");
+            }
+
+            uint32_t func_id = 0;
+
+            if (const auto* callee = std::get_if<ast::VarExpr>(&node.callee->kind)) {
+                func_id = resolve_function_id(callee->name);
+            } else {
+                crash("Unsupported callee expression");
+            }
+
+            const uint32_t dst = new_reg();
+            emit(IRCall{
+                dst,
+                func_id,
+                args
+            });
+
+            return dst;
         }
-
-        const auto& layout = it->second;
-        auto f = layout.field_index.find(field->field);
-        if (f == layout.field_index.end()) {
-            crash("Unknown field: " + field->field);
-        }
-
-        builder.current_block->inst.push_back(IRSetField{
-            base,
-            value,
-            f->second
-        });
-
-        return value;
-    }
-
-    crash("Assignment target must be variable or field access");
+    }, expr.kind);
 }
 
-//  STATEMENTS
-
-void IRGenerator::gen_stmt_node(const ExprStmt& node) {
-    gen_expr(*node.expr);
-}
-
-void IRGenerator::gen_stmt_node(const VarDecl& node) {
-    builder.create_alloc(node.name, node.type);
-
-    if (node.value) {
-        builder.create_store(node.name, gen_expr(*node.value));
-    }
-}
-
-void IRGenerator::gen_stmt_node(const ReturnStmt& node) {
-    if (node.value)
-        builder.create_return(gen_expr(*node.value));
-}
-
-void IRGenerator::gen_stmt_node(const IfStmt& node) {
-    auto cond = gen_expr(*node.condition);
-
-    auto* then_block = builder.create_block("then");
-    auto* end_block  = builder.create_block("end");
-
-    IRBlock* else_block = nullptr;
-
-    if (node.elseBranch) {
-        else_block = builder.create_block("else");
-        builder.create_branch(cond, then_block, else_block);
-    } else {
-        builder.create_branch(cond, then_block, end_block);
-    }
-
-    // THEN
-    builder.set_insert_point(then_block);
-    for (auto& s : node.thenBranch->statements)
-        gen_stmt(*s);
-
-    if (!then_block->terminated) {
-        builder.create_jump(end_block);
-    }
-
-    // ELSE
-    if (node.elseBranch) {
-        builder.set_insert_point(else_block);
-        for (auto& s : node.elseBranch->statements)
-            gen_stmt(*s);
-
-        if (!else_block->terminated) {
-            builder.create_jump(end_block);
-        }
-    }
-
-    builder.set_insert_point(end_block);
-}
-void IRGenerator::gen_stmt_node(const WhileStmt& node) {
-    auto* cond_block = builder.create_block("while_cond");
-    auto* body_block = builder.create_block("while_body");
-    auto* end_block  = builder.create_block("while_end");
-    
-    builder.create_jump(cond_block);
-    
-    builder.set_insert_point(cond_block);
-    auto cond = gen_expr(*node.condition);
-    builder.create_branch(cond, body_block, end_block);
-    
-    builder.set_insert_point(body_block);
-    for (auto& s : node.body->statements)
-        gen_stmt(*s);
-    builder.create_jump(cond_block);
-    
-    builder.set_insert_point(end_block);
-}
-void IRGenerator::gen_stmt_node(const StructDecl& node) {
-    StructLayout layout;
-
-    for (int i = 0; i < node.fields.size(); i++) {
-        const auto& field = node.fields[i];
-
-        layout.field_index[field->name] = i;
-        layout.field_types.push_back(field->type);
-    }
-
-    builder.struct_layouts[node.name] = std::move(layout);
-}
-
-// OPS 
-
-IRBinaryOp IRGenerator::map_op(BinaryOp op) {
-    switch (op) {
-        case BinaryOp::Add:   return IRBinaryOp::Add;
-        case BinaryOp::Sub:   return IRBinaryOp::Sub;
-        case BinaryOp::Mul:   return IRBinaryOp::Mul;
-        case BinaryOp::Div:   return IRBinaryOp::Div;
-        case BinaryOp::Eq:    return IRBinaryOp::Eq;   
-        case BinaryOp::NotEq: return IRBinaryOp::NotEq; 
-        case BinaryOp::Lt:    return IRBinaryOp::Lt;    
-        case BinaryOp::Lte:   return IRBinaryOp::Lte;   
-        case BinaryOp::Gt:    return IRBinaryOp::Gt;    
-        case BinaryOp::Gte:   return IRBinaryOp::Gte;   
-        default: crash("Unsupported binary op");
-    }
-}
-}
+} // namespace quark::codegen
