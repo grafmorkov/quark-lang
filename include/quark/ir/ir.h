@@ -85,6 +85,7 @@ using IRInst = std::variant<
 struct IRFunction {
     uint32_t id;
     std::string name;
+    uint32_t arg_count = 0;
     std::vector<IRInst> body;
 };
 

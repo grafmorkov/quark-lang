@@ -45,7 +45,6 @@ namespace quark::symb_t {
         std::unordered_map<std::string, Symbol> symbols;
         std::unordered_map<std::string, std::unique_ptr<Namespace>> children;
     };
-
     class SymbolTable {
     public:
         SymbolTable();

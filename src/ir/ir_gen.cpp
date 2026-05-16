@@ -231,6 +231,7 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
 
     current_func = &program.functions[it->second];
     current_func->body.clear();
+    current_func->arg_count = static_cast<uint32_t>(func.args.size());
 
     next_reg = 0;
     next_label = 0;
@@ -666,6 +667,9 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             });
 
             return dst;
+        },
+        [&](const ast::NamespaceExpr&) -> uint32_t {
+            crash("Namespace expressions are not supported in IR generation yet");
         }
     }, expr.kind);
 }

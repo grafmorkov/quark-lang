@@ -13,7 +13,7 @@ namespace utils::options {
 
     struct Options {
         bool emit_ir = false;
-        bool emit_c = false;
+        bool emit_asm = false;
         bool build = false;
         bool run = false;
         bool no_compile = false;
@@ -23,7 +23,7 @@ namespace utils::options {
 
     enum class Flag {
         EmitIR,
-        EmitC,
+        EmitAsm,
         Build,
         Run,
         NoCompile,
@@ -35,7 +35,7 @@ namespace utils::options {
 
         std::unordered_map<std::string, Flag> flag_map = {
             {"--emit-ir", Flag::EmitIR},
-            {"--emit-c", Flag::EmitC},
+            {"--emit-asm", Flag::EmitAsm},
             {"--build", Flag::Build},
             {"--run", Flag::Run},
             {"--no-compile", Flag::NoCompile},
@@ -49,7 +49,7 @@ namespace utils::options {
             if (it != flag_map.end()) {
                 switch (it->second) {
                     case Flag::EmitIR: opts.emit_ir = true; break;
-                    case Flag::EmitC: opts.emit_c = true; break;
+                    case Flag::EmitAsm: opts.emit_asm = true; break;
                     case Flag::Build: opts.build = true; break;
                     case Flag::Run: opts.run = true; break;
                     case Flag::NoCompile: opts.no_compile = true; break;

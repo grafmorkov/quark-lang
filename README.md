@@ -57,7 +57,7 @@ Source -> AST -> IR -> semantic analysis -> C -> native binary
 ### Requirements
 
 * CMake 3.20+
-* Clang or another C compiler
+* Fasm compiler
 
 Clone the repository with submodules:
 
@@ -111,9 +111,9 @@ Build and run:
 | AST                  | completed   |
 | Semantic analysis    | in progress |
 | IR                   | in progress |
-| C backend            | completed   |
+| C backend            | legacy      |
 | Optimizations        | planned     |
-| FASM backend         | planned     |
+| FASM backend         | completed   |
 | Self-hosted compiler | planned     |
 
 ---
@@ -123,13 +123,12 @@ Build and run:
 ### Short-term
 
 * improved diagnostics
-* stronger semantic validation
-* module system
-* standard library foundation
+* add modules and namespaces
 
 ### Long-term
 
-* FASM backend
+* remove ir and make AST -> x86_64
+* optimizations(maybe)
 * self-hosting compiler
 
 ---

@@ -12,6 +12,7 @@
 #include "utils/logger.h"
 
 #include "quark/ir/ir_gen.h"
+#include "quark/backend/fasmcodegen.h"
 
 int main(int argc, char **argv)
 {
@@ -47,24 +48,27 @@ int main(int argc, char **argv)
         if (opts.emit_ir) {
              utils::logger::info("IR");
         }
-        /*Codegen
-        quark::codegen::CGenerator cgen(ctx.types, irgen.builder);
-        std::string c_code;
+        if(opts.no_compile){
+            return 0;
+        }
+        // Codegen
+        quark::codegen::FasmCodeGenerator fasmCodegen;
+        std::string asm_code;
 
-        c_code = cgen.generate(irgen.builder);
+        asm_code = fasmCodegen.generate(irgen.program);
 
-        if (opts.emit_c) {
-          //  utils::logger::info("C Code gen:");
-            //utils::logger::info(c_code);
+        if (opts.emit_asm) {
+            utils::logger::info("asm:");
+            utils::logger::info(asm_code);
         }
         // Write C File
-        std::ofstream file("out.c");
-        file << c_code;
+        std::ofstream file("out.S");
+        file << asm_code;
         file.close();
 
-         Build clang
+        // Build fasm
         if (opts.build || opts.run) {
-            std::string cmd = "clang out.c -o out";
+            std::string cmd = "fasm out.S out";
 
             if (std::system(cmd.c_str()) != 0) {
                 utils::logger::error("Clang build failed\n");
@@ -75,7 +79,7 @@ int main(int argc, char **argv)
         // Run
         if (opts.run) {
             std::system("./out");
-        }*/
+        }
 
         auto end = high_resolution_clock::now();
 

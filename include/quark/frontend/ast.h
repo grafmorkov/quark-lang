@@ -14,6 +14,7 @@ namespace quark::ast {
     struct Expr;
     struct Stmt;
     struct Block;
+    struct Attribute;
 
     // Types
 
@@ -170,8 +171,7 @@ namespace quark::ast {
         VarDecl,
         StructDecl,
         FuncStmt,
-        NamespaceStmt,
-
+        NamespaceStmt
     >;
 
     struct Stmt {

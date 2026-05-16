@@ -17,7 +17,6 @@ add_library(libquark
     src/utils/logger.cpp
     src/ir/ir_gen.cpp
     src/ir/ir_dump.cpp
-    src/backend/ccodegen.cpp
 )
 
 target_include_directories(libquark

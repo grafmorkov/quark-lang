@@ -20,7 +20,7 @@ public:
             return &it->second;
 
         Type t;
-        t.kind = Type::Struct;
+        t.kind = TypeKind::Struct;
         t.struct_name = name;
 
         auto [iter, _] = struct_types.emplace(name, std::move(t));
@@ -67,9 +67,9 @@ public:
     }
 
 private:
-    Type int_type{ Type::Int };
-    Type string_type{ Type::String };
-    Type void_type{ Type::Void };
+    Type int_type{ TypeKind::Int };
+    Type string_type{ TypeKind::String };
+    Type void_type{ TypeKind::Void };
 
     std::unordered_map<std::string, Type> struct_types;
 

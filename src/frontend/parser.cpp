@@ -395,18 +395,9 @@ ast::Expr* Parser::parse_prefix() {
 
         if (match(TOKEN_COLON_COLON)) {
             Token name = expect(TOKEN_IDENT, "Expected name after ::");
-
-            ast::Expr* e;
-            e->kind = ast::NamespaceExpr{
-                first,
-                std::string(name.text)
-            };
-            return e;
+            return make_expr(ctx, ast::NamespaceExpr{ first, std::string(name.text)}, previous.loc);
         }
-
-        ast::Expr* e;
-        e->kind = ast::VarExpr{ first };
-        return e;
+        return make_expr(ctx, ast::VarExpr{ first }, previous.loc);
     }
 
     if (match(TOKEN_LPAREN)) {
