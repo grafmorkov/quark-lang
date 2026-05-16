@@ -3,7 +3,7 @@
 Quark is an experimental systems programming language focused on explicit state,
 predictable semantics, and transparent memory management.
 
-The compiler currently targets C as a backend.
+The compiler currently targets fasm as a backend.
 
 ---
 
@@ -27,27 +27,24 @@ func main() void {
 ## Architecture
 
 ```text
-Source -> AST -> IR -> semantic analysis -> C -> native binary
+Source -> AST -> semantic analysis -> tiny IR -> fasm -> native binary
 ```
 
 ### Pipeline
 
 1. Parse source code into AST
-2. Generate intermediate representation
-3. Run semantic validation passes
-4. Generate C source code
+2. Run semantic validation passes
+3. Generate intermediate representation
+4. Generate asm source code
 5. Compile with a native C compiler
 
 ---
 
 ## Features
 
-* explicit variable initialization
-* mutable and immutable bindings
-* transparent memory handling
-* minimal hidden behavior
-* portable C backend
-* simple C interoperability
+* minimal hidden behaviour
+* tiny compiler(like tcc)
+* explicit behaviour
 * arena-based compiler memory management
 
 ---
@@ -82,7 +79,7 @@ cmake --build .
 
 ## Usage
 
-Generate C source:
+Generate asm source:
 
 ```bash
 ./quark file.qk
@@ -109,11 +106,10 @@ Build and run:
 | Lexer                | completed   |
 | Parser               | completed   |
 | AST                  | completed   |
-| Semantic analysis    | in progress |
-| IR                   | in progress |
-| C backend            | legacy      |
-| Optimizations        | planned     |
+| Semantic analysis    | completed   |
+| IR                   | completed   |
 | FASM backend         | completed   |
+| Optimizations        | planned     |
 | Self-hosted compiler | planned     |
 
 ---
@@ -127,7 +123,7 @@ Build and run:
 
 ### Long-term
 
-* remove ir and make AST -> x86_64
+* remove ir and make AST -> x86_64 directly
 * optimizations(maybe)
 * self-hosting compiler
 
