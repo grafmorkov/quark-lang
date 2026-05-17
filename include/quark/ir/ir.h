@@ -8,6 +8,7 @@
 namespace quark::codegen {
 
 using Reg = uint32_t;
+using Local = uint32_t;
 using Label = uint32_t;
 
 enum class IRBinaryOp {
@@ -16,9 +17,19 @@ enum class IRBinaryOp {
     Lt, Lte, Gt, Gte
 };
 
-struct IRConst {
+struct IRLoadConst {
     Reg dst;
     int64_t value;
+};
+
+struct IRLoadLocal {
+    Reg dst;
+    Local local;
+};
+
+struct IRStoreLocal {
+    Local local;
+    Reg src;
 };
 
 struct IRBinary {
@@ -26,11 +37,6 @@ struct IRBinary {
     Reg dst;
     Reg lhs;
     Reg rhs;
-};
-
-struct IRAssign {
-    Reg dst;
-    Reg src;
 };
 
 struct IRCall {
@@ -60,19 +66,20 @@ struct IRLabel {
 struct IRGetField {
     Reg dst;
     Reg base;
-    int index;
+    uint32_t offset;
 };
 
 struct IRSetField {
     Reg base;
     Reg value;
-    int index;
+    uint32_t offset;
 };
 
 using IRInst = std::variant<
-    IRConst,
+    IRLoadConst,
+    IRLoadLocal,
+    IRStoreLocal,
     IRBinary,
-    IRAssign,
     IRCall,
     IRReturn,
     IRJump,
@@ -85,7 +92,11 @@ using IRInst = std::variant<
 struct IRFunction {
     uint32_t id;
     std::string name;
+
     uint32_t arg_count = 0;
+    uint32_t local_count = 0;
+    uint32_t temp_count = 0;
+
     std::vector<IRInst> body;
 };
 

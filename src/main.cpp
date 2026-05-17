@@ -97,11 +97,11 @@ int main(int argc, char **argv)
             std::system("./out");
         }
 
-        auto end = high_resolution_clock::now();
+        auto end = std::chrono::high_resolution_clock::now();
 
         if (opts.time) {
-            auto duration = duration_cast<milliseconds>(end - start);
-            std::cout << "\nCompilation took: " << duration.count() << "ms\n";
+            std::chrono::duration<double, std::milli> duration = end - start;
+            std::cout << "\nCompilation took: " << duration.count() << " ms\n";
         }
 
         return 0;
