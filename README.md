@@ -27,23 +27,24 @@ func main() void {
 ## Architecture
 
 ```text
-Source -> AST -> semantic analysis -> tiny IR -> fasm -> native binary
+Load modules -> AST -> semantic analysis -> IR -> fasm -> native binary
 ```
 
 ### Pipeline
 
+0. Load all modules
 1. Parse source code into AST
 2. Run semantic validation passes
 3. Generate intermediate representation
 4. Generate asm source code
-5. Compile with a native C compiler
+5. Compile with fasm
 
 ---
 
 ## Features
 
 * minimal hidden behaviour
-* tiny compiler(like tcc)
+* attributes(i'll add them soon)
 * explicit behaviour
 * arena-based compiler memory management
 
@@ -119,11 +120,10 @@ Build and run:
 ### Short-term
 
 * improved diagnostics
-* add modules and namespaces
+* create assign modules parsing and validation
 
 ### Long-term
 
-* remove ir and make AST -> x86_64 directly
 * optimizations(maybe)
 * self-hosting compiler
 

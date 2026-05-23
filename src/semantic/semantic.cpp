@@ -167,6 +167,7 @@ void SemanticAnalyzer::analyze_stmt(const ast::Stmt* stmt) {
         [&](const ast::FuncStmt& n) { analyze_func(n); },
         [&](const ast::IfStmt& n) { analyze_if(n); },
         [&](const ast::WhileStmt& n) { analyze_while(n); },
+        [&](const ast::LoadStmt& n) {},
         [&](const auto&) {
             crash("Unsupported statement node in semantic analysis");
         }

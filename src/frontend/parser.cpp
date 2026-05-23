@@ -53,7 +53,7 @@ int get_precedence(TokenType t) {
 
 template <class T>
 ast::Expr* make_expr(CompilerContext& ctx, T&& kind, SourceLocation loc = {}) {
-    auto* e = memory::make_default<ast::Expr>(ctx.arena);
+    auto* e = memory::make_default<ast::Expr>(ctx.ast_arena);
     e->kind = std::forward<T>(kind);
     e->loc = loc;
     return e;
@@ -70,7 +70,7 @@ std::vector<ast::Stmt*> Parser::parse() {
     std::vector<ast::Stmt*> out;
 
     while (!check(TOKEN_EOF)) {
-        out.push_back(memory::make<ast::Stmt>(ctx.arena, parse_statement()));
+        out.push_back(memory::make<ast::Stmt>(ctx.ast_arena, parse_statement()));
     }
 
     return out;
@@ -147,6 +147,9 @@ ast::Stmt Parser::parse_statement() {
         return ast::Stmt{ ast::NamespaceStmt{ parse_namespace_stmt() } };
     }
 
+    if (match(TOKEN_LOAD)){
+        return ast::Stmt{ ast::LoadStmt{ parse_load() } };
+    }
     if (is_var_decl()) {
         return ast::Stmt{ parse_var_decl() };
     }
@@ -294,7 +297,7 @@ ast::FuncStmt Parser::parse_func() {
     ret.args = parse_func_args();
     expect(TOKEN_RPAREN, "Expected ')'");
 
-    ret.return_type = parse_type();
+    ret.return_type = parse_type(1);
     ret.body = parse_block();
 
     return ret;
@@ -335,11 +338,11 @@ ast::NamespaceStmt Parser::parse_namespace_stmt() {
 ast::Block* Parser::parse_block() {
     expect(TOKEN_LBRACE, "Expected '{'");
 
-    auto* block = memory::make_default<ast::Block>(ctx.arena);
+    auto* block = memory::make_default<ast::Block>(ctx.ast_arena);
 
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
         block->stmts.push_back(
-            memory::make<ast::Stmt>(ctx.arena, parse_statement())
+            memory::make<ast::Stmt>(ctx.ast_arena, parse_statement())
         );
     }
 
@@ -347,7 +350,21 @@ ast::Block* Parser::parse_block() {
 
     return block;
 }
+ast::LoadStmt Parser::parse_load() {
+    ast::LoadStmt ret;
 
+    std::string_view raw = expect(TokenType::TOKEN_STRING, "Expected module").text;
+
+    // temporary fix
+    if (!raw.empty() && raw.front() == '"' && raw.back() == '"') {
+        raw = raw.substr(1, raw.size() - 2);
+    }
+
+    ret.module = raw;
+
+    expect(TOKEN_SEMICOLON, "Expected ';' after load");
+    return ret;
+}
 // Expressions
 
 ast::Expr* Parser::parse_expr(int min_prec) {
@@ -456,15 +473,14 @@ ast::Expr* Parser::make_binary(ast::Expr* left, ast::Expr* right, TokenType op) 
     }, loc);
 }
 
-const ast::Type* Parser::parse_type() {
+const ast::Type* Parser::parse_type(bool canBeVoid) {
     if (match(TOKEN_INT))    return ctx.types.get_int();
-    if (match(TOKEN_STRING)) return ctx.types.get_string();
+    if (match(TOKEN_STR_TYPE)) return ctx.types.get_string();
     if (match(TOKEN_VOID))   return ctx.types.get_void();
 
     if (match(TOKEN_IDENT)) {
         return ctx.types.get_struct(std::string(previous.text));
     }
-
     error(current.loc, "Expected type");
     return ctx.types.get_int();
 }

@@ -3,11 +3,14 @@
 #include "ir.h"
 #include "quark/frontend/ast.h"
 #include "quark/support/compiler_context.h"
+#include "quark/modules/module.h"
 
 #include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <string>
+#include <span>
 
 namespace quark::codegen {
 
@@ -17,6 +20,8 @@ struct IRGenerator {
     IRProgram program;
 
     IRFunction* current_func = nullptr;
+    const modules::Module* current_module = nullptr;
+    std::string current_module_name = std::string();
 
     Reg next_reg = 0;
     Local next_local = 0;
@@ -40,8 +45,8 @@ struct IRGenerator {
 
     // Entry
 
-    void gen_program(const std::vector<ast::Stmt*>& stmts);
-
+    void gen_program(std::span<quark::modules::Module* const> modules);
+    void gen_module(const quark::modules::Module& mod);
     // Functions
 
     void gen_function(const ast::FuncStmt& fn);

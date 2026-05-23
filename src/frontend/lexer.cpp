@@ -164,11 +164,13 @@ namespace quark::lx {
             case str_hash("var"): return make_token(TOKEN_VAR);
 
             case str_hash("int"): return make_token(TOKEN_INT);
+            case str_hash("str"): return make_token(TOKEN_STR_TYPE);
             case str_hash("float"): return make_token(TOKEN_FLOAT);
             case str_hash("void"): return make_token(TOKEN_VOID);
             case str_hash("mut"): return make_token(TOKEN_MUT);
             case str_hash("struct"): return make_token(TOKEN_STRUCT);
             case str_hash("namespace"): return make_token(TOKEN_NAMESPACE);
+            case str_hash("load"): return make_token(TOKEN_LOAD);
         }
         return make_token(TOKEN_IDENT);
     }

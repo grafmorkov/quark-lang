@@ -3,12 +3,12 @@
 #include <iostream>
 #include <string>
 #include <fstream> 
-#include <string> 
 #include <vector>
 
 #include "token.h"
 #include "quark/support/compiler_context.h"
 
+#include "utils/file_manager.h"
 #include "utils/logger.h"
 
 namespace quark::lx{
@@ -38,20 +38,14 @@ namespace quark::lx{
         public:
             Token next_token();
             
-        Lexer(const char *fileName, CompilerContext& _ctx): ctx(_ctx){
-            std::ifstream f(fileName, std::ios::binary); 
-
-            if (!f) 
-                utils::logger::fatal("Failed to read the file while creating lexer!"); 
-
-            buffer = std::string( 
-                (std::istreambuf_iterator<char>(f)), 
-                std::istreambuf_iterator<char>() );
-            pos = 0;
-            start = 0;
-            ctx.srcloc.line = 1;
-            ctx.srcloc.column = 1;
-            ctx.srcloc.file = fileName;
-        }
+        Lexer(std::string source, CompilerContext& _ctx)
+    : buffer(std::move(source)),
+      pos(0),
+      start(0),
+      ctx(_ctx)
+{
+    ctx.srcloc.line = 1;
+    ctx.srcloc.column = 1;
+}
     };
 }

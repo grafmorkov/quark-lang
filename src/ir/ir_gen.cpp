@@ -31,12 +31,23 @@ std::string join_namespace(const std::vector<std::string>& ns) {
 }
 
 std::string qualify_name(
+    const std::string& module_name,
     const std::vector<std::string>& ns,
     const std::string& name
 ) {
-    const std::string prefix = join_namespace(ns);
-    if (prefix.empty()) return name;
-    return prefix + "::" + name;
+    std::string out = module_name;
+
+    for (const auto& part : ns) {
+        out += "::";
+        out += part;
+    }
+
+    if (!name.empty()) {
+        out += "::";
+        out += name;
+    }
+
+    return out;
 }
 
 bool is_declaration_stmt(const ast::Stmt& stmt) {
@@ -142,7 +153,7 @@ IRBinaryOp IRGenerator::map_op(ast::BinaryOp op) {
     }
 }
 
-void IRGenerator::gen_program(const std::vector<ast::Stmt*>& program_stmts) {
+void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) {
     program.functions.clear();
     function_ids.clear();
     namespace_stack.clear();
@@ -154,6 +165,8 @@ void IRGenerator::gen_program(const std::vector<ast::Stmt*>& program_stmts) {
     next_local = 0;
     current_terminated = false;
     current_func = nullptr;
+    current_module_name.clear();
+    current_module = nullptr;
 
     auto register_function = [&](const std::string& qname) -> uint32_t {
         auto it = function_ids.find(qname);
@@ -172,19 +185,26 @@ void IRGenerator::gen_program(const std::vector<ast::Stmt*>& program_stmts) {
         return id;
     };
 
-    std::function<void(const std::vector<ast::Stmt*>&)> collect_functions;
-    collect_functions = [&](const std::vector<ast::Stmt*>& stmts) {
+    auto collect_functions_in_stmts =
+        [&](auto&& self,
+            const std::vector<ast::Stmt*>& stmts,
+            const std::string& module_name) -> void
+    {
+        namespace_stack.clear();
+
         for (const auto* stmt : stmts) {
             if (!stmt) continue;
 
             std::visit(overloaded{
                 [&](const ast::FuncStmt& fn) {
-                    register_function(qualify_name(namespace_stack, fn.name));
+                    register_function(
+                        qualify_name(module_name, namespace_stack, fn.name)
+                    );
                 },
                 [&](const ast::NamespaceStmt& ns) {
                     namespace_stack.push_back(ns.name);
                     if (ns.body) {
-                        collect_functions(ns.body->stmts);
+                        self(self, ns.body->stmts, module_name);
                     }
                     namespace_stack.pop_back();
                 },
@@ -193,10 +213,30 @@ void IRGenerator::gen_program(const std::vector<ast::Stmt*>& program_stmts) {
         }
     };
 
-    collect_functions(program_stmts);
+    for (auto* mod : modules) {
+        if (!mod) continue;
+        collect_functions_in_stmts(collect_functions_in_stmts, mod->ast, mod->name);
+    }
 
-    for (const auto* stmt : program_stmts) {
-        if (!stmt) {
+    for (auto* mod : modules) {
+        if (!mod) continue;
+        gen_module(*mod);
+    }
+}
+void IRGenerator::gen_module(const quark::modules::Module& mod) {
+    auto saved_namespace = namespace_stack;
+    auto saved_module_name = current_module_name;
+    auto saved_module = current_module;
+
+    current_module_name = mod.name;
+    current_module = &mod;
+    namespace_stack.clear();
+
+    for (const auto* stmt : mod.ast) {
+        if (!stmt) continue;
+
+        // LoadStmt — это compile-time only, в IR его лучше просто игнорировать.
+        if (std::holds_alternative<ast::LoadStmt>(stmt->kind)) {
             continue;
         }
 
@@ -206,10 +246,14 @@ void IRGenerator::gen_program(const std::vector<ast::Stmt*>& program_stmts) {
 
         gen_stmt(*stmt);
     }
+
+    current_module = saved_module;
+    current_module_name = std::move(saved_module_name);
+    namespace_stack = std::move(saved_namespace);
 }
 
 void IRGenerator::gen_function(const ast::FuncStmt& func) {
-    const std::string qname = qualify_name(namespace_stack, func.name);
+    const std::string qname = qualify_name(current_module_name, namespace_stack, func.name);
 
     auto it = function_ids.find(qname);
     if (it == function_ids.end()) {
@@ -443,6 +487,9 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
             current_terminated = saved_terminated;
             namespace_stack.pop_back();
         },
+        [&](const ast::LoadStmt&) {
+            // compile-time only
+        },
 
         [&](const auto&) {
             crash("Unsupported statement node in IR generation");
@@ -469,7 +516,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
     };
 
     auto resolve_function_id = [&](const std::string& name) -> uint32_t {
-        const std::string qname = qualify_name(namespace_stack, name);
+        const std::string qname = qualify_name(current_module_name, namespace_stack, name);
         auto it = function_ids.find(qname);
         if (it == function_ids.end()) {
             crash("Undefined function: " + qname);

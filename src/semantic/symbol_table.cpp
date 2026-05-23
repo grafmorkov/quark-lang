@@ -1,5 +1,7 @@
 #include "quark/semantic/symbol_table.h"
 #include "utils/logger.h"
+#include "quark/support/compiler_context.h"
+
 
 #include <type_traits>
 #include <utility>
@@ -7,11 +9,12 @@
 using namespace utils::logger;
 
 namespace quark::symb_t {
+    SymbolTable::SymbolTable(memory::Arena& a) : arena(a){
+        global_namespace = memory::make<Namespace>(arena);
 
-    SymbolTable::SymbolTable() {
-        global_namespace.name = "::";
-        global_namespace.parent = nullptr;
-        current_namespace = &global_namespace;
+        global_namespace->name = "::";
+
+        current_namespace = global_namespace;
     }
 
     void SymbolTable::enter_scope() {
@@ -31,14 +34,14 @@ namespace quark::symb_t {
         auto it = current_namespace->children.find(name);
 
         if (it == current_namespace->children.end()) {
-            auto ns = std::make_unique<Namespace>();
+            auto ns = memory::make<Namespace>(arena);
             ns->name = name;
             ns->parent = current_namespace;
 
             current_namespace->children.emplace(name, std::move(ns));
         }
 
-        current_namespace = current_namespace->children[name].get();
+        current_namespace = current_namespace->children[name];
         return true;
     }
 
@@ -52,7 +55,7 @@ namespace quark::symb_t {
     }
 
     Namespace* SymbolTable::resolve_namespace(const std::vector<std::string>& path) {
-        Namespace* current = &global_namespace;
+        Namespace* current = global_namespace;
 
         for (const auto& part : path) {
             auto it = current->children.find(part);
@@ -60,7 +63,7 @@ namespace quark::symb_t {
                 return nullptr;
             }
 
-            current = it->second.get();
+            current = it->second;
         }
 
         return current;
@@ -70,21 +73,22 @@ namespace quark::symb_t {
         if (!scopes.empty()) {
             auto& current = scopes.back();
 
-            if (current.find(name) != current.end()) {
+            if (current.contains(name)) {
                 return false;
             }
-
             current.emplace(name, std::move(symbol));
             return true;
         }
 
         auto& current = current_namespace->symbols;
 
-        if (current.find(name) != current.end()) {
+        if (current.contains(name)) {
             return false;
         }
 
-        current.emplace(name, std::move(symbol));
+        auto* sym = memory::make<Symbol>(arena, std::move(symbol));
+
+        current.emplace(name, sym);
         return true;
     }
 
@@ -142,7 +146,7 @@ namespace quark::symb_t {
         while (ns != nullptr) {
             auto it = ns->symbols.find(name);
             if (it != ns->symbols.end()) {
-                return &it->second;
+                return it->second;
             }
 
             ns = ns->parent;
@@ -156,7 +160,7 @@ namespace quark::symb_t {
             return nullptr;
         }
 
-        Namespace* current = &global_namespace;
+        Namespace* current = global_namespace;
 
         for (size_t i = 0; i + 1 < path.size(); ++i) {
             auto it = current->children.find(path[i]);
@@ -164,7 +168,7 @@ namespace quark::symb_t {
                 return nullptr;
             }
 
-            current = it->second.get();
+            current = it->second;
         }
 
         auto it = current->symbols.find(path.back());
@@ -172,7 +176,7 @@ namespace quark::symb_t {
             return nullptr;
         }
 
-        return &it->second;
+        return it->second;
     }
 
     void SymbolTable::mark_initialized(const std::string& name) {

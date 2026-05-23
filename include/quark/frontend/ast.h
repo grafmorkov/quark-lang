@@ -20,7 +20,6 @@ namespace quark::ast {
 
     enum class TypeKind {
         Int,
-        Float,
         String,
         Void,
         Struct
@@ -162,6 +161,9 @@ namespace quark::ast {
         std::string name; 
         Block* body; 
     };
+    struct LoadStmt {
+        std::string module;
+    };
 
     using StmtKind = std::variant<
         ExprStmt,
@@ -171,7 +173,8 @@ namespace quark::ast {
         VarDecl,
         StructDecl,
         FuncStmt,
-        NamespaceStmt
+        NamespaceStmt,
+        LoadStmt
     >;
 
     struct Stmt {

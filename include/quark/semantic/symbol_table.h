@@ -7,6 +7,7 @@
 #include <string>
 
 #include "quark/frontend/ast.h"
+#include "quark-alloc/memory/alloc.h"
 
 namespace quark::symb_t {
 
@@ -25,10 +26,18 @@ namespace quark::symb_t {
         std::vector<std::string> field_names;
         std::vector<const ast::Type*> field_types;
     };
+    struct FuncSymbol {
+        std::vector<const ast::Type*> arg_types;
+        const ast::Type* return_type;
+
+        bool is_extern;
+        bool is_exported;
+    };
 
     using SymbolData = std::variant<
         VarSymbol,
         FuncArgSymbol,
+        FuncSymbol,
         StructSymbol
     >;
 
@@ -42,12 +51,12 @@ namespace quark::symb_t {
         std::string name;
         Namespace* parent = nullptr;
 
-        std::unordered_map<std::string, Symbol> symbols;
-        std::unordered_map<std::string, std::unique_ptr<Namespace>> children;
+        std::unordered_map<std::string, Symbol*> symbols;
+        std::unordered_map<std::string, Namespace*> children;
     };
     class SymbolTable {
     public:
-        SymbolTable();
+        SymbolTable(memory::Arena& a);
 
         void enter_scope();
         void exit_scope();
@@ -69,7 +78,8 @@ namespace quark::symb_t {
         void mark_initialized(const std::string& name);
 
     private:
-        Namespace global_namespace;
+        memory::Arena& arena;
+        Namespace* global_namespace;
         Namespace* current_namespace = nullptr;
 
         std::vector<std::unordered_map<std::string, Symbol>> scopes;

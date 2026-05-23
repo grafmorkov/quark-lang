@@ -39,6 +39,7 @@ namespace quark::ps {
             ast::StructDecl parse_struct_decl();
             ast::Block* parse_block();
             ast::NamespaceStmt parse_namespace_stmt();
+            ast::LoadStmt parse_load();
             ast::IfStmt parse_if();
             std::vector<ast::Attribute> parse_attributes();
             ast::WhileStmt parse_while();
@@ -53,7 +54,7 @@ namespace quark::ps {
 
             // helpers
             ast::Expr* make_binary(ast::Expr* left, ast::Expr* right, TokenType op);
-            const ast::Type* parse_type();
+            const ast::Type* parse_type(bool canBeVoid = false);
             bool is_var_decl();
         };
 

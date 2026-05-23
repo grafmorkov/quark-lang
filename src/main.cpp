@@ -14,6 +14,9 @@
 #include "quark/ir/ir_gen.h"
 #include "quark/backend/fasmcodegen.h"
 
+#include "quark/modules/module.h"
+#include "quark/linker/linker.h"
+
 int main(int argc, char **argv)
 {
     try{
@@ -27,23 +30,27 @@ int main(int argc, char **argv)
         }
 
         auto start = high_resolution_clock::now();
-        memory::Arena arena;
 
         quark::CompilerContext ctx;
-        // Lexer
-        quark::lx::Lexer lex(opts.input_file.c_str(), ctx);
+        quark::modules::ModuleManager mm(ctx);
+        quark::linker::Linker linker(mm);
 
-        // Parser
-        quark::ps::Parser parser(lex, ctx);
-        auto ast = parser.parse();
-        
-        // Semantic
-        quark::sm::SemanticAnalyzer sem(ctx);
-        sem.analyze(ast);
+        auto* entry = mm.load_entry(opts.input_file);
+        mm.build_graph(entry);
+
+        // Semantic analysis
+        for (auto* mod : mm.ordered_modules()) {
+            quark::sm::SemanticAnalyzer sem(ctx);
+            sem.analyze(mod->ast);
+            mod->analyzed = true;
+        }
+
+        // Linker validation
+        linker.validate();
 
         // IRGen
         quark::codegen::IRGenerator irgen(ctx);
-        irgen.gen_program(ast);
+        irgen.gen_program(mm.ordered_modules());
 
         if (opts.emit_ir) {
              utils::logger::info("IR");
@@ -76,7 +83,6 @@ int main(int argc, char **argv)
             std::string output = "out";
             std::string cmd = "fasm out.S " + output;
         #endif
-
             if (std::system(cmd.c_str()) != 0) {
                 utils::logger::error("Fasm build failed\n");
                 return 1;
