@@ -114,6 +114,63 @@ namespace quark::symb_t {
             {}
         });
     }
+    bool SymbolTable::declare(const ast::FuncStmt& fn) {
+        FuncSymbol sym;
+
+        sym.return_type = fn.return_type;
+        sym.is_extern = fn.is_extern;
+        sym.is_defined = fn.body != nullptr;
+        sym.is_entry = fn.is_entry;
+
+        sym.arg_types.reserve(fn.args.size());
+
+        for (const auto& arg : fn.args) {
+            sym.arg_types.push_back(arg.type);
+        }
+
+        auto* existing = lookup(fn.name);
+
+        if (existing) {
+            auto* fs = std::get_if<FuncSymbol>(&existing->data);
+
+            if (!fs) {
+                return false;
+            }
+
+            // signature check
+            if (fs->arg_types.size() != sym.arg_types.size()) {
+                return false;
+            }
+
+            for (size_t i = 0; i < fs->arg_types.size(); ++i) {
+                if (fs->arg_types[i] != sym.arg_types[i]) {
+                    return false;
+                }
+            }
+
+            if (fs->return_type != sym.return_type) {
+                return false;
+            }
+
+            // duplicate definition
+            if (fs->is_defined && sym.is_defined) {
+                error("Function already defined: " + fn.name);
+                return false;
+            }
+
+            // upgrade forward decl -> definition
+            if (!fs->is_defined && sym.is_defined) {
+                fs->is_defined = true;
+            }
+
+            return true;
+        }
+
+        return declare_symbol(fn.name, Symbol{
+            fn.name,
+            sym
+        });
+    }
 
     bool SymbolTable::declare(const ast::StructDecl& str) {
         StructSymbol sym;
@@ -178,6 +235,15 @@ namespace quark::symb_t {
 
         return it->second;
     }
+    Symbol* SymbolTable::lookup_current_namespace(const std::string& name) {
+        auto it = current_namespace->symbols.find(name);
+
+        if (it == current_namespace->symbols.end()) {
+            return nullptr;
+        }
+
+        return it->second;
+    }
 
     void SymbolTable::mark_initialized(const std::string& name) {
         auto* sym = lookup(name);
@@ -196,6 +262,28 @@ namespace quark::symb_t {
                 error("Symbol is not a variable: " + name);
             }
         }, sym->data);
+    }
+    Namespace* SymbolTable::create_namespace_path(const std::vector<std::string>& path) {
+        Namespace* current = global_namespace;
+
+        for (const auto& part : path) {
+            auto it = current->children.find(part);
+
+            if (it == current->children.end()) {
+                auto* ns = memory::make<Namespace>(arena);
+
+                ns->name = part;
+                ns->parent = current;
+
+                current->children.emplace(part, ns);
+
+                current = ns;
+            } else {
+                current = it->second;
+            }
+        }
+
+        return current;
     }
 
 }

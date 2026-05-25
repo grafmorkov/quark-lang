@@ -79,8 +79,8 @@ namespace quark::ast {
     };
 
     struct NamespaceExpr {
-        std::string ns;
-        std::string name;
+        Expr* left;
+        Expr* right;
     };
 
     using ExprKind = std::variant<
@@ -152,6 +152,12 @@ namespace quark::ast {
         std::string name;
         std::vector<FuncArg> args;
         const Type* return_type;
+
+        bool is_extern;
+        bool is_forward;
+        bool is_entry;
+        bool has_body;
+
         Block* body;
     };
     struct Attribute { 

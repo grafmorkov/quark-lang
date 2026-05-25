@@ -135,8 +135,13 @@ ast::Stmt Parser::parse_statement() {
         return ast::Stmt{ ast::WhileStmt{ parse_while() } };
     }
 
+    if (match(TOKEN_EXTERN)) {
+        expect(TOKEN_FUNC, "Expected 'func' after extern");
+        return ast::Stmt{ ast::FuncStmt{ parse_func(true) } };
+    }
+
     if (match(TOKEN_FUNC)) {
-        return ast::Stmt{ ast::FuncStmt{ parse_func() } };
+        return ast::Stmt{ ast::FuncStmt{ parse_func(false) } };
     }
 
     if (match(TOKEN_STRUCT)) {
@@ -147,16 +152,16 @@ ast::Stmt Parser::parse_statement() {
         return ast::Stmt{ ast::NamespaceStmt{ parse_namespace_stmt() } };
     }
 
-    if (match(TOKEN_LOAD)){
+    if (match(TOKEN_LOAD)) {
         return ast::Stmt{ ast::LoadStmt{ parse_load() } };
     }
+
     if (is_var_decl()) {
         return ast::Stmt{ parse_var_decl() };
     }
 
     ast::Expr* expr = parse_expr(0);
     expect(TOKEN_SEMICOLON, "Expected ';' after expression");
-
     return ast::Stmt{ ast::ExprStmt{ expr } };
 }
 
@@ -287,18 +292,27 @@ ast::ReturnStmt Parser::parse_return() {
     return ret;
 }
 
-ast::FuncStmt Parser::parse_func() {
+ast::FuncStmt Parser::parse_func(bool is_extern) {
     ast::FuncStmt ret;
 
     Token name = expect(TOKEN_IDENT, "Expected function name");
     ret.name = name.text;
+    ret.is_extern = is_extern;
+    ret.has_body = false;
+    ret.body = nullptr;
 
     expect(TOKEN_LPAREN, "Expected '('");
     ret.args = parse_func_args();
     expect(TOKEN_RPAREN, "Expected ')'");
 
-    ret.return_type = parse_type(1);
-    ret.body = parse_block();
+    ret.return_type = parse_type(true);
+
+    if (check(TOKEN_LBRACE)) {
+        ret.body = parse_block();   
+        ret.has_body = true;
+    } else {
+        expect(TOKEN_SEMICOLON, "Expected ';' after function declaration");
+    }
 
     return ret;
 }
@@ -306,15 +320,17 @@ ast::FuncStmt Parser::parse_func() {
 std::vector<ast::FuncArg> Parser::parse_func_args() {
     std::vector<ast::FuncArg> args;
 
-    if (check(TOKEN_RPAREN)) return args;
+    if (check(TOKEN_RPAREN)) {
+        return args;
+    }
 
     while (true) {
         bool is_mut = match(TOKEN_MUT);
 
-        Token name = expect(TOKEN_IDENT, "Expected arg name");
+        Token name = expect(TOKEN_IDENT, "Expected argument name");
         expect(TOKEN_COLON, "Expected ':' after argument name");
 
-        const ast::Type* type = parse_type();
+        const ast::Type* type = parse_type(true);
 
         args.push_back({
             std::string(name.text),
@@ -322,7 +338,9 @@ std::vector<ast::FuncArg> Parser::parse_func_args() {
             is_mut
         });
 
-        if (!match(TOKEN_COMMA)) break;
+        if (!match(TOKEN_COMMA)) {
+            break;
+        }
     }
 
     return args;
@@ -408,13 +426,33 @@ ast::Expr* Parser::parse_prefix() {
     }
 
     if (match(TOKEN_IDENT)) {
-        std::string first = std::string(previous.text);
+        ast::Expr* expr =
+            make_expr(ctx,
+                ast::VarExpr{
+                    std::string(previous.text)
+                },
+                previous.loc
+            );
 
-        if (match(TOKEN_COLON_COLON)) {
-            Token name = expect(TOKEN_IDENT, "Expected name after ::");
-            return make_expr(ctx, ast::NamespaceExpr{ first, std::string(name.text)}, previous.loc);
+        while (match(TOKEN_COLON_COLON)) {
+            Token name = expect(TOKEN_IDENT, "Expected identifier after ::");
+
+            ast::Expr* rhs = make_expr(ctx, ast::VarExpr{
+                        std::string(name.text)
+                    },
+                    name.loc
+                );
+
+            expr = make_expr(ctx,
+                ast::NamespaceExpr{
+                    expr,
+                    rhs
+                },
+                expr->loc
+            );
         }
-        return make_expr(ctx, ast::VarExpr{ first }, previous.loc);
+
+        return expr;
     }
 
     if (match(TOKEN_LPAREN)) {
@@ -473,16 +511,29 @@ ast::Expr* Parser::make_binary(ast::Expr* left, ast::Expr* right, TokenType op) 
     }, loc);
 }
 
-const ast::Type* Parser::parse_type(bool canBeVoid) {
-    if (match(TOKEN_INT))    return ctx.types.get_int();
-    if (match(TOKEN_STR_TYPE)) return ctx.types.get_string();
-    if (match(TOKEN_VOID))   return ctx.types.get_void();
+const ast::Type* Parser::parse_type(bool allow_implicit_void) {
+    
+    if (match(TOKEN_VOID)) {
+        return ctx.types.get_void();
+    }
+
+    if (match(TOKEN_INT)) {
+        return ctx.types.get_int();
+    }
+
+    if (match(TOKEN_STR_TYPE)) {
+        return ctx.types.get_string();
+    }
 
     if (match(TOKEN_IDENT)) {
         return ctx.types.get_struct(std::string(previous.text));
     }
-    error(current.loc, "Expected type");
-    return ctx.types.get_int();
-}
 
+    if (allow_implicit_void) {
+        return ctx.types.get_void();
+    }
+
+    error(current.loc, "Expected type");
+    return nullptr;
+}
 } // namespace quark::ps

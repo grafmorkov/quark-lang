@@ -31,7 +31,8 @@ namespace quark::symb_t {
         const ast::Type* return_type;
 
         bool is_extern;
-        bool is_exported;
+        bool is_defined;
+        bool is_entry;
     };
 
     using SymbolData = std::variant<
@@ -68,14 +69,17 @@ namespace quark::symb_t {
 
         bool declare(const ast::VarDecl& decl);
         bool declare(const ast::FuncArg& arg);
+        bool declare(const ast::FuncStmt& fn);
         bool declare(const ast::StructDecl& str);
 
         bool declare_symbol(const std::string& name, Symbol symbol);
 
         Symbol* lookup(const std::string& name);
         Symbol* lookup_qualified(const std::vector<std::string>& path);
+        Symbol* lookup_current_namespace(const std::string& name);
 
         void mark_initialized(const std::string& name);
+        Namespace* create_namespace_path(const std::vector<std::string>& path);
 
     private:
         memory::Arena& arena;

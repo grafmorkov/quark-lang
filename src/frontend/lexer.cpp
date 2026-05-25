@@ -171,6 +171,7 @@ namespace quark::lx {
             case str_hash("struct"): return make_token(TOKEN_STRUCT);
             case str_hash("namespace"): return make_token(TOKEN_NAMESPACE);
             case str_hash("load"): return make_token(TOKEN_LOAD);
+            case str_hash("extern"): return make_token(TOKEN_EXTERN);
         }
         return make_token(TOKEN_IDENT);
     }

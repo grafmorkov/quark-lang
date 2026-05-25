@@ -4,9 +4,6 @@
 /out/
 /dist/
 /tests/
-/qkrt/
-build.bat
-build.sh
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake

@@ -1,1 +1,12 @@
-func print(text: string) void{}
+extern func print(text: str) void;
+extern func println(text: str) void;
+extern func eprint(text: str) void;
+//extern func print_char(c: int) void;
+extern func exit(code: int) void;
+//extern func strlen(s: str) int;
+//extern func open(path: str, flags: int, mode: int) int;
+//extern func close(fd: int) int;
+//extern func seek(fd: int, offset: int, whence: int) int;
+//extern func flush(fd: int) int;
+//extern func write(fd: int, buf: [byte], len: int) int;
+//extern func read_fd(fd: int, buf: [byte], len: int) int;

@@ -40,11 +40,14 @@ int main(int argc, char **argv)
 
         // Semantic analysis
         for (auto* mod : mm.ordered_modules()) {
-            quark::sm::SemanticAnalyzer sem(ctx);
+            quark::sm::SemanticAnalyzer sem(
+                ctx,
+                mod->namespace_path
+            );
+
             sem.analyze(mod->ast);
             mod->analyzed = true;
         }
-
         // Linker validation
         linker.validate();
 
@@ -75,27 +78,28 @@ int main(int argc, char **argv)
 
         // Build fasm
         if (opts.build || opts.run) {
+            auto root = std::filesystem::absolute(QUARK_ROOT);
 
         #ifdef _WIN32
-            std::string output = "out.exe";
-            std::string cmd = "fasm out.S " + output;
+            std::string build_cmd =
+                "cmd /c \"" + (root / "build.bat").string() + "\"";
         #else
-            std::string output = "out";
-            std::string cmd = "fasm out.S " + output;
-        #endif
-            if (std::system(cmd.c_str()) != 0) {
-                utils::logger::error("Fasm build failed\n");
-                return 1;
-            }
+            std::string chmod_cmd =
+                "chmod +x " + (root / "build.sh").string();
 
-        #ifndef _WIN32
-            std::string chmod_cmd = "chmod +x " + output;
+            std::string build_cmd =
+                (root / "build.sh").string();
 
             if (std::system(chmod_cmd.c_str()) != 0) {
                 utils::logger::error("chmod failed\n");
                 return 1;
             }
         #endif
+
+            if (std::system(build_cmd.c_str()) != 0) {
+                utils::logger::error("build failed\n");
+                return 1;
+            }
         }
 
         // Run

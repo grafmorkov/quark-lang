@@ -21,6 +21,8 @@ add_library(libquark
     src/backend/fasmcodegen.cpp
     src/utils/file_manager.cpp
     src/linker/linker.cpp
+    src/support/type_context.cpp
+    src/support/symbol_path.cpp
 )
 
 target_include_directories(libquark

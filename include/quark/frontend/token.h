@@ -29,6 +29,7 @@ namespace quark{
         TOKEN_DOT, // .
         TOKEN_NAMESPACE,
         TOKEN_LOAD, 
+        TOKEN_EXTERN,
 
         // types
         TOKEN_VOID,

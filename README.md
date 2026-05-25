@@ -10,6 +10,8 @@ The compiler currently targets fasm as a backend.
 ## Example
 
 ```qk
+load "std/io.qk";
+
 func main() void {
     value: int = 10;
     mut result: int = value + 2;
@@ -19,6 +21,7 @@ func main() void {
     } else {
         result = 1;
     }
+    std::io::print(result); // it's not working yet
 }
 ```
 
@@ -56,6 +59,7 @@ Load modules -> AST -> semantic analysis -> IR -> fasm -> native binary
 
 * CMake 3.20+
 * Fasm compiler
+* Golink(if you build quark in windows)
 
 Clone the repository with submodules:
 

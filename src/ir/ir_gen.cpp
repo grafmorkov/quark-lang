@@ -3,6 +3,7 @@
 #include <variant>
 
 #include "quark/ir/ir_gen.h"
+#include "quark/support/symbol_path.h"
 #include "utils/logger.h"
 
 using namespace utils::logger;
@@ -18,37 +19,6 @@ struct overloaded : Ts... {
 
 template<class... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
-
-std::string join_namespace(const std::vector<std::string>& ns) {
-    if (ns.empty()) return {};
-
-    std::string out;
-    for (size_t i = 0; i < ns.size(); ++i) {
-        if (i) out += "::";
-        out += ns[i];
-    }
-    return out;
-}
-
-std::string qualify_name(
-    const std::string& module_name,
-    const std::vector<std::string>& ns,
-    const std::string& name
-) {
-    std::string out = module_name;
-
-    for (const auto& part : ns) {
-        out += "::";
-        out += part;
-    }
-
-    if (!name.empty()) {
-        out += "::";
-        out += name;
-    }
-
-    return out;
-}
 
 bool is_declaration_stmt(const ast::Stmt& stmt) {
     return std::holds_alternative<ast::FuncStmt>(stmt.kind) ||
@@ -111,6 +81,7 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
     crash("Unknown field: " + field_name);
 }
 
+
 } // namespace
 
 IRGenerator::IRGenerator(CompilerContext& c)
@@ -165,7 +136,6 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
     next_local = 0;
     current_terminated = false;
     current_func = nullptr;
-    current_module_name.clear();
     current_module = nullptr;
 
     auto register_function = [&](const std::string& qname) -> uint32_t {
@@ -188,23 +158,25 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
     auto collect_functions_in_stmts =
         [&](auto&& self,
             const std::vector<ast::Stmt*>& stmts,
-            const std::string& module_name) -> void
+            const modules::Module* module) -> void
     {
-        namespace_stack.clear();
-
         for (const auto* stmt : stmts) {
             if (!stmt) continue;
 
             std::visit(overloaded{
                 [&](const ast::FuncStmt& fn) {
                     register_function(
-                        qualify_name(module_name, namespace_stack, fn.name)
+                        support::qualify_name(
+                            module->namespace_path,
+                            namespace_stack,
+                            fn.name
+                        )
                     );
                 },
                 [&](const ast::NamespaceStmt& ns) {
                     namespace_stack.push_back(ns.name);
                     if (ns.body) {
-                        self(self, ns.body->stmts, module_name);
+                        self(self, ns.body->stmts, module);
                     }
                     namespace_stack.pop_back();
                 },
@@ -215,7 +187,7 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
 
     for (auto* mod : modules) {
         if (!mod) continue;
-        collect_functions_in_stmts(collect_functions_in_stmts, mod->ast, mod->name);
+        collect_functions_in_stmts(collect_functions_in_stmts, mod->ast, mod);
     }
 
     for (auto* mod : modules) {
@@ -225,10 +197,8 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
 }
 void IRGenerator::gen_module(const quark::modules::Module& mod) {
     auto saved_namespace = namespace_stack;
-    auto saved_module_name = current_module_name;
     auto saved_module = current_module;
 
-    current_module_name = mod.name;
     current_module = &mod;
     namespace_stack.clear();
 
@@ -248,12 +218,11 @@ void IRGenerator::gen_module(const quark::modules::Module& mod) {
     }
 
     current_module = saved_module;
-    current_module_name = std::move(saved_module_name);
     namespace_stack = std::move(saved_namespace);
 }
 
 void IRGenerator::gen_function(const ast::FuncStmt& func) {
-    const std::string qname = qualify_name(current_module_name, namespace_stack, func.name);
+    const std::string qname = support::qualify_name(current_module->namespace_path, namespace_stack, func.name);
 
     auto it = function_ids.find(qname);
     if (it == function_ids.end()) {
@@ -274,6 +243,7 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
     current_func->arg_count = static_cast<uint32_t>(func.args.size());
     current_func->local_count = 0;
     current_func->temp_count = 0;
+    current_func->is_extern = func.is_extern;
 
     next_reg = 0;
     next_label = 0;
@@ -515,8 +485,8 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         return false;
     };
 
-    auto resolve_function_id = [&](const std::string& name) -> uint32_t {
-        const std::string qname = qualify_name(current_module_name, namespace_stack, name);
+    auto resolve_function_id = [&](const std::vector<std::string>& path) -> uint32_t {
+        const std::string qname = support::join_namespace(path);
         auto it = function_ids.find(qname);
         if (it == function_ids.end()) {
             crash("Undefined function: " + qname);
@@ -531,8 +501,19 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             return dst;
         },
 
-        [&](const ast::StringExpr&) -> uint32_t {
-            crash("String lowering is not implemented in this IR yet");
+        [&](const ast::StringExpr& node) -> uint32_t {
+            const Reg dst = new_reg();
+
+            uint32_t id = program.strings.size();
+
+            program.strings.push_back(IRString{
+                id,
+                node.value
+            });
+
+            emit(IRLoadString{ dst, id });
+
+            return dst;
         },
 
         [&](const ast::VarExpr& node) -> uint32_t {
@@ -689,11 +670,8 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
             uint32_t func_id = 0;
 
-            if (const auto* callee = std::get_if<ast::VarExpr>(&node.callee->kind)) {
-                func_id = resolve_function_id(callee->name);
-            } else {
-                crash("Unsupported callee expression");
-            }
+            const auto callee_path = support::flatten_path(node.callee);
+            func_id = resolve_function_id(callee_path);
 
             const uint32_t dst = new_reg();
             emit(IRCall{

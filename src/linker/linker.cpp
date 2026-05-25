@@ -5,7 +5,7 @@ namespace quark::linker{
         for (auto* mod : modules.ordered_modules()) {
             for (auto* stmt : mod->ast) {
                 if (auto* func = std::get_if<ast::FuncStmt>(&stmt->kind)){
-                    if (func->name == "main") {
+                    if (func->name == "main") { // TODO 
                         return func;
                     }
                 }

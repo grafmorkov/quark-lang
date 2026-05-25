@@ -21,7 +21,6 @@ struct IRGenerator {
 
     IRFunction* current_func = nullptr;
     const modules::Module* current_module = nullptr;
-    std::string current_module_name = std::string();
 
     Reg next_reg = 0;
     Local next_local = 0;

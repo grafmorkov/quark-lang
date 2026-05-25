@@ -8,7 +8,9 @@ namespace quark::sm {
 
 class SemanticAnalyzer {
     public:
-        explicit SemanticAnalyzer(CompilerContext& _ctx) : ctx(_ctx) {}
+        explicit SemanticAnalyzer(CompilerContext& ctx,
+                  std::vector<std::string> ns)
+    : ctx(ctx), module_namespace(std::move(ns)) {}
 
         void analyze(const std::vector<ast::Stmt*>& stmts);
 
@@ -16,11 +18,13 @@ class SemanticAnalyzer {
 
         CompilerContext& ctx;
         const ast::Type* current_function_return_type = nullptr;
+        std::vector<std::string> module_namespace;
 
         void analyze_stmt(const ast::Stmt* stmt);
         const ast::Type* analyze_expr(const ast::Expr* expr);
         const ast::Type* analyze_block(const ast::Block* block);
         const ast::Type* resolve_lvalue(const ast::Expr* expr);
+        void collect_declarations(const std::vector<ast::Stmt*>& stmts);
 
         void analyze_var_decl(const ast::VarDecl& var);
         void analyze_struct_decl(const ast::StructDecl& str);

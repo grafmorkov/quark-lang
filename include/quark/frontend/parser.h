@@ -44,7 +44,7 @@ namespace quark::ps {
             std::vector<ast::Attribute> parse_attributes();
             ast::WhileStmt parse_while();
             ast::ReturnStmt parse_return();
-            ast::FuncStmt parse_func();
+            ast::FuncStmt parse_func(bool is_extern);
             std::vector<ast::FuncArg> parse_func_args();
             
             // expressions(Pratt)
@@ -54,7 +54,7 @@ namespace quark::ps {
 
             // helpers
             ast::Expr* make_binary(ast::Expr* left, ast::Expr* right, TokenType op);
-            const ast::Type* parse_type(bool canBeVoid = false);
+            const ast::Type* parse_type(bool allow_implicit_void = false);
             bool is_var_decl();
         };
 

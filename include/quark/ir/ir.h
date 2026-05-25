@@ -21,6 +21,10 @@ struct IRLoadConst {
     Reg dst;
     int64_t value;
 };
+struct IRLoadString {
+    Reg dst;
+    uint32_t string_id;
+};
 
 struct IRLoadLocal {
     Reg dst;
@@ -74,6 +78,10 @@ struct IRSetField {
     Reg value;
     uint32_t offset;
 };
+struct IRString {
+    Label id;
+    std::string value;
+};
 
 using IRInst = std::variant<
     IRLoadConst,
@@ -86,7 +94,8 @@ using IRInst = std::variant<
     IRBranch,
     IRLabel,
     IRGetField,
-    IRSetField
+    IRSetField,
+    IRLoadString
 >;
 
 struct IRFunction {
@@ -98,10 +107,14 @@ struct IRFunction {
     uint32_t temp_count = 0;
 
     std::vector<IRInst> body;
+
+    bool is_extern;
+    bool is_entry;
 };
 
 struct IRProgram {
     std::vector<IRFunction> functions;
+    std::vector<IRString> strings;
 
     void dump() const;
 };

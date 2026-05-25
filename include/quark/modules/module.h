@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "quark/frontend/ast.h"
+#include "quark/semantic/symbol_table.h"
 #include "quark-alloc/memory/alloc.h"
 
 namespace quark {
@@ -24,6 +25,8 @@ struct Module {
 
     std::vector<ast::Stmt*> ast;
     std::vector<std::string> imports;
+    std::vector<std::string> namespace_path;
+    symb_t::Namespace* ns = nullptr;
 
     bool parsed = false;
     bool analyzed = false;

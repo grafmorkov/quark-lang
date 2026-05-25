@@ -1,7 +1,10 @@
 #include "quark/semantic/semantic.h"
 #include "quark/support/compiler_context.h"
+#include "quark/support/symbol_path.h"
+
 #include "utils/logger.h"
 
+#include <unordered_set>
 #include <utility>
 #include <variant>
 
@@ -92,6 +95,9 @@ bool symbol_is_initialized(const quark::symb_t::Symbol& sym) {
     if (std::get_if<quark::symb_t::StructSymbol>(&sym.data)) {
         return true;
     }
+    if (std::get_if<quark::symb_t::FuncSymbol>(&sym.data)) {
+        return true;
+    }
     return false;
 }
 
@@ -106,7 +112,9 @@ const ast::Type* resolve_struct_field(
     const ast::Type* base_type,
     const std::string& field_name
 ) {
-    if (!base_type) return nullptr;
+    if (!base_type) {
+        return nullptr;
+    }
 
     if (base_type->kind != ast::TypeKind::Struct) {
         crash("Field access on non-struct type");
@@ -134,8 +142,11 @@ const ast::Type* resolve_struct_field(
     crash("Unknown field: " + field_name);
     return nullptr;
 }
+
 const ast::VarExpr* get_root_var(const ast::Expr* expr) {
-    if (!expr) return nullptr;
+    if (!expr) {
+        return nullptr;
+    }
 
     if (const auto* v = std::get_if<ast::VarExpr>(&expr->kind)) {
         return v;
@@ -147,18 +158,57 @@ const ast::VarExpr* get_root_var(const ast::Expr* expr) {
 
     return nullptr;
 }
+
 } // namespace
 
 void SemanticAnalyzer::analyze(const std::vector<ast::Stmt*>& stmts) {
-    for (const auto* stmt : stmts) {
-        if (stmt) analyze_stmt(stmt);
+    for (const auto& part : module_namespace) {
+        ctx.symbols.enter_namespace(part);
+    }
+
+    collect_declarations(stmts);
+
+    for (auto* stmt : stmts) {
+        analyze_stmt(stmt);
+    }
+
+    for (size_t i = 0; i < module_namespace.size(); ++i) {
+        ctx.symbols.exit_namespace();
+    }
+}
+
+void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts) {
+    for (auto* stmt : stmts) {
+        if (!stmt) {
+            continue;
+        }
+
+        std::visit(overloaded{
+            [&](const ast::FuncStmt& fn) {
+                if (!ctx.symbols.declare(fn)) {
+                    crash("Function redeclaration: " + fn.name);
+                }
+            },
+            [&](const ast::StructDecl& str) {
+                if (!ctx.symbols.declare(str)) {
+                    crash("Struct redeclaration: " + str.name);
+                }
+            },
+            [&](const ast::NamespaceStmt& ns) {
+                NamespaceGuard guard(ctx.symbols, ns.name);
+                if (ns.body) {
+                    collect_declarations(ns.body->stmts);
+                }
+            },
+            [&](const auto&) {}
+        }, stmt->kind);
     }
 }
 
 void SemanticAnalyzer::analyze_stmt(const ast::Stmt* stmt) {
     if (!stmt) return;
 
-    std::visit(overloaded {
+    std::visit(overloaded{
         [&](const ast::VarDecl& n) { analyze_var_decl(n); },
         [&](const ast::StructDecl& n) { analyze_struct_decl(n); },
         [&](const ast::NamespaceStmt& n) { analyze_namespace_stmt(n); },
@@ -167,7 +217,7 @@ void SemanticAnalyzer::analyze_stmt(const ast::Stmt* stmt) {
         [&](const ast::FuncStmt& n) { analyze_func(n); },
         [&](const ast::IfStmt& n) { analyze_if(n); },
         [&](const ast::WhileStmt& n) { analyze_while(n); },
-        [&](const ast::LoadStmt& n) {},
+        [&](const ast::LoadStmt&) {},
         [&](const auto&) {
             crash("Unsupported statement node in semantic analysis");
         }
@@ -203,19 +253,22 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
 }
 
 void SemanticAnalyzer::analyze_struct_decl(const ast::StructDecl& str) {
-    symb_t::StructSymbol sym;
+
+    std::unordered_set<std::string> seen;
 
     for (const auto& field : str.fields) {
-        for (const auto& name : sym.field_names) {
-            if (name == field.name) {
-                crash("Duplicate field: " + field.name);
-                return;
-            }
+        if (!seen.insert(field.name).second) {
+            crash("Duplicate field: " + field.name);
+            return;
         }
 
         if (!field.type) {
             crash("Field missing type: " + field.name);
             return;
+        }
+
+        for (const auto& attr : field.attributes) {
+            analyze_attribute(attr);
         }
 
         if (field.default_value) {
@@ -227,21 +280,6 @@ void SemanticAnalyzer::analyze_struct_decl(const ast::StructDecl& str) {
                 return;
             }
         }
-
-        for (const auto& attr : field.attributes) {
-            analyze_attribute(attr);
-        }
-
-        sym.field_names.push_back(field.name);
-        sym.field_types.push_back(field.type);
-    }
-
-    if (!ctx.symbols.declare_symbol(str.name, symb_t::Symbol{
-        str.name,
-        sym,
-        {}
-    })) {
-        crash("Struct already declared: " + str.name);
     }
 }
 
@@ -277,6 +315,27 @@ void SemanticAnalyzer::analyze_return(const ast::ReturnStmt& ret) {
 }
 
 void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
+    if (func.is_extern && func.body) {
+        crash("Extern function cannot have a body: " + func.name);
+        return;
+    }
+
+    if (!func.return_type) {
+        crash("Function missing return type: " + func.name);
+        return;
+    }
+
+    for (const auto& arg : func.args) {
+        if (!arg.type) {
+            crash("Function argument missing type: " + arg.name);
+            return;
+        }
+    }
+
+    if (!func.body) {
+        return;
+    }
+
     const ast::Type* prev_return_type = current_function_return_type;
     current_function_return_type = func.return_type;
 
@@ -284,13 +343,13 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
 
     for (const auto& arg : func.args) {
         if (!ctx.symbols.declare(arg)) {
-            crash("Argument already declared: " + arg.name);
+            crash("Duplicate function argument: " + arg.name);
+            current_function_return_type = prev_return_type;
+            return;
         }
     }
 
-    if (func.body) {
-        analyze_block(func.body);
-    }
+    analyze_block(func.body);
 
     current_function_return_type = prev_return_type;
 }
@@ -327,15 +386,31 @@ void SemanticAnalyzer::analyze_attribute(const ast::Attribute& attribute) {
 const ast::Type* SemanticAnalyzer::analyze_expr(const ast::Expr* expr) {
     if (!expr) return nullptr;
 
-    return std::visit(overloaded {
-        [&](const ast::IntExpr& n) -> const ast::Type* { return analyze_int(n); },
-        [&](const ast::StringExpr& n) -> const ast::Type* { return analyze_string(n); },
-        [&](const ast::VarExpr& n) -> const ast::Type* { return analyze_var(n); },
-        [&](const ast::AssignExpr& n) -> const ast::Type* { return analyze_assign(n); },
-        [&](const ast::BinaryExpr& n) -> const ast::Type* { return analyze_binary(n); },
-        [&](const ast::CallExpr& n) -> const ast::Type* { return analyze_call(n); },
-        [&](const ast::FieldExpr& n) -> const ast::Type* { return analyze_field(n); },
-        [&](const ast::NamespaceExpr& n) -> const ast::Type* { return analyze_namespace(n); },
+    return std::visit(overloaded{
+        [&](const ast::IntExpr&) -> const ast::Type* {
+            return ctx.types.get_int();
+        },
+        [&](const ast::StringExpr&) -> const ast::Type* {
+            return ctx.types.get_string();
+        },
+        [&](const ast::VarExpr& n) -> const ast::Type* {
+            return analyze_var(n);
+        },
+        [&](const ast::AssignExpr& n) -> const ast::Type* {
+            return analyze_assign(n);
+        },
+        [&](const ast::BinaryExpr& n) -> const ast::Type* {
+            return analyze_binary(n);
+        },
+        [&](const ast::CallExpr& n) -> const ast::Type* {
+            return analyze_call(n);
+        },
+        [&](const ast::FieldExpr& n) -> const ast::Type* {
+            return analyze_field(n);
+        },
+        [&](const ast::NamespaceExpr& n) -> const ast::Type* {
+            return analyze_namespace(n);
+        },
         [&](const auto&) -> const ast::Type* {
             crash("Unsupported expression node in semantic analysis");
             return nullptr;
@@ -452,8 +527,43 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b) {
     return l;
 }
 
-const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr&) {
-    return nullptr; // TODO: function symbols
+const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
+    if (!call.callee) {
+        crash("Call callee is missing");
+        return nullptr;
+    }
+
+    auto path = support::flatten_path(call.callee);
+
+    auto* sym = ctx.symbols.lookup_qualified(path);
+    if (!sym) {
+        crash("Undefined function: " + support::join_namespace(path));
+        return nullptr;
+    }
+
+    auto* fn = std::get_if<symb_t::FuncSymbol>(&sym->data);
+    if (!fn) {
+        crash("Callee is not a function: " + support::join_namespace(path));
+        return nullptr;
+    }
+
+    if (fn->arg_types.size() != call.args.size()) {
+        crash("Argument count mismatch in call: " + support::join_namespace(path));
+        return nullptr;
+    }
+
+    for (size_t i = 0; i < call.args.size(); ++i) {
+        const ast::Expr* arg = call.args[i];
+        const ast::Type* arg_type = arg ? analyze_expr(arg) : nullptr;
+        if (!arg_type) return nullptr;
+
+        if (!is_assignable(fn->arg_types[i], arg_type)) {
+            crash("Argument type mismatch in call: " + support::join_namespace(path));
+            return nullptr;
+        }
+    }
+
+    return fn->return_type;
 }
 
 const ast::Type* SemanticAnalyzer::analyze_block(const ast::Block* block) {
@@ -469,27 +579,28 @@ const ast::Type* SemanticAnalyzer::analyze_block(const ast::Block* block) {
 
     return ctx.types.get_void();
 }
-const ast::Type* SemanticAnalyzer::analyze_namespace(const ast::NamespaceExpr& n){
-    auto* sym = ctx.symbols.lookup(n.ns);
+
+const ast::Type* SemanticAnalyzer::analyze_namespace(const ast::NamespaceExpr& n) {
+    auto expr = ast::Expr{n};
+    auto path = support::flatten_path(&expr);
+    auto* sym = ctx.symbols.lookup_qualified(path);
 
     if (!sym) {
-        crash("Undefined namespace: " + n.ns);
-        return nullptr;
-    }
-    const auto* struct_sym = std::get_if<symb_t::StructSymbol>(&sym->data);
-
-    if (!struct_sym) {
-        crash(n.ns + " is not a namespace-like symbol");
+        crash("Undefined qualified symbol");
         return nullptr;
     }
 
-    for (size_t i = 0; i < struct_sym->field_names.size(); ++i) {
-        if (struct_sym->field_names[i] == n.name) {
-            return struct_sym->field_types[i];
-        }
+    if (auto* vt = std::get_if<symb_t::VarSymbol>(&sym->data)) {
+        return vt->type;
+    }
+    if (auto* ft = std::get_if<symb_t::FuncSymbol>(&sym->data)) {
+        return ft->return_type;
+    }
+    if (std::get_if<symb_t::StructSymbol>(&sym->data)) {
+        return nullptr;
     }
 
-    crash("Unknown symbol in namespace: " + n.ns + "::" + n.name);
+    crash("Qualified path is not a value");
     return nullptr;
 }
 
