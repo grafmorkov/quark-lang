@@ -25,7 +25,9 @@ func main() void {
 }
 ```
 ## Documentation
-The documentation of the syntax and std lib is in the Doc.md
+
+The documentation is in **Doc.md** file
+
 ---
 
 ## Architecture
@@ -60,7 +62,6 @@ Load modules -> AST -> semantic analysis -> IR -> fasm -> native binary
 
 * CMake 3.20+
 * Fasm compiler
-* Golink(if you build quark in windows)
 
 Clone the repository with submodules:
 
