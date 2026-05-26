@@ -31,6 +31,9 @@ bool types_equal(const ast::Type* a, const ast::Type* b) {
     if (a->kind == ast::TypeKind::Struct) {
         return a->struct_name == b->struct_name;
     }
+    if (a->kind == ast::TypeKind::Pointer){
+        return types_equal(a->pointed, b->pointed);
+    }
 
     return true;
 }
@@ -300,7 +303,7 @@ void SemanticAnalyzer::analyze_expr_stmt(const ast::ExprStmt& expr) {
 void SemanticAnalyzer::analyze_return(const ast::ReturnStmt& ret) {
     const ast::Type* value_type = ret.value
         ? analyze_expr(ret.value)
-        : ctx.types.get_void();
+        : ctx.types.get_builtin(TypeKind::Void);
 
     if (!current_function_return_type) {
         crash("Return outside function");
@@ -383,15 +386,18 @@ void SemanticAnalyzer::analyze_attribute(const ast::Attribute& attribute) {
     // TODO
 }
 
-const ast::Type* SemanticAnalyzer::analyze_expr(const ast::Expr* expr) {
+const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
     if (!expr) return nullptr;
 
-    return std::visit(overloaded{
+    const ast::Type* ty = std::visit(overloaded{
         [&](const ast::IntExpr&) -> const ast::Type* {
-            return ctx.types.get_int();
+            return ctx.types.get_builtin(TypeKind::I32);
+        },
+        [&](const ast::FloatExpr&) -> const ast::Type* {
+            return ctx.types.get_builtin(TypeKind::F64);
         },
         [&](const ast::StringExpr&) -> const ast::Type* {
-            return ctx.types.get_string();
+            return ctx.types.get_builtin(TypeKind::String);
         },
         [&](const ast::VarExpr& n) -> const ast::Type* {
             return analyze_var(n);
@@ -411,19 +417,27 @@ const ast::Type* SemanticAnalyzer::analyze_expr(const ast::Expr* expr) {
         [&](const ast::NamespaceExpr& n) -> const ast::Type* {
             return analyze_namespace(n);
         },
+        [&](const ast::CastExpr& n) -> const ast::Type*{
+            return analyze_cast(n);
+        },
         [&](const auto&) -> const ast::Type* {
             crash("Unsupported expression node in semantic analysis");
             return nullptr;
         }
     }, expr->kind);
+
+    if (ty) {
+        expr->resolved_type = ty;
+    }
+    return ty;
 }
 
 const ast::Type* SemanticAnalyzer::analyze_int(const ast::IntExpr&) {
-    return ctx.types.get_int();
+    return ctx.types.get_builtin(TypeKind::I32);
 }
 
 const ast::Type* SemanticAnalyzer::analyze_string(const ast::StringExpr&) {
-    return ctx.types.get_string();
+    return ctx.types.get_builtin(TypeKind::String);
 }
 
 const ast::Type* SemanticAnalyzer::analyze_var(const ast::VarExpr& var) {
@@ -553,7 +567,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
     }
 
     for (size_t i = 0; i < call.args.size(); ++i) {
-        const ast::Expr* arg = call.args[i];
+        ast::Expr* arg = call.args[i];
         const ast::Type* arg_type = arg ? analyze_expr(arg) : nullptr;
         if (!arg_type) return nullptr;
 
@@ -567,7 +581,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
 }
 
 const ast::Type* SemanticAnalyzer::analyze_block(const ast::Block* block) {
-    if (!block) return ctx.types.get_void();
+    if (!block) return ctx.types.get_builtin(TypeKind::Void);
 
     ScopeGuard scope(ctx.symbols);
 
@@ -577,7 +591,7 @@ const ast::Type* SemanticAnalyzer::analyze_block(const ast::Block* block) {
         }
     }
 
-    return ctx.types.get_void();
+    return ctx.types.get_builtin(TypeKind::Void);
 }
 
 const ast::Type* SemanticAnalyzer::analyze_namespace(const ast::NamespaceExpr& n) {
@@ -602,6 +616,68 @@ const ast::Type* SemanticAnalyzer::analyze_namespace(const ast::NamespaceExpr& n
 
     crash("Qualified path is not a value");
     return nullptr;
+}
+bool is_numeric(ast::TypeKind kind) {
+    switch (kind) {
+        case ast::TypeKind::I8: case ast::TypeKind::I16:
+        case ast::TypeKind::I32: case ast::TypeKind::I64:
+        case ast::TypeKind::U8: case ast::TypeKind::U16:
+        case ast::TypeKind::U32: case ast::TypeKind::U64:
+        case ast::TypeKind::F32: case ast::TypeKind::F64:
+            return true;
+        default:
+            return false;
+    }
+}
+
+int type_size(const ast::Type* t) {
+    if (!t) return 0;
+    switch (t->kind) {
+        case ast::TypeKind::Bool:
+        case ast::TypeKind::I8:
+        case ast::TypeKind::U8:   return 1;
+        case ast::TypeKind::I16:
+        case ast::TypeKind::U16:  return 2;
+        case ast::TypeKind::F32:
+        case ast::TypeKind::I32:
+        case ast::TypeKind::U32:  return 4;
+        case ast::TypeKind::F64:
+        case ast::TypeKind::I64:
+        case ast::TypeKind::U64:  return 8;
+        case ast::TypeKind::Pointer: return 8;
+        default: return 0;
+    }
+}
+
+const ast::Type* SemanticAnalyzer::analyze_cast(const ast::CastExpr& n){
+    const ast::Type* value_type = analyze_expr(n.value);
+    if(!value_type) return nullptr;
+
+    if(!n.target){
+        crash("Cast target type is missing");
+        return nullptr;
+    }
+    switch (n.kind) {
+        case ast::CastKind::ValueCast:
+            if (n.target->kind == TypeKind::String) {
+                if (!is_numeric(value_type->kind)) {
+                    crash("as: only numeric types can be converted to string");
+                    return nullptr;
+                }
+            } else if (!is_numeric(value_type->kind) || !is_numeric(n.target->kind)) {
+                crash("as: only numeric type conversions are allowed");
+                return nullptr;
+            }
+            break;
+        case ast::CastKind::Bitcast:
+            if (value_type->kind == TypeKind::Pointer || n.target->kind == TypeKind::Pointer) {
+            } else if (type_size(value_type) != type_size(n.target)) {
+                crash("as!: types must have the same size");
+                return nullptr;
+            }
+            break;
+    }
+    return n.target;
 }
 
 } // namespace quark::sm

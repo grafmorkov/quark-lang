@@ -137,9 +137,22 @@ namespace quark::lx {
         while (std::isdigit((unsigned char)peek())) {
             advance();
         }
-       if (peek() == '.' && pos + 1 < buffer.size() &&
-    std::isdigit((unsigned char)buffer[pos + 1])){
+
+        if (peek() == '.' && pos + 1 < buffer.size() &&
+            std::isdigit((unsigned char)buffer[pos + 1])) {
             advance();
+
+            while (std::isdigit((unsigned char)peek())) {
+                advance();
+            }
+        }
+
+        if (peek() == 'e' || peek() == 'E') {
+            advance();
+
+            if (peek() == '+' || peek() == '-') {
+                advance();
+            }
 
             while (std::isdigit((unsigned char)peek())) {
                 advance();
@@ -163,15 +176,27 @@ namespace quark::lx {
             case str_hash("func"): return make_token(TOKEN_FUNC);
             case str_hash("var"): return make_token(TOKEN_VAR);
 
-            case str_hash("int"): return make_token(TOKEN_INT);
-            case str_hash("str"): return make_token(TOKEN_STR_TYPE);
-            case str_hash("float"): return make_token(TOKEN_FLOAT);
-            case str_hash("void"): return make_token(TOKEN_VOID);
             case str_hash("mut"): return make_token(TOKEN_MUT);
             case str_hash("struct"): return make_token(TOKEN_STRUCT);
             case str_hash("namespace"): return make_token(TOKEN_NAMESPACE);
             case str_hash("load"): return make_token(TOKEN_LOAD);
             case str_hash("extern"): return make_token(TOKEN_EXTERN);
+
+            // Types
+            case str_hash("void"): return make_token(TOKEN_VOID);
+            case str_hash("bool"): return make_token(TOKEN_BOOL);
+            case str_hash("i8"):   return make_token(TOKEN_I8);
+            case str_hash("i16"):  return make_token(TOKEN_I16);
+            case str_hash("i32"):  return make_token(TOKEN_I32);
+            case str_hash("i64"):  return make_token(TOKEN_I64);
+            case str_hash("u8"):   return make_token(TOKEN_U8);
+            case str_hash("u16"):  return make_token(TOKEN_U16);
+            case str_hash("u32"):  return make_token(TOKEN_U32);
+            case str_hash("u64"):  return make_token(TOKEN_U64);
+            case str_hash("f32"):  return make_token(TOKEN_F32);
+            case str_hash("f64"):  return make_token(TOKEN_F64);
+            case str_hash("str"):  return make_token(TOKEN_STR_TYPE);
+            case str_hash("as"): return make_token(TOKEN_AS);
         }
         return make_token(TOKEN_IDENT);
     }

@@ -1,6 +1,6 @@
 ; common/string.asm
 
-section '.text' executable readable
+section '.text' code readable executable
 
 ; size_t qk_strlen_impl(const char* s)
 ; in:

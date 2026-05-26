@@ -261,6 +261,18 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
         type_scopes.back()[arg.name] = arg.type;
     }
 
+    if (func.is_extern) {
+        current_func = saved_func;
+        next_reg = saved_next_reg;
+        next_label = saved_next_label;
+        next_local = saved_next_local;
+        current_terminated = saved_terminated;
+        namespace_stack = std::move(saved_namespace);
+        local_scopes = std::move(saved_locals);
+        type_scopes = std::move(saved_types);
+        return;
+    }
+
     if (func.body) {
         gen_block(*func.body);
     }
@@ -501,6 +513,12 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             return dst;
         },
 
+        [&](const ast::FloatExpr& node) -> uint32_t {
+            const uint32_t dst = new_reg();
+            emit(IRLoadFloatConst{ dst, node.value });
+            return dst;
+        },
+
         [&](const ast::StringExpr& node) -> uint32_t {
             const Reg dst = new_reg();
 
@@ -544,11 +562,17 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             const uint32_t rhs = gen_expr(*node.rhs);
             const uint32_t dst = new_reg();
 
+            ast::TypeKind tk = ast::TypeKind::I32;
+            if (node.lhs && node.lhs->resolved_type) {
+                tk = node.lhs->resolved_type->kind;
+            }
+
             emit(IRBinary{
                 map_op(node.op),
                 dst,
                 lhs,
-                rhs
+                rhs,
+                tk
             });
 
             return dst;
@@ -685,6 +709,25 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
         [&](const ast::NamespaceExpr&) -> uint32_t {
             crash("Namespace expressions are not supported in IR generation yet");
+        },
+
+        [&](const ast::CastExpr& node) -> uint32_t {
+            const uint32_t src = gen_expr(*node.value);
+            const uint32_t dst = new_reg();
+
+            ast::TypeKind src_kind = ast::TypeKind::Void;
+            if (node.value->resolved_type) {
+                src_kind = node.value->resolved_type->kind;
+            }
+
+            emit(IRCast{
+                dst,
+                src,
+                src_kind,
+                node.target->kind,
+                node.kind
+            });
+            return dst;
         }
     }, expr.kind);
 }

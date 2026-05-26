@@ -21,7 +21,7 @@ class SemanticAnalyzer {
         std::vector<std::string> module_namespace;
 
         void analyze_stmt(const ast::Stmt* stmt);
-        const ast::Type* analyze_expr(const ast::Expr* expr);
+        const ast::Type* analyze_expr(ast::Expr* expr);
         const ast::Type* analyze_block(const ast::Block* block);
         const ast::Type* resolve_lvalue(const ast::Expr* expr);
         void collect_declarations(const std::vector<ast::Stmt*>& stmts);
@@ -44,6 +44,7 @@ class SemanticAnalyzer {
         const ast::Type* analyze_call(const ast::CallExpr&);
         const ast::Type* analyze_field(const ast::FieldExpr&);
         const ast::Type* analyze_namespace(const ast::NamespaceExpr&);
+        const ast::Type* analyze_cast(const ast::CastExpr&);
     };
 
 } // namespace quark::sm

@@ -5,6 +5,8 @@
 #include <variant>
 #include <string>
 
+#include "quark/frontend/ast.h"
+
 namespace quark::codegen {
 
 using Reg = uint32_t;
@@ -20,6 +22,10 @@ enum class IRBinaryOp {
 struct IRLoadConst {
     Reg dst;
     int64_t value;
+};
+struct IRLoadFloatConst {
+    Reg dst;
+    double value;
 };
 struct IRLoadString {
     Reg dst;
@@ -41,12 +47,20 @@ struct IRBinary {
     Reg dst;
     Reg lhs;
     Reg rhs;
+    ast::TypeKind type_kind = ast::TypeKind::I32;
 };
 
 struct IRCall {
     Reg dst;
     uint32_t func_id;
     std::vector<Reg> args;
+};
+struct IRCast {
+    Reg dst;
+    Reg src;
+    ast::TypeKind src_kind;
+    ast::TypeKind target_kind;
+    ast::CastKind kind;
 };
 
 struct IRReturn {
@@ -85,6 +99,7 @@ struct IRString {
 
 using IRInst = std::variant<
     IRLoadConst,
+    IRLoadFloatConst,
     IRLoadLocal,
     IRStoreLocal,
     IRBinary,
@@ -95,6 +110,7 @@ using IRInst = std::variant<
     IRLabel,
     IRGetField,
     IRSetField,
+    IRCast,
     IRLoadString
 >;
 

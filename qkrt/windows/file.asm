@@ -1,50 +1,46 @@
 ; windows/file.asm
 ; Windows x64, FASM
-; Quark Runtime File API - matches Linux ABI
+; Quark Runtime File API
+; Types: str → const char*, i32 → 4-byte, i64 → 8-byte
 
 section '.data' data readable writeable
-    ; Temporary for seek
     temp_offset dq 0
 
 section '.text' code readable executable
 
 ; ================================================================
-; isize qk_open(const char* path, int flags, int mode, qk_handle* out_handle)
-; rcx = path, rdx = flags, r8 = mode, r9 = out_handle
+; i64 qk_open(str path, i32 flags, i32 mode)
+; rcx = path, rdx = flags, r8 = mode
+; Returns handle in RAX (positive), or -GetLastError() (negative)
 ; ================================================================
 qk_open:
     sub rsp, 56
-
-    mov r10, r9                        ; save out_handle
-
-    mov r9, 0                          ; hTemplateFile = NULL
-    mov [rsp + 32], r8                 ; dwCreationDisposition = mode (упрощённо)
-    mov dword [rsp + 40], 0            ; dwFlagsAndAttributes
-
-    mov r8, rdx                        ; dwDesiredAccess = flags
-    mov rdx, rcx                       ; lpFileName
-
+    ; CreateFileA(lpFileName, dwDesiredAccess, dwShareMode,
+    ;             lpSecurityAttributes, dwCreationDisposition,
+    ;             dwFlagsAndAttributes, hTemplateFile)
+    ; rcx = path (lpFileName)      — already correct
+    ; rdx = flags (dwDesiredAccess) — already correct
+    mov [rsp + 32], r8       ; dwCreationDisposition = mode
+    mov dword [rsp + 40], 0  ; dwFlagsAndAttributes = 0
+    mov dword [rsp + 48], 0  ; hTemplateFile = NULL
+    xor r9d, r9d             ; lpSecurityAttributes = NULL
+    xor r8d, r8d             ; dwShareMode = 0 (no sharing)
     call [CreateFileA]
 
-    cmp rax, -1                        ; INVALID_HANDLE_VALUE
+    cmp rax, -1              ; INVALID_HANDLE_VALUE
     je .fail
-
-    mov [r10], rax
-    xor eax, eax
-    jmp .exit
-
+    add rsp, 56
+    ret
 .fail:
     call [GetLastError]
     neg eax
     cdqe
-
-.exit:
     add rsp, 56
     ret
 
 
 ; ================================================================
-; isize qk_close(qk_handle h)
+; i64 qk_close(i64 h)
 ; rcx = handle
 ; ================================================================
 qk_close:
@@ -64,7 +60,7 @@ qk_close:
 
 
 ; ================================================================
-; isize qk_seek(qk_handle h, i64 offset, int whence)
+; i64 qk_seek(i64 h, i64 offset, i32 whence)
 ; rcx = h, rdx = offset, r8 = whence
 ; ================================================================
 qk_seek:
@@ -95,7 +91,7 @@ qk_seek:
 
 
 ; ================================================================
-; isize qk_flush(qk_handle h)
+; i64 qk_flush(i64 h)
 ; rcx = handle
 ; ================================================================
 qk_flush:
@@ -115,7 +111,7 @@ qk_flush:
 
 
 ; ================================================================
-; ssize_t qk_write_fd(qk_handle h, const void* buf, size_t len)
+; i64 qk_write_fd(i64 h, str buf, i64 len)
 ; rcx = h, rdx = buf, r8 = len
 ; ================================================================
 qk_write_fd:
@@ -140,7 +136,7 @@ qk_write_fd:
 
 
 ; ================================================================
-; ssize_t qk_read_fd(qk_handle h, void* buf, size_t len)
+; i64 qk_read_fd(i64 h, *void buf, i64 len)
 ; rcx = h, rdx = buf, r8 = len
 ; ================================================================
 qk_read_fd:

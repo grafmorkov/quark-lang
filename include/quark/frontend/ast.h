@@ -19,21 +19,44 @@ namespace quark::ast {
     // Types
 
     enum class TypeKind {
-        Int,
-        String,
         Void,
-        Struct
+        Bool,
+
+        I8,
+        I16,
+        I32,
+        I64,
+
+        U8,
+        U16,
+        U32,
+        U64,
+
+        F32,
+        F64,
+
+        String,
+
+        Struct,
+        Pointer,
+
+        Count
     };
 
     struct Type {
         TypeKind kind;
-        std::string struct_name;
+        std::string struct_name; // struct only
+        const Type* pointed; // ptr only
     };
 
     // Expressions
 
     struct IntExpr {
         int value;
+    };
+
+    struct FloatExpr {
+        double value;
     };
 
     struct StringExpr {
@@ -82,21 +105,33 @@ namespace quark::ast {
         Expr* left;
         Expr* right;
     };
+    enum class CastKind {
+        ValueCast,   // as
+        Bitcast      // as!
+    };
+    struct CastExpr {
+        Expr* value;
+        const Type* target;
+        CastKind kind;
+    };
 
     using ExprKind = std::variant<
         IntExpr,
+        FloatExpr,
         StringExpr,
         VarExpr,
         BinaryExpr,
         AssignExpr,
         CallExpr,
         FieldExpr,
-        NamespaceExpr
+        NamespaceExpr,
+        CastExpr
     >;
 
     struct Expr {
         ExprKind kind;
         SourceLocation loc;
+        const Type* resolved_type = nullptr;
     };
 
     // Statements

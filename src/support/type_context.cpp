@@ -1,10 +1,28 @@
 #include "quark/support/type_context.h"
 
 namespace quark::types {
+    TypeContext::TypeContext() {
+        builtin_types[(size_t)TypeKind::Void].kind = TypeKind::Void;
+        builtin_types[(size_t)TypeKind::Bool].kind = TypeKind::Bool;
 
-    const Type* TypeContext::get_int() const    { return &int_type; }
-    const Type* TypeContext::get_string() const { return &string_type; }
-    const Type* TypeContext::get_void() const   { return &void_type; }
+        builtin_types[(size_t)TypeKind::I8].kind  = TypeKind::I8;
+        builtin_types[(size_t)TypeKind::I16].kind = TypeKind::I16;
+        builtin_types[(size_t)TypeKind::I32].kind = TypeKind::I32;
+        builtin_types[(size_t)TypeKind::I64].kind = TypeKind::I64;
+
+        builtin_types[(size_t)TypeKind::U8].kind  = TypeKind::U8;
+        builtin_types[(size_t)TypeKind::U16].kind = TypeKind::U16;
+        builtin_types[(size_t)TypeKind::U32].kind = TypeKind::U32;
+        builtin_types[(size_t)TypeKind::U64].kind = TypeKind::U64;
+
+        builtin_types[(size_t)TypeKind::F32].kind = TypeKind::F32;
+        builtin_types[(size_t)TypeKind::F64].kind = TypeKind::F64;
+
+        builtin_types[(size_t)TypeKind::String].kind = TypeKind::String;
+    }
+    const Type* TypeContext::get_builtin(TypeKind kind) {
+        return &builtin_types[(int)kind];
+    }
 
     const Type* TypeContext::get_struct(const std::string& name) {
         auto it = struct_types.find(name);
@@ -53,6 +71,18 @@ namespace quark::types {
                 return type;
         }
         return nullptr;
+    }
+    const Type* TypeContext::get_pointer(const Type* base) {
+        auto it = pointer_cache.find(base);
+        if (it != pointer_cache.end())
+            return &it->second;
+
+        Type t;
+        t.kind = TypeKind::Pointer;
+        t.pointed = base;
+
+        auto [iter, _] = pointer_cache.emplace(base, std::move(t));
+        return &iter->second;
     }
 
 }

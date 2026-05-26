@@ -413,7 +413,14 @@ ast::Expr* Parser::parse_expr(int min_prec) {
 
 ast::Expr* Parser::parse_prefix() {
     if (match(TOKEN_NUMBER)) {
-        return make_expr(ctx, ast::IntExpr{ (int)previous.number }, previous.loc);
+        std::string_view text = previous.text;
+        bool is_float = text.find('.') != std::string_view::npos ||
+                        text.find('e') != std::string_view::npos ||
+                        text.find('E') != std::string_view::npos;
+        if (is_float) {
+            return make_expr(ctx, ast::FloatExpr{ previous.number }, previous.loc);
+        }
+        return make_expr(ctx, ast::IntExpr{ static_cast<int>(previous.number) }, previous.loc);
     }
 
     if (match(TOKEN_STRING)) {
@@ -490,6 +497,23 @@ ast::Expr* Parser::parse_postfix(ast::Expr* left) {
 
             continue;
         }
+        if (match(TOKEN_AS)) {
+            ast::CastKind kind = ast::CastKind::ValueCast;
+
+            if (match(TOKEN_NOT)) { // !
+                kind = ast::CastKind::Bitcast;
+            }
+
+            const ast::Type* target = parse_type();
+
+            if (!target) {
+                error(current.loc, "Expected type after cast");
+                return left;
+            }
+
+            left = make_cast(left, target, kind);
+            continue;
+        }
 
         break;
     }
@@ -505,27 +529,51 @@ ast::Expr* Parser::make_binary(ast::Expr* left, ast::Expr* right, TokenType op) 
         get_op_from_token(op)
     }, loc);
 }
+ast::Expr* Parser::make_cast(ast::Expr* value, const ast::Type* target, ast::CastKind kind) {
+    SourceLocation loc = value ? value->loc : SourceLocation{};
+
+    return make_expr(ctx,
+        ast::CastExpr{
+            value,
+            target,
+            kind
+        },
+        loc
+    );
+}
 
 const ast::Type* Parser::parse_type(bool allow_implicit_void) {
-    
-    if (match(TOKEN_VOID)) {
-        return ctx.types.get_void();
+
+    if (match(TOKEN_STAR)) {
+        const ast::Type* base = parse_type();
+        if (!base) return nullptr;
+        return ctx.types.get_pointer(base);
     }
 
-    if (match(TOKEN_INT)) {
-        return ctx.types.get_int();
-    }
+    if (match(TOKEN_VOID))    return ctx.types.get_builtin(TypeKind::Void);
+    if (match(TOKEN_BOOL))    return ctx.types.get_builtin(TypeKind::Bool);
 
-    if (match(TOKEN_STR_TYPE)) {
-        return ctx.types.get_string();
-    }
+    if (match(TOKEN_I8))      return ctx.types.get_builtin(TypeKind::I8);
+    if (match(TOKEN_I16))     return ctx.types.get_builtin(TypeKind::I16);
+    if (match(TOKEN_I32))     return ctx.types.get_builtin(TypeKind::I32);
+    if (match(TOKEN_I64))     return ctx.types.get_builtin(TypeKind::I64);
+
+    if (match(TOKEN_U8))      return ctx.types.get_builtin(TypeKind::U8);
+    if (match(TOKEN_U16))     return ctx.types.get_builtin(TypeKind::U16);
+    if (match(TOKEN_U32))     return ctx.types.get_builtin(TypeKind::U32);
+    if (match(TOKEN_U64))     return ctx.types.get_builtin(TypeKind::U64);
+
+    if (match(TOKEN_F32))     return ctx.types.get_builtin(TypeKind::F32);
+    if (match(TOKEN_F64))     return ctx.types.get_builtin(TypeKind::F64);
+
+    if (match(TOKEN_STR_TYPE)) return ctx.types.get_builtin(TypeKind::String);
 
     if (match(TOKEN_IDENT)) {
         return ctx.types.get_struct(std::string(previous.text));
     }
 
     if (allow_implicit_void) {
-        return ctx.types.get_void();
+        return ctx.types.get_builtin(TypeKind::Void);
     }
 
     error(current.loc, "Expected type");

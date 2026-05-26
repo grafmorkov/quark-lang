@@ -1,6 +1,14 @@
+#include <cstring>
+
 #include "quark/backend/fasmcodegen.h"
 namespace quark::codegen{
 namespace {
+
+    int64_t double_bits(double d) {
+        int64_t bits = 0;
+        std::memcpy(&bits, &d, sizeof(bits));
+        return bits;
+    }
 
     template<class... Ts>
     struct overloaded : Ts... {
@@ -62,6 +70,58 @@ namespace {
         out += "0";
         return out;
     }
+    int cast_type_size(ast::TypeKind kind) {
+        switch (kind) {
+            case ast::TypeKind::Bool:
+            case ast::TypeKind::I8:
+            case ast::TypeKind::U8:   return 1;
+            case ast::TypeKind::I16:
+            case ast::TypeKind::U16:  return 2;
+            case ast::TypeKind::F32:
+            case ast::TypeKind::I32:
+            case ast::TypeKind::U32:  return 4;
+            case ast::TypeKind::F64:
+            case ast::TypeKind::I64:
+            case ast::TypeKind::U64:
+            case ast::TypeKind::Pointer: return 8;
+            default: return 0;
+        }
+    }
+
+    bool is_signed_int(ast::TypeKind kind) {
+        switch (kind) {
+            case ast::TypeKind::I8: case ast::TypeKind::I16:
+            case ast::TypeKind::I32: case ast::TypeKind::I64:
+                return true;
+            default: return false;
+        }
+    }
+
+    bool is_integer(ast::TypeKind kind) {
+        switch (kind) {
+            case ast::TypeKind::I8: case ast::TypeKind::I16:
+            case ast::TypeKind::I32: case ast::TypeKind::I64:
+            case ast::TypeKind::U8: case ast::TypeKind::U16:
+            case ast::TypeKind::U32: case ast::TypeKind::U64:
+                return true;
+            default: return false;
+        }
+    }
+
+    bool is_float(ast::TypeKind kind) {
+        return kind == ast::TypeKind::F32 || kind == ast::TypeKind::F64;
+    }
+
+    std::string mem_size(int bytes) {
+        switch (bytes) {
+            case 1: return "byte";
+            case 2: return "word";
+            case 4: return "dword";
+            case 8: return "qword";
+            default: return "qword";
+        }
+    }
+
 } // namespace
 
 // FasmCodeGenerator
@@ -89,6 +149,51 @@ namespace {
             emit_line("    mov qword " + temp_slot(r, fn) + ", rax");
     }
     void FasmCodeGenerator::emit_binop(const IRBinary& x, const IRFunction& fn) {
+        if (is_float(x.type_kind)) {
+            const std::string sz = (x.type_kind == ast::TypeKind::F64) ? "sd" : "ss";
+            const std::string ms = (x.type_kind == ast::TypeKind::F64) ? "qword" : "dword";
+
+            emit_line("    mov" + sz + " xmm0, " + ms + " " + temp_slot(x.lhs, fn));
+            emit_line("    mov" + sz + " xmm1, " + ms + " " + temp_slot(x.rhs, fn));
+
+            switch (x.op) {
+                case IRBinaryOp::Add:
+                    emit_line("    add" + sz + " xmm0, xmm1");
+                    emit_line("    mov" + sz + " " + ms + " " + temp_slot(x.dst, fn) + ", xmm0");
+                    return;
+                case IRBinaryOp::Sub:
+                    emit_line("    sub" + sz + " xmm0, xmm1");
+                    emit_line("    mov" + sz + " " + ms + " " + temp_slot(x.dst, fn) + ", xmm0");
+                    return;
+                case IRBinaryOp::Mul:
+                    emit_line("    mul" + sz + " xmm0, xmm1");
+                    emit_line("    mov" + sz + " " + ms + " " + temp_slot(x.dst, fn) + ", xmm0");
+                    return;
+                case IRBinaryOp::Div:
+                    emit_line("    div" + sz + " xmm0, xmm1");
+                    emit_line("    mov" + sz + " " + ms + " " + temp_slot(x.dst, fn) + ", xmm0");
+                    return;
+                case IRBinaryOp::Eq:
+                case IRBinaryOp::NotEq:
+                case IRBinaryOp::Lt:
+                case IRBinaryOp::Lte:
+                case IRBinaryOp::Gt:
+                case IRBinaryOp::Gte:
+                    emit_line("    comi" + sz + " xmm0, xmm1");
+                    switch (x.op) {
+                        case IRBinaryOp::Eq:    emit_line("    sete al"); break;
+                        case IRBinaryOp::NotEq: emit_line("    setne al"); break;
+                        case IRBinaryOp::Lt:    emit_line("    setb al"); break;
+                        case IRBinaryOp::Lte:   emit_line("    setbe al"); break;
+                        case IRBinaryOp::Gt:    emit_line("    seta al"); break;
+                        case IRBinaryOp::Gte:   emit_line("    setae al"); break;
+                    }
+                    emit_line("    movzx rax, al");
+                    emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
+                    return;
+            }
+        }
+
         emit_load(x.lhs, fn);
         emit_load(x.rhs, fn);
 
@@ -189,6 +294,11 @@ namespace {
                 emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
             },
 
+            [&](const IRLoadFloatConst& x) {
+                emit_line("    mov rax, " + std::to_string(double_bits(x.value)));
+                emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
+            },
+
             [&](const IRLoadLocal& x) {
                 emit_line("    mov rax, qword " + local_slot(x.local));
                 emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
@@ -248,6 +358,119 @@ namespace {
                 emit_line("    lea rax, [" + string_label(lit.id) + "]");
                 emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
             },
+
+            [&](const IRCast& x) {
+                const std::string src = temp_slot(x.src, fn);
+                const std::string dst = temp_slot(x.dst, fn);
+
+                if (x.kind == ast::CastKind::Bitcast) {
+                    emit_line("    mov rax, qword " + src);
+                    emit_line("    mov qword " + dst + ", rax");
+                    return;
+                }
+
+                const int src_sz = cast_type_size(x.src_kind);
+                const int dst_sz = cast_type_size(x.target_kind);
+                const bool src_int = is_integer(x.src_kind);
+                const bool dst_int = is_integer(x.target_kind);
+                const bool src_flt = is_float(x.src_kind);
+                const bool dst_flt = is_float(x.target_kind);
+
+                if (x.target_kind == ast::TypeKind::String) {
+                    if (is_integer(x.src_kind)) {
+                        emit_line("    mov rax, qword " + src);
+                        if (is_signed_int(x.src_kind)) {
+                            emit_line("    call qk_format_i64");
+                        } else {
+                            emit_line("    call qk_format_u64");
+                        }
+                    } else if (x.src_kind == ast::TypeKind::F32) {
+                        emit_line("    movss xmm0, dword " + src);
+                        emit_line("    cvtss2sd xmm0, xmm0");
+                        emit_line("    call qk_format_f64");
+                    } else {
+                        emit_line("    movsd xmm0, qword " + src);
+                        emit_line("    call qk_format_f64");
+                    }
+                    emit_line("    mov qword " + dst + ", rax");
+                    return;
+                }
+
+                if (src_int && dst_int) {
+                    if (src_sz == dst_sz) {
+                        emit_line("    mov rax, qword " + src);
+                    } else if (src_sz < dst_sz) {
+                        if (is_signed_int(x.src_kind)) {
+                            if (src_sz == 4) {
+                                emit_line("    movsxd rax, dword " + src);
+                            } else {
+                                emit_line("    movsx rax, " + mem_size(src_sz) + " " + src);
+                            }
+                        } else {
+                            if (src_sz == 4) {
+                                emit_line("    mov eax, dword " + src);
+                            } else {
+                                emit_line("    movzx rax, " + mem_size(src_sz) + " " + src);
+                            }
+                        }
+                    } else {
+                        if (is_signed_int(x.target_kind)) {
+                            if (dst_sz == 4) {
+                                emit_line("    movsxd rax, dword " + src);
+                            } else {
+                                emit_line("    movsx rax, " + mem_size(dst_sz) + " " + src);
+                            }
+                        } else {
+                            if (dst_sz == 4) {
+                                emit_line("    mov eax, dword " + src);
+                            } else {
+                                emit_line("    movzx rax, " + mem_size(dst_sz) + " " + src);
+                            }
+                        }
+                    }
+                    emit_line("    mov qword " + dst + ", rax");
+
+                } else if (src_int && dst_flt) {
+                    if (dst_sz == 4) {
+                        if (src_sz == 4) {
+                            emit_line("    cvtsi2ss xmm0, dword " + src);
+                        } else {
+                            emit_line("    cvtsi2ss xmm0, qword " + src);
+                        }
+                        emit_line("    movss dword " + dst + ", xmm0");
+                    } else {
+                        if (src_sz == 4) {
+                            emit_line("    cvtsi2sd xmm0, dword " + src);
+                        } else {
+                            emit_line("    cvtsi2sd xmm0, qword " + src);
+                        }
+                        emit_line("    movsd qword " + dst + ", xmm0");
+                    }
+
+                } else if (src_flt && dst_int) {
+                    if (src_sz == 4) {
+                        emit_line("    cvtss2si rax, dword " + src);
+                    } else {
+                        emit_line("    cvtsd2si rax, qword " + src);
+                    }
+                    emit_line("    mov qword " + dst + ", rax");
+
+                } else if (src_flt && dst_flt) {
+                    if (src_sz == 4 && dst_sz == 8) {
+                        emit_line("    cvtss2sd xmm0, dword " + src);
+                        emit_line("    movsd qword " + dst + ", xmm0");
+                    } else if (src_sz == 8 && dst_sz == 4) {
+                        emit_line("    cvtsd2ss xmm0, qword " + src);
+                        emit_line("    movss dword " + dst + ", xmm0");
+                    } else {
+                        emit_line("    mov rax, qword " + src);
+                        emit_line("    mov qword " + dst + ", rax");
+                    }
+
+                } else {
+                    crash("Unsupported ValueCast in codegen");
+                }
+            },
         }, inst);
     }
     std::string FasmCodeGenerator::generate(const IRProgram& program) {
@@ -259,6 +482,7 @@ namespace {
         emit_line("entry start");
         emit_line();
         emit_line("include 'qkrt\\common\\string.asm'");
+        emit_line("include 'qkrt\\common\\format.asm'");
         emit_line("include 'qkrt\\windows\\file.asm'");
         emit_line("include 'qkrt\\windows\\io.asm'");
         emit_line();
@@ -385,9 +609,13 @@ namespace {
         emit_line("    syscall");
 #endif
 #ifdef _WIN32
-        emit_line("section '.data' data readable writeable");
+        if (!program.strings.empty()) {
+            emit_line("section '.data' data readable writeable");
+        }
 #else
-        emit_line("segment readable writeable");
+        if (!program.strings.empty()) {
+            emit_line("segment readable writeable");
+        }
 #endif
 
         for (const auto& s : program.strings) {

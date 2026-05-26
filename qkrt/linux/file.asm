@@ -24,35 +24,20 @@ AT_FDCWD    equ -100
 section '.text' executable readable
 
 ; ================================================================
-; qk_open(const char* path, int flags, int mode, qk_handle* out_handle)
-; rdi = path, rsi = flags, rdx = mode, rcx = out_handle
-; Returns: 0 on success, negative errno on error
+; i64 qk_open(const char* path, int flags, int mode)
+; rdi = path, rsi = flags, rdx = mode
+; Returns: fd (positive) on success, negative errno on error
 ; ================================================================
 qk_open:
-    mov r8, rcx                    ; save out_handle pointer
-    mov r9, rdx                    ; save mode
-    mov r10, rdx                   ; 4th arg for syscall = mode
-
+    mov r10, rdx             ; r10 = mode (4th syscall arg)
+    mov rdx, rsi             ; rdx = flags
+    mov rsi, rdi             ; rsi = path
     mov eax, SYS_OPENAT
     mov edi, AT_FDCWD
-    mov rsi, rdi                   ; path
-    mov rdx, r9                    ; wait, better shuffle:
-
-    ; Correct safe shuffle:
-    mov r10, r9                    ; r10 = mode
-    mov rdx, rsi                   ; rdx = flags
-    mov rsi, rdi                   ; rsi = path
-    mov edi, AT_FDCWD
-
     syscall
-
     test rax, rax
     js .error
-
-    mov [r8], rax                  ; *out_handle = fd
-    xor eax, eax                   ; success
     ret
-
 .error:
     neg rax
     ret
@@ -126,3 +111,24 @@ qk_read_fd:
     neg rax
 .ok:
     ret
+
+; ABI aliases: std::io::* -> runtime functions
+public qk_std__io__open
+public qk_std__io__close
+public qk_std__io__seek
+public qk_std__io__flush
+public qk_std__io__write
+public qk_std__io__read_fd
+
+qk_std__io__open:
+    jmp qk_open
+qk_std__io__close:
+    jmp qk_close
+qk_std__io__seek:
+    jmp qk_seek
+qk_std__io__flush:
+    jmp qk_flush
+qk_std__io__write:
+    jmp qk_write_fd
+qk_std__io__read_fd:
+    jmp qk_read_fd

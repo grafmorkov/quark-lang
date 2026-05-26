@@ -24,7 +24,8 @@ func main() void {
     std::io::print(result); // it's not working yet
 }
 ```
-
+## Documentation
+The documentation of the syntax and std lib is in the Doc.md
 ---
 
 ## Architecture

@@ -1,6 +1,7 @@
 ; windows/io.asm
 ; Windows x64, FASM
 ; Quark Runtime IO layer (WinAPI-based)
+; Types: str → const char*, i8 → 1-byte, i32 → 4-byte, i64 → 8-byte
 
 QK_STD_INPUT_HANDLE  equ -10
 QK_STD_OUTPUT_HANDLE equ -11
@@ -34,7 +35,7 @@ qk_io_init:
     ret
 
 
-; ssize_t qk_print(const void* buf, size_t len)
+; i64 qk_print(str buf, i64 len)
 ; Writes to stdout
 ; rcx = buf, rdx = len
 qk_print:
@@ -44,7 +45,7 @@ qk_print:
     jmp qk_write_fd
 
 
-; ssize_t qk_read(void* buf, size_t len)
+; i64 qk_read(*void buf, i64 len)
 ; Reads from stdin
 ; rcx = buf, rdx = len
 qk_read:
@@ -54,7 +55,7 @@ qk_read:
     jmp qk_read_fd
 
 
-; ssize_t qk_eprint(const void* buf, size_t len)
+; i64 qk_eprint(str buf, i64 len)
 ; Writes to stderr
 ; rcx = buf, rdx = len
 qk_eprint:
@@ -64,7 +65,26 @@ qk_eprint:
     jmp qk_write_fd
 
 
-; ssize_t qk_putc(char c)
+; i64 qk_getc()
+; Reads one byte from stdin
+; Returns: byte value (0-255), or -1 on error/EOF
+qk_getc:
+    sub rsp, 56
+    lea rcx, [rsp + 32]    ; buffer on stack (1 byte)
+    mov edx, 1             ; read 1 byte
+    call qk_read
+    test rax, rax
+    jle .error
+    movzx eax, byte [rsp + 32]
+    add rsp, 56
+    ret
+.error:
+    or rax, -1
+    add rsp, 56
+    ret
+
+
+; i64 qk_putc(i8 c)
 ; Writes single byte to stdout
 ; cl = byte to write
 qk_putc:
@@ -79,7 +99,7 @@ qk_putc:
     ret
 
 
-; ssize_t qk_eputc(char c)
+; i64 qk_eputc(i8 c)
 ; Writes single byte to stderr
 ; cl = byte to write
 qk_eputc:
@@ -94,7 +114,7 @@ qk_eputc:
     ret
 
 
-; void qk_exit(int code)
+; void qk_exit(i32 code)
 ; Terminates the process
 ; ecx = exit code
 qk_exit:
@@ -104,7 +124,7 @@ qk_exit:
     ret
 
 
-; size_t qk_strlen(const char* s)
+; i64 qk_strlen(str s)
 ; rcx = pointer to null-terminated string
 ; Returns: string length (excluding null terminator)
 qk_strlen:
@@ -112,7 +132,7 @@ qk_strlen:
     jmp qk_strlen_impl
 
 
-; ssize_t qk_printz(const char* s)
+; i64 qk_printz(str s)
 ; Writes null-terminated string to stdout
 ; rcx = pointer to string
 qk_printz:
@@ -125,7 +145,7 @@ qk_printz:
     ret
 
 
-; ssize_t qk_eprintz(const char* s)
+; i64 qk_eprintz(str s)
 ; Writes null-terminated string to stderr
 ; rcx = pointer to string
 qk_eprintz:
@@ -148,7 +168,11 @@ qk_std__io__eprint:
     jmp qk_eprintz
 qk_std__io__print_char:
     jmp qk_putc
+qk_std__io__read_char:
+    jmp qk_getc
 qk_std__io__exit:
     jmp qk_exit
 qk_std__io__strlen:
     jmp qk_strlen
+qk_std__io__read:
+    jmp qk_read

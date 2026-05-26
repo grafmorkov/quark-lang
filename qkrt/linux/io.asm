@@ -13,6 +13,7 @@ public qk_print
 public qk_eprint
 public qk_read
 public qk_putc
+public qk_getc
 public qk_eputc
 public qk_exit
 public qk_strlen
@@ -61,8 +62,29 @@ qk_eprint:
 ; ssize_t qk_read(void* buf, size_t len)
 ; Reads from stdin (fd = 0)
 qk_read:
-    xor edi, edi
+    mov rdx, rsi     ; rdx = len
+    mov rsi, rdi     ; rsi = buf
+    xor edi, edi     ; rdi = 0 (stdin fd)
     jmp qk_read_fd
+
+
+; ssize_t qk_getc()
+; Reads one byte from stdin
+; Returns: byte value (0-255), or -1 on error/EOF
+qk_getc:
+    sub rsp, 16
+    lea rdi, [rsp]
+    mov esi, 1
+    call qk_read
+    test rax, rax
+    jle .error
+    movzx eax, byte [rsp]
+    add rsp, 16
+    ret
+.error:
+    or rax, -1
+    add rsp, 16
+    ret
 
 
 ; ssize_t qk_putc(char c)
@@ -129,3 +151,35 @@ qk_exit:
     syscall
     ; does not return
     ret
+
+; ABI aliases: std::io::* -> runtime functions
+public qk_std__io__print
+public qk_std__io__println
+public qk_std__io__eprint
+public qk_std__io__print_char
+public qk_std__io__exit
+public qk_std__io__strlen
+public qk_std__io__read
+public qk_std__io__read_char
+
+qk_std__io__print:
+    jmp qk_printz
+qk_std__io__println:
+    call qk_printz
+    push 10
+    mov rdi, rsp
+    call qk_putc
+    pop rax
+    ret
+qk_std__io__eprint:
+    jmp qk_eprintz
+qk_std__io__print_char:
+    jmp qk_putc
+qk_std__io__exit:
+    jmp qk_exit
+qk_std__io__strlen:
+    jmp qk_strlen
+qk_std__io__read:
+    jmp qk_read
+qk_std__io__read_char:
+    jmp qk_getc
