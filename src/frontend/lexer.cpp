@@ -187,6 +187,11 @@ namespace quark::lx {
             return make_token(TOKEN_ILLEGAL);
         }
         advance();
-        return make_token(TOKEN_STRING);
+        return Token{
+            TOKEN_STRING,
+            std::string_view(buffer.data() + start + 1, pos - start - 2),
+            {},
+            {ctx.srcloc.file, token_line, token_column}
+        };
     }
 }

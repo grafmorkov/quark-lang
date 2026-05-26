@@ -373,11 +373,6 @@ ast::LoadStmt Parser::parse_load() {
 
     std::string_view raw = expect(TokenType::TOKEN_STRING, "Expected module").text;
 
-    // temporary fix
-    if (!raw.empty() && raw.front() == '"' && raw.back() == '"') {
-        raw = raw.substr(1, raw.size() - 2);
-    }
-
     ret.module = raw;
 
     expect(TOKEN_SEMICOLON, "Expected ';' after load");
