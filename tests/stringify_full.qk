@@ -1,0 +1,12 @@
+load "std/io.qk";
+
+func main() i32 {
+    a: str = 42 as str;
+    b: i64 = 1000 as i64;
+    c: str = b as str;
+    d: i64 = 0 as i64;
+    e: str = d as str;
+    f: u32 = 255 as u32;
+    g: str = f as str;
+    return 0 as i32;
+}

@@ -31,6 +31,7 @@ namespace quark{
         TOKEN_LOAD, 
         TOKEN_EXTERN,
         TOKEN_AS,
+        TOKEN_REGION,
 
         // types
         TOKEN_VOID,

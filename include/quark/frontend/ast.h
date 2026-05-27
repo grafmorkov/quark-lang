@@ -115,6 +115,15 @@ namespace quark::ast {
         CastKind kind;
     };
 
+    struct TypeExpr {
+        const Type* type;
+    };
+
+    struct IndexExpr {
+        Expr* base;
+        Expr* index;
+    };
+
     using ExprKind = std::variant<
         IntExpr,
         FloatExpr,
@@ -125,7 +134,9 @@ namespace quark::ast {
         CallExpr,
         FieldExpr,
         NamespaceExpr,
-        CastExpr
+        CastExpr,
+        TypeExpr,
+        IndexExpr
     >;
 
     struct Expr {
@@ -205,6 +216,10 @@ namespace quark::ast {
     struct LoadStmt {
         std::string module;
     };
+    struct RegionStmt{
+        std::string name;
+        Block* body;
+    };
 
     using StmtKind = std::variant<
         ExprStmt,
@@ -215,6 +230,7 @@ namespace quark::ast {
         StructDecl,
         FuncStmt,
         NamespaceStmt,
+        RegionStmt,
         LoadStmt
     >;
 

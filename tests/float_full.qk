@@ -1,0 +1,13 @@
+load "std/io.qk";
+
+func main() i32 {
+    a: f64 = 3.14;
+    b: f64 = 2.0;
+    c: f64 = a + b;
+    d: f64 = a * b;
+    e: f64 = a / b;
+    f: i32 = a as i32;
+    g: f64 = 1.5e2;
+    h: str = a as str;
+    return 0;
+}

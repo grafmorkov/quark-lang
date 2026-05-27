@@ -1,0 +1,14 @@
+load "std/io.qk";
+
+func main() i32 {
+    region r {
+        p: *i32 = alloc(i32, 10);
+        p[0] = 42;
+        p[1] = p[0] + 1;
+        std::io::print(p[0] as str);
+        std::io::print_char(32 as i8);
+        std::io::print(p[1] as str);
+        std::io::print_char(10 as i8);
+    }
+    return 0;
+}

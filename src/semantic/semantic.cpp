@@ -221,6 +221,7 @@ void SemanticAnalyzer::analyze_stmt(const ast::Stmt* stmt) {
         [&](const ast::IfStmt& n) { analyze_if(n); },
         [&](const ast::WhileStmt& n) { analyze_while(n); },
         [&](const ast::LoadStmt&) {},
+        [&](const ast::RegionStmt& n) { analyze_region(n); },
         [&](const auto&) {
             crash("Unsupported statement node in semantic analysis");
         }
@@ -380,6 +381,18 @@ void SemanticAnalyzer::analyze_while(const ast::WhileStmt& stmt) {
         analyze_block(stmt.body);
     }
 }
+void SemanticAnalyzer::analyze_region(const ast::RegionStmt& reg) {
+    is_in_region = true;
+
+    {
+        ScopeGuard scope(ctx.symbols);
+        if (reg.body) {
+            analyze_block(reg.body);
+        }
+    }
+
+    is_in_region = false;
+}
 
 void SemanticAnalyzer::analyze_attribute(const ast::Attribute& attribute) {
     (void)attribute;
@@ -419,6 +432,13 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
         },
         [&](const ast::CastExpr& n) -> const ast::Type*{
             return analyze_cast(n);
+        },
+        [&](const ast::TypeExpr&) -> const ast::Type* {
+            crash("Type used as value");
+            return nullptr;
+        },
+        [&](const ast::IndexExpr& n) -> const ast::Type* {
+            return analyze_index(n);
         },
         [&](const auto&) -> const ast::Type* {
             crash("Unsupported expression node in semantic analysis");
@@ -490,6 +510,32 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(const ast::Expr* expr) {
         return resolve_struct_field(ctx, base_type, field->field);
     }
 
+    if (const auto* index = std::get_if<ast::IndexExpr>(&expr->kind)) {
+        const ast::Type* base_type = analyze_expr(index->base);
+        if (!base_type) return nullptr;
+
+        if (base_type->kind != TypeKind::Pointer) {
+            crash("Cannot index non-pointer type");
+            return nullptr;
+        }
+
+        const ast::Type* elem_type = base_type->pointed;
+        if (!elem_type) {
+            crash("Invalid pointer target");
+            return nullptr;
+        }
+
+        const ast::Type* index_type = analyze_expr(index->index);
+        if (!index_type) return nullptr;
+
+        if (index_type->kind == TypeKind::Void) {
+            crash("Index must be an integer");
+            return nullptr;
+        }
+
+        return elem_type;
+    }
+
     crash("Invalid lvalue");
     return nullptr;
 }
@@ -549,6 +595,46 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
 
     auto path = support::flatten_path(call.callee);
 
+    if (is_in_region && path.size() == 1 && path[0] == "alloc") {
+        if (call.args.size() == 2) {
+            // alloc(T, count) — typed allocation
+            const auto* type_expr = std::get_if<ast::TypeExpr>(&call.args[0]->kind);
+            if (!type_expr) {
+                crash("First argument to alloc must be a type, e.g. alloc(i32, 10)");
+                return nullptr;
+            }
+            const ast::Type* elem_type = type_expr->type;
+            if (!elem_type) {
+                crash("Invalid element type in alloc");
+                return nullptr;
+            }
+            call.args[0]->resolved_type = elem_type;
+
+            const ast::Type* count_type = analyze_expr(call.args[1]);
+            if (!count_type) return nullptr;
+            if (count_type->kind == TypeKind::Void) {
+                crash("alloc count must be an integer");
+                return nullptr;
+            }
+
+            return ctx.types.get_pointer(elem_type);
+        }
+
+        if (call.args.size() != 1) {
+            crash("alloc takes 1 argument (bytes) or 2 arguments (type, count)");
+            return nullptr;
+        }
+        const ast::Type* size_type = analyze_expr(call.args[0]);
+        if (!size_type) return nullptr;
+
+        if (size_type->kind == TypeKind::Void || size_type->kind == TypeKind::String) {
+            crash("alloc argument must be an integer (size in bytes)");
+            return nullptr;
+        }
+
+        return ctx.types.get_pointer(ctx.types.get_builtin(TypeKind::Void));
+    }
+
     auto* sym = ctx.symbols.lookup_qualified(path);
     if (!sym) {
         crash("Undefined function: " + support::join_namespace(path));
@@ -578,6 +664,32 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
     }
 
     return fn->return_type;
+}
+
+const ast::Type* SemanticAnalyzer::analyze_index(const ast::IndexExpr& n) {
+    const ast::Type* base_type = analyze_expr(n.base);
+    if (!base_type) return nullptr;
+
+    if (base_type->kind != TypeKind::Pointer) {
+        crash("Cannot index non-pointer type");
+        return nullptr;
+    }
+
+    const ast::Type* elem_type = base_type->pointed;
+    if (!elem_type) {
+        crash("Invalid pointer target");
+        return nullptr;
+    }
+
+    const ast::Type* index_type = analyze_expr(n.index);
+    if (!index_type) return nullptr;
+
+    if (index_type->kind == TypeKind::Void) {
+        crash("Index must be an integer");
+        return nullptr;
+    }
+
+    return elem_type;
 }
 
 const ast::Type* SemanticAnalyzer::analyze_block(const ast::Block* block) {

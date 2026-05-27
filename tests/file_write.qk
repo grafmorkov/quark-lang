@@ -1,0 +1,26 @@
+load "std/io.qk";
+
+func main() i32 {
+    // GENERIC_WRITE = 1073741824, CREATE_ALWAYS = 2
+    mut fd: i64 = std::io::open("test_output.txt", 1073741824, 2);
+
+    if (fd < 0 as i64) {
+        std::io::print("open failed\n");
+        return 1;
+    }
+
+    std::io::print("opened fd=");
+    std::io::print(fd as str);
+    std::io::print_char(10 as i8);
+
+    mut written: i64 = std::io::write(fd, "Hello from Quark!\n", 18 as i64);
+
+    std::io::print("wrote ");
+    std::io::print(written as str);
+    std::io::print(" bytes\n");
+
+    std::io::close(fd);
+
+    std::io::print("done\n");
+    return 0;
+}

@@ -71,6 +71,7 @@ namespace quark::symb_t {
         bool declare(const ast::FuncArg& arg);
         bool declare(const ast::FuncStmt& fn);
         bool declare(const ast::StructDecl& str);
+        bool declare(const ast::RegionStmt& reg);
 
         bool declare_symbol(const std::string& name, Symbol symbol);
 

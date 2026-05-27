@@ -168,10 +168,38 @@ std::io::exit(0);
 ```
 extern func print(text: str) void;
 ```
-
+---
+## Regions & Pointers. Arrays
+Quark has region memory system. Pointers can only be declared in ```region{}```. If a region dies, all pointers are destroyed.
+```
+region r {
+    p: *void = alloc(32);
+}
+```
+Arrays are also supported and can (only) be declared in region:
+```
+region r {
+    p: *i32 = alloc(i32, 10);
+    p[0] = 42;
+    p[1] = p[0] + 1;
+    std::io::print(p[0] as str);
+    std::io::print_char(32 as i8);
+    std::io::print(p[1] as str);
+    std::io::print_char(10 as i8);
+}
+```
+```alloc(T, size);``` or ```alloc(size)``` for void; 
+However, you can allocate memory in the more familiar way via the "std/arena.qk" library:
+```
+load "std/arena.qk";
+p: *void = std::arena::_create(4096);
+std::arena::_destroy(p);
+```
 ---
 
-## Standard Library (`std/io.qk`)
+## Standard Library 
+
+### std/io.qk
 
 | Function         | Description                      |
 |------------------|----------------------------------|
@@ -190,6 +218,11 @@ extern func print(text: str) void;
 | strlen(s)        | get string length                |
 | exit(code)       | exit process                     |
 
+### std/arena.qk
+| Function           | Description                      |
+|--------------------|----------------------------------|
+| _create(size: u64) | create new arena                 |
+| _destroy(ptr: *void) | destroy allocated pointer      |
 ---
 
 ## Comments
@@ -216,7 +249,7 @@ quark file.qk --time              # print compilation time
 quark file.qk --no-compile        # semantic analysis only
 ```
 
-Requires: CMake 3.20+, flat assembler (fasm), C++17 compiler.
+Requires: CMake 3.20+, flat assembler (fasm), C++20 compiler.
 
 ---
 
@@ -225,4 +258,3 @@ Requires: CMake 3.20+, flat assembler (fasm), C++17 compiler.
 - String literals do not support escape sequences. `\n` is stored as two bytes (backslash and 'n').
 - Number literals are decimal only (no hex, octal, or binary prefixes).
 - No character literals (no single-quote syntax).
-- No heap allocation or arrays yet.

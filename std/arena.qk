@@ -1,0 +1,2 @@
+extern func _create(size: u64) *void;
+extern func _destroy(ptr: *void) void;

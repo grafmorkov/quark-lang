@@ -1,0 +1,4 @@
+load "std/io.qk"
+
+func main(){
+}

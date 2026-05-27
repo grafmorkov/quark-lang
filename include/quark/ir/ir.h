@@ -97,6 +97,40 @@ struct IRString {
     std::string value;
 };
 
+struct IRRegionBegin {
+    Local data_local;
+    Local offset_local;
+    Local cap_local;
+    uint32_t region_size;
+};
+
+struct IRRegionAlloc {
+    Reg dst;
+    Reg size;
+    Local data_local;
+    Local offset_local;
+    Local cap_local;
+};
+
+struct IRRegionEnd {
+    Local data_local;
+    Local cap_local;
+};
+
+struct IRLoadElement {
+    Reg dst;
+    Reg base;
+    Reg index;
+    uint32_t elem_size;
+};
+
+struct IRStoreElement {
+    Reg base;
+    Reg index;
+    Reg value;
+    uint32_t elem_size;
+};
+
 using IRInst = std::variant<
     IRLoadConst,
     IRLoadFloatConst,
@@ -111,7 +145,12 @@ using IRInst = std::variant<
     IRGetField,
     IRSetField,
     IRCast,
-    IRLoadString
+    IRLoadString,
+    IRLoadElement,
+    IRStoreElement,
+    IRRegionBegin,
+    IRRegionAlloc,
+    IRRegionEnd
 >;
 
 struct IRFunction {

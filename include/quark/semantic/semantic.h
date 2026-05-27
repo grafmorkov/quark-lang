@@ -19,6 +19,7 @@ class SemanticAnalyzer {
         CompilerContext& ctx;
         const ast::Type* current_function_return_type = nullptr;
         std::vector<std::string> module_namespace;
+        bool is_in_region = false;
 
         void analyze_stmt(const ast::Stmt* stmt);
         const ast::Type* analyze_expr(ast::Expr* expr);
@@ -34,6 +35,7 @@ class SemanticAnalyzer {
         void analyze_func(const ast::FuncStmt& func);
         void analyze_if(const ast::IfStmt& stmt);
         void analyze_while(const ast::WhileStmt& stmt);
+        void analyze_region(const ast::RegionStmt& reg);
         void analyze_attribute(const ast::Attribute& attribute);
 
         const ast::Type* analyze_int(const ast::IntExpr&);
@@ -45,6 +47,7 @@ class SemanticAnalyzer {
         const ast::Type* analyze_field(const ast::FieldExpr&);
         const ast::Type* analyze_namespace(const ast::NamespaceExpr&);
         const ast::Type* analyze_cast(const ast::CastExpr&);
+        const ast::Type* analyze_index(const ast::IndexExpr&);
     };
 
 } // namespace quark::sm

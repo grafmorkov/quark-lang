@@ -40,6 +40,13 @@ struct IRGenerator {
     // namespace nesting
     std::vector<std::string> namespace_stack;
 
+    struct RegionInfo {
+        Local data_local;
+        Local offset_local;
+        Local cap_local;
+    };
+    std::vector<RegionInfo> region_stack;
+
     explicit IRGenerator(CompilerContext& c);
 
     // Entry
@@ -54,6 +61,7 @@ struct IRGenerator {
 
     void gen_stmt(const ast::Stmt& stmt);
     void gen_block(const ast::Block& block);
+    void gen_region(const ast::RegionStmt& reg);
 
     // Expressions
 

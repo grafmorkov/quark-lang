@@ -45,6 +45,7 @@ namespace quark::ps {
             ast::WhileStmt parse_while();
             ast::ReturnStmt parse_return();
             ast::FuncStmt parse_func(bool is_extern);
+            ast::RegionStmt parse_region();
             std::vector<ast::FuncArg> parse_func_args();
             
             // expressions(Pratt)

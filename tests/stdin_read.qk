@@ -1,0 +1,10 @@
+load "std/io.qk";
+
+func main() i32 {
+    std::io::print("Press a key:");
+    mut c: i64 = std::io::read_char();
+    std::io::print("You pressed: ");
+    std::io::print_char(c as i8);
+    std::io::print_char(10 as i8);
+    return 0 as i32;
+}

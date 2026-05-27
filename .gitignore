@@ -3,7 +3,6 @@
 /cmake-build-*/
 /out/
 /dist/
-/tests/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake

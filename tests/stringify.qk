@@ -1,0 +1,4 @@
+func main() i32 {
+    a: str = 42 as str;
+    return 0 as i32;
+}

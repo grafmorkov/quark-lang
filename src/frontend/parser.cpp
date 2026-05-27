@@ -9,6 +9,20 @@ namespace quark::ps {
 
 namespace {
 
+bool is_type_token(TokenType t) {
+    switch (t) {
+        case TOKEN_VOID: case TOKEN_BOOL:
+        case TOKEN_I8: case TOKEN_I16: case TOKEN_I32: case TOKEN_I64:
+        case TOKEN_U8: case TOKEN_U16: case TOKEN_U32: case TOKEN_U64:
+        case TOKEN_F32: case TOKEN_F64:
+        case TOKEN_STR_TYPE:
+        case TOKEN_STAR:
+            return true;
+        default:
+            return false;
+    }
+}
+
 ast::BinaryOp get_op_from_token(TokenType type) {
     switch (type) {
         case TOKEN_PLUS:  return ast::BinaryOp::Add;
@@ -156,6 +170,10 @@ ast::Stmt Parser::parse_statement() {
         return ast::Stmt{ ast::LoadStmt{ parse_load() } };
     }
 
+    if (match(TOKEN_REGION)){
+        return ast::Stmt{ast::RegionStmt{ parse_region() } };
+    }
+
     if (is_var_decl()) {
         return ast::Stmt{ parse_var_decl() };
     }
@@ -169,12 +187,16 @@ bool Parser::is_var_decl() {
     if (check(TOKEN_MUT)) {
         return peek(0).type == TOKEN_IDENT && peek(1).type == TOKEN_COLON;
     }
+    if (check(TOKEN_VAR)) {
+        return peek(0).type == TOKEN_IDENT && peek(1).type == TOKEN_COLON;
+    }
     return check(TOKEN_IDENT) && peek(0).type == TOKEN_COLON;
 }
 
 ast::VarDecl Parser::parse_var_decl() {
     ast::VarDecl ret;
     ret.is_mut = match(TOKEN_MUT);
+    match(TOKEN_VAR);
 
     Token name = expect(TOKEN_IDENT, "Expected variable name");
     ret.name = name.text;
@@ -316,7 +338,14 @@ ast::FuncStmt Parser::parse_func(bool is_extern) {
 
     return ret;
 }
+ast::RegionStmt Parser::parse_region(){
+    ast::RegionStmt ret;
 
+    ret.name = expect(TOKEN_IDENT, "Expected region name").text;
+    ret.body = parse_block();
+
+    return ret;
+}
 std::vector<ast::FuncArg> Parser::parse_func_args() {
     std::vector<ast::FuncArg> args;
 
@@ -394,7 +423,8 @@ ast::Expr* Parser::parse_expr(int min_prec) {
 
         if (op.type == TOKEN_EQ) {
             if (!std::holds_alternative<ast::VarExpr>(left->kind) &&
-                !std::holds_alternative<ast::FieldExpr>(left->kind)) {
+                !std::holds_alternative<ast::FieldExpr>(left->kind) &&
+                !std::holds_alternative<ast::IndexExpr>(left->kind)) {
                 error(op.loc, "Invalid assignment target");
                 (void)parse_expr(prec);
                 return left;
@@ -463,6 +493,13 @@ ast::Expr* Parser::parse_prefix() {
         return e;
     }
 
+    if (is_type_token(current.type)) {
+        const ast::Type* type = parse_type(false);
+        if (type) {
+            return make_expr(ctx, ast::TypeExpr{ type }, previous.loc);
+        }
+    }
+
     error(current.loc, "Unexpected token");
     if (!check(TOKEN_EOF)) {
         advance();
@@ -484,6 +521,14 @@ ast::Expr* Parser::parse_postfix(ast::Expr* left) {
             expect(TOKEN_RPAREN, "Expected ')'");
 
             left = make_expr(ctx, ast::CallExpr{ left, args }, left ? left->loc : SourceLocation{});
+            continue;
+        }
+
+        if (match(TOKEN_LBRACKET)) {
+            ast::Expr* index = parse_expr(0);
+            expect(TOKEN_RBRACKET, "Expected ']'");
+
+            left = make_expr(ctx, ast::IndexExpr{ left, index }, left ? left->loc : SourceLocation{});
             continue;
         }
 

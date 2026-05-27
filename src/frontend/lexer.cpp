@@ -197,6 +197,7 @@ namespace quark::lx {
             case str_hash("f64"):  return make_token(TOKEN_F64);
             case str_hash("str"):  return make_token(TOKEN_STR_TYPE);
             case str_hash("as"): return make_token(TOKEN_AS);
+            case str_hash("region"): return make_token(TOKEN_REGION);
         }
         return make_token(TOKEN_IDENT);
     }

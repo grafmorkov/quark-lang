@@ -112,13 +112,23 @@ namespace {
         return kind == ast::TypeKind::F32 || kind == ast::TypeKind::F64;
     }
 
-    std::string mem_size(int bytes) {
+        std::string mem_size(int bytes) {
         switch (bytes) {
             case 1: return "byte";
             case 2: return "word";
             case 4: return "dword";
             case 8: return "qword";
             default: return "qword";
+        }
+    }
+
+    std::string reg_from_size(int bytes) {
+        switch (bytes) {
+            case 1: return "bl";
+            case 2: return "bx";
+            case 4: return "ebx";
+            case 8: return "rbx";
+            default: return "rbx";
         }
     }
 
@@ -136,6 +146,10 @@ namespace {
             return "[rbp - " +
                 std::to_string((base + static_cast<std::size_t>(r) + 1u) * 8u) +
                 "]";
+    }
+
+    uint32_t FasmCodeGenerator::region_alloc_label() {
+        return next_region_label++;
     }
     void FasmCodeGenerator::emit_line(const std::string& s){
         out << s << '\n';
@@ -359,6 +373,31 @@ namespace {
                 emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
             },
 
+            [&](const IRLoadElement& x) {
+                const std::string ms = mem_size(x.elem_size);
+                emit_line("    mov rax, qword " + temp_slot(x.base, fn));
+                emit_line("    mov rcx, qword " + temp_slot(x.index, fn));
+                if (x.elem_size <= 4) {
+                    std::string src = ms + " [rax + rcx * " + std::to_string(x.elem_size) + "]";
+                    if (x.elem_size < 4) {
+                        emit_line("    movzx eax, " + src);
+                    } else {
+                        emit_line("    mov eax, " + src);
+                    }
+                } else {
+                    emit_line("    mov rax, " + ms + " [rax + rcx * " + std::to_string(x.elem_size) + "]");
+                }
+                emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
+            },
+
+            [&](const IRStoreElement& x) {
+                const std::string ms = mem_size(x.elem_size);
+                emit_line("    mov rax, qword " + temp_slot(x.base, fn));
+                emit_line("    mov rcx, qword " + temp_slot(x.index, fn));
+                emit_line("    mov rbx, qword " + temp_slot(x.value, fn));
+                emit_line("    mov " + ms + " [rax + rcx * " + std::to_string(x.elem_size) + "], " + reg_from_size(x.elem_size));
+            },
+
             [&](const IRCast& x) {
                 const std::string src = temp_slot(x.src, fn);
                 const std::string dst = temp_slot(x.dst, fn);
@@ -471,7 +510,65 @@ namespace {
                     crash("Unsupported ValueCast in codegen");
                 }
             },
+
+            [&](const IRRegionBegin& x) {
+                emit_region_begin(x, fn);
+            },
+            [&](const IRRegionAlloc& x) {
+                emit_region_alloc(x, fn);
+            },
+            [&](const IRRegionEnd& x) {
+                emit_region_end(x, fn);
+            },
         }, inst);
+    }
+
+    void FasmCodeGenerator::emit_region_begin(const IRRegionBegin& x, const IRFunction& fn) {
+        (void)fn;
+#ifdef _WIN32
+        emit_line("    sub rsp, 32");
+        emit_line("    mov rcx, " + std::to_string(x.region_size));
+        emit_line("    call qk_std__arena___create");
+        emit_line("    add rsp, 32");
+        emit_line("    mov qword " + local_slot(x.data_local) + ", rax");
+        emit_line("    mov qword " + local_slot(x.offset_local) + ", 0");
+        emit_line("    mov qword " + local_slot(x.cap_local) + ", " + std::to_string(x.region_size));
+#else
+        (void)x;
+#endif
+    }
+
+    void FasmCodeGenerator::emit_region_alloc(const IRRegionAlloc& x, const IRFunction& fn) {
+        const uint32_t ok_label = region_alloc_label();
+
+        emit_line("    mov rax, qword " + local_slot(x.data_local));
+        emit_line("    add rax, qword " + local_slot(x.offset_local));
+        emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
+
+        emit_line("    mov rax, qword " + temp_slot(x.size, fn));
+        emit_line("    add rax, 15");
+        emit_line("    and rax, -16");
+        emit_line("    add qword " + local_slot(x.offset_local) + ", rax");
+
+        emit_line("    mov rax, qword " + local_slot(x.offset_local));
+        emit_line("    cmp rax, qword " + local_slot(x.cap_local));
+        emit_line("    jbe .region_ok_" + std::to_string(ok_label));
+        emit_line("    mov ecx, 1");
+        emit_line("    call qk_exit");
+        emit_line(".region_ok_" + std::to_string(ok_label) + ":");
+    }
+
+    void FasmCodeGenerator::emit_region_end(const IRRegionEnd& x, const IRFunction& fn) {
+        (void)fn;
+#ifdef _WIN32
+        emit_line("    sub rsp, 32");
+        emit_line("    mov rcx, qword " + local_slot(x.data_local));
+        emit_line("    xor edx, edx");
+        emit_line("    call qk_std__arena___destroy");
+        emit_line("    add rsp, 32");
+#else
+        (void)x;
+#endif
     }
     std::string FasmCodeGenerator::generate(const IRProgram& program) {
         out.str("");
@@ -483,6 +580,7 @@ namespace {
         emit_line();
         emit_line("include 'qkrt\\common\\string.asm'");
         emit_line("include 'qkrt\\common\\format.asm'");
+        emit_line("include 'qkrt\\common\\arena.asm'");
         emit_line("include 'qkrt\\windows\\file.asm'");
         emit_line("include 'qkrt\\windows\\io.asm'");
         emit_line();
@@ -572,6 +670,8 @@ namespace {
         emit_line("ReadFile dq rva _ReadFile");
         emit_line("GetLastError dq rva _GetLastError");
         emit_line("GetStdHandle dq rva _GetStdHandle");
+        emit_line("VirtualAlloc dq rva _VirtualAlloc");
+        emit_line("VirtualFree dq rva _VirtualFree");
         emit_line("    dq 0");
         emit_line("_ExitProcess:");
         emit_line("    dw 0");
@@ -600,6 +700,12 @@ namespace {
         emit_line("_GetStdHandle:");
         emit_line("    dw 0");
         emit_line("    db 'GetStdHandle',0");
+        emit_line("_VirtualAlloc:");
+        emit_line("    dw 0");
+        emit_line("    db 'VirtualAlloc',0");
+        emit_line("_VirtualFree:");
+        emit_line("    dw 0");
+        emit_line("    db 'VirtualFree',0");
         emit_line("kernel_name db 'KERNEL32.DLL',0");
 #else
         emit_line("start:");

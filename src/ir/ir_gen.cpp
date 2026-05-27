@@ -12,6 +12,26 @@ namespace quark::codegen {
 
 namespace {
 
+int type_size(const ast::Type* t) {
+    if (!t) return 0;
+    switch (t->kind) {
+        case ast::TypeKind::Bool:
+        case ast::TypeKind::I8:
+        case ast::TypeKind::U8:   return 1;
+        case ast::TypeKind::I16:
+        case ast::TypeKind::U16:  return 2;
+        case ast::TypeKind::F32:
+        case ast::TypeKind::I32:
+        case ast::TypeKind::U32:  return 4;
+        case ast::TypeKind::F64:
+        case ast::TypeKind::I64:
+        case ast::TypeKind::U64:  return 8;
+        case ast::TypeKind::Pointer: return 8;
+        default: return 0;
+    }
+}
+
+
 template<class... Ts>
 struct overloaded : Ts... {
     using Ts::operator()...;
@@ -473,10 +493,36 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
             // compile-time only
         },
 
+        [&](const ast::RegionStmt& node) {
+            gen_region(node);
+        },
+
         [&](const auto&) {
             crash("Unsupported statement node in IR generation");
         }
     }, stmt.kind);
+}
+
+void IRGenerator::gen_region(const ast::RegionStmt& reg) {
+    if (!current_func) {
+        crash("Region outside function");
+    }
+
+    Local data_local = new_local();
+    Local offset_local = new_local();
+    Local cap_local = new_local();
+
+    region_stack.push_back({data_local, offset_local, cap_local});
+
+    emit(IRRegionBegin{data_local, offset_local, cap_local, 1024 * 1024});
+
+    if (reg.body) {
+        gen_block(*reg.body);
+    }
+
+    emit(IRRegionEnd{data_local, cap_local});
+
+    region_stack.pop_back();
 }
 
 uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
@@ -640,7 +686,21 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 return value;
             }
 
-            crash("Assignment target must be variable or field access");
+            if (const auto* index = std::get_if<ast::IndexExpr>(&node.target->kind)) {
+                const uint32_t base = gen_expr(*index->base);
+                const uint32_t idx = gen_expr(*index->index);
+
+                const ast::Type* base_type = index->base->resolved_type;
+                if (!base_type || base_type->kind != ast::TypeKind::Pointer || !base_type->pointed) {
+                    crash("Invalid pointer index in assignment");
+                }
+
+                uint32_t elem_size = type_size(base_type->pointed);
+                emit(IRStoreElement{base, idx, value, elem_size});
+                return value;
+            }
+
+            crash("Assignment target must be variable, field access, or index expression");
         },
 
         [&](const ast::FieldExpr& node) -> uint32_t {
@@ -678,6 +738,42 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::CallExpr& node) -> uint32_t {
+            if (!region_stack.empty() && node.callee) {
+                auto callee_path = support::flatten_path(node.callee);
+                if (callee_path.size() == 1 && callee_path[0] == "alloc") {
+                    if (node.args.size() == 2) {
+                        // alloc(T, count) — typed allocation
+                        const auto* type_expr = std::get_if<ast::TypeExpr>(&node.args[0]->kind);
+                        if (!type_expr || !type_expr->type) {
+                            crash("First argument to alloc must be a type, e.g. alloc(i32, 10)");
+                        }
+                        uint32_t elem_size = type_size(type_expr->type);
+                        if (elem_size == 0) {
+                            crash("Cannot allocate element of unknown size");
+                        }
+                        const uint32_t count = gen_expr(*node.args[1]);
+                        const uint32_t elem_reg = new_reg();
+                        emit(IRLoadConst{elem_reg, static_cast<int64_t>(elem_size)});
+                        const uint32_t total = new_reg();
+                        emit(IRBinary{IRBinaryOp::Mul, total, count, elem_reg, ast::TypeKind::U64});
+
+                        const uint32_t dst = new_reg();
+                        const auto& ri = region_stack.back();
+                        emit(IRRegionAlloc{dst, total, ri.data_local, ri.offset_local, ri.cap_local});
+                        return dst;
+                    }
+
+                    if (node.args.size() != 1 || !node.args[0]) {
+                        crash("alloc takes 1 argument (bytes) or 2 arguments (type, count)");
+                    }
+                    const uint32_t size = gen_expr(*node.args[0]);
+                    const uint32_t dst = new_reg();
+                    const auto& ri = region_stack.back();
+                    emit(IRRegionAlloc{dst, size, ri.data_local, ri.offset_local, ri.cap_local});
+                    return dst;
+                }
+            }
+
             std::vector<uint32_t> args;
             args.reserve(node.args.size());
 
@@ -727,6 +823,25 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 node.target->kind,
                 node.kind
             });
+            return dst;
+        },
+
+        [&](const ast::TypeExpr&) -> uint32_t {
+            crash("Type used as value in IR generation");
+        },
+
+        [&](const ast::IndexExpr& node) -> uint32_t {
+            const uint32_t base = gen_expr(*node.base);
+            const uint32_t idx = gen_expr(*node.index);
+            const uint32_t dst = new_reg();
+
+            const ast::Type* base_type = node.base->resolved_type;
+            if (!base_type || base_type->kind != ast::TypeKind::Pointer || !base_type->pointed) {
+                crash("Invalid pointer index in IR gen");
+            }
+
+            uint32_t elem_size = type_size(base_type->pointed);
+            emit(IRLoadElement{dst, base, idx, elem_size});
             return dst;
         }
     }, expr.kind);

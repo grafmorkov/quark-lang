@@ -1,0 +1,19 @@
+    func main() i32 {
+        // value cast - widening signed
+        a: i8 = 42 as i8;
+        b: i64 = a as i64;
+
+        // value cast - narrowing
+        c: i64 = 1000 as i64;
+        d: i8 = c as i8;
+
+        // value cast - same size signedness change
+        e: i32 = 100 as i32;
+        f: u32 = e as u32;
+
+        // bitcast - integer to integer same size
+        g: i32 = 200 as i32;
+        h: u32 = g as! u32;
+
+        return 0 as i32;
+    }

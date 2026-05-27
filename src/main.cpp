@@ -81,19 +81,9 @@ int main(int argc, char **argv)
             auto root = std::filesystem::absolute(QUARK_ROOT);
 
         #ifdef _WIN32
-            std::string build_cmd =
-                "cmd /c \"" + (root / "build.bat").string() + "\"";
+            std::string build_cmd = "fasm out.S out.exe";
         #else
-            std::string chmod_cmd =
-                "chmod +x " + (root / "build.sh").string();
-
-            std::string build_cmd =
-                (root / "build.sh").string();
-
-            if (std::system(chmod_cmd.c_str()) != 0) {
-                utils::logger::error("chmod failed\n");
-                return 1;
-            }
+            std::string build_cmd = "fasm out.asm   out.o";
         #endif
 
             if (std::system(build_cmd.c_str()) != 0) {

@@ -1,0 +1,7 @@
+load "std/io.qk";
+
+struct Test{
+    mut v: i32 = 10;
+};
+func main(){
+}
