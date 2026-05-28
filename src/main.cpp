@@ -71,20 +71,26 @@ int main(int argc, char **argv)
             utils::logger::info("asm:");
             utils::logger::info(asm_code);
         }
-        // Write C File
-        std::ofstream file("out.S");
-        file << asm_code;
-        file.close();
+        // Write Asm File
+        auto root = std::filesystem::absolute(QUARK_ROOT);
+        auto asm_path = root / "out.S";
+
+        {
+            std::ofstream file(asm_path);
+            file << asm_code;
+        }
 
         // Build fasm
         if (opts.build || opts.run) {
-            auto root = std::filesystem::absolute(QUARK_ROOT);
-
         #ifdef _WIN32
-            std::string build_cmd = "fasm out.S out.exe";
+            auto fasm_path = root / "fasm" / "fasm.exe";
+            auto exe_path = root / "out.exe";
         #else
-            std::string build_cmd = "fasm out.asm   out.o";
+            auto fasm_path = root / "fasm" / "fasm";
+            auto exe_path = root / "out.o";
         #endif
+
+            std::string build_cmd = fasm_path.string() + " " + asm_path.string() + " " + exe_path.string();
 
             if (std::system(build_cmd.c_str()) != 0) {
                 utils::logger::error("build failed\n");
@@ -94,7 +100,8 @@ int main(int argc, char **argv)
 
         // Run
         if (opts.run) {
-            std::system("./out");
+            auto run_path = root / "out.exe";
+            std::system(run_path.string().c_str());
         }
 
         auto end = std::chrono::high_resolution_clock::now();

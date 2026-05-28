@@ -546,10 +546,24 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
     auto resolve_function_id = [&](const std::vector<std::string>& path) -> uint32_t {
         const std::string qname = support::join_namespace(path);
         auto it = function_ids.find(qname);
-        if (it == function_ids.end()) {
-            crash("Undefined function: " + qname);
+        if (it != function_ids.end()) {
+            return it->second;
         }
-        return it->second;
+
+        if (path.size() == 1 && current_module) {
+            const std::string qualified = support::qualify_name(
+                current_module->namespace_path,
+                namespace_stack,
+                path[0]
+            );
+            auto it2 = function_ids.find(qualified);
+            if (it2 != function_ids.end()) {
+                return it2->second;
+            }
+        }
+
+        crash("Undefined function: " + qname);
+        return 0;
     };
 
     return std::visit(overloaded{

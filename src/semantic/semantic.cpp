@@ -635,7 +635,9 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
         return ctx.types.get_pointer(ctx.types.get_builtin(TypeKind::Void));
     }
 
-    auto* sym = ctx.symbols.lookup_qualified(path);
+    auto* sym = path.size() == 1
+        ? ctx.symbols.lookup(path[0])
+        : ctx.symbols.lookup_qualified(path);
     if (!sym) {
         crash("Undefined function: " + support::join_namespace(path));
         return nullptr;

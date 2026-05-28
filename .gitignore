@@ -63,3 +63,4 @@ coverage/
 *.swp
 *.swo
 *~
+/fasm/*

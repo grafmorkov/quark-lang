@@ -62,7 +62,7 @@ Load modules -> AST -> semantic analysis -> IR -> fasm -> native binary
 ### Requirements
 
 * CMake 3.20+
-* Fasm compiler
+* Fasm compiler(copy the fasm.exe/fasm into the fasm/ folder)
 
 Clone the repository with submodules:
 
@@ -138,8 +138,7 @@ Build and run:
 
 ## Contributing
 
-Contributions related to compilers, IR design, semantic analysis,
-and systems programming are welcome.
+Contributions related to compilers and systems programming are welcome.
 
 ---
 
