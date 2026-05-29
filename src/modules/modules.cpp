@@ -22,13 +22,13 @@ std::string canonical_key(const fs::path& p) {
     return fs::weakly_canonical(p).string();
 }
 
-std::vector<std::string> module_namespace_from_path(const fs::path& path) {
+std::vector<std::string> module_namespace_from_path(const fs::path& path, const fs::path& root) {
     fs::path canon = fs::weakly_canonical(path);
 
     fs::path rel =
         fs::relative(
             canon,
-            fs::path(QUARK_ROOT)
+            root
         );
 
     rel.replace_extension();
@@ -58,7 +58,7 @@ std::vector<std::string> collect_imports(const std::vector<ast::Stmt*>& ast) {
     return ret;
 }
 
-fs::path resolve_import_from(const fs::path& base_dir, const std::string& name) {
+fs::path resolve_import_from(const fs::path& base_dir, const std::string& name, const fs::path& root) {
     fs::path requested(name);
 
     if (requested.is_absolute() && fs::exists(requested)) {
@@ -68,7 +68,7 @@ fs::path resolve_import_from(const fs::path& base_dir, const std::string& name) 
     const std::vector<fs::path> bases = {
         base_dir,
         fs::current_path(),
-        fs::path(QUARK_ROOT)
+        root
     };
 
     for (const auto& base : bases) {
@@ -110,7 +110,7 @@ Module* ModuleManager::load_module(const fs::path& path) {
 
     mod->path = canon;
 
-    mod->namespace_path = module_namespace_from_path(canon);
+    mod->namespace_path = module_namespace_from_path(canon, ctx.root_path);
     mod->name = support::join_namespace(mod->namespace_path);
     mod->ns = ctx.symbols.create_namespace_path(mod->namespace_path);
 
@@ -149,7 +149,8 @@ void ModuleManager::topo_sort() {
             fs::path imp_path =
                 resolve_import_from(
                     mod->path.parent_path(),
-                    imp
+                    imp,
+                    ctx.root_path
                 );
 
             std::string imp_key =
@@ -235,7 +236,8 @@ void ModuleManager::build_graph(Module* entry) {
             fs::path imp_path =
                 resolve_import_from(
                     mod->path.parent_path(),
-                    imp
+                    imp,
+                    ctx.root_path
                 );
 
             Module* imp_mod =

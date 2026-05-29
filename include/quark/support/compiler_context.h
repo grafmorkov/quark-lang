@@ -1,5 +1,7 @@
 #pragma once
 
+#include <filesystem>
+
 #include "quark/support/type_context.h"
 #include "quark/semantic/symbol_table.h"
 #include "quark-alloc/memory/alloc.h"
@@ -16,6 +18,8 @@ namespace quark {
         symb_t::SymbolTable symbols;
 
         SourceLocation srcloc;
+
+        std::filesystem::path root_path;
 
         CompilerContext()
             : symbols(symbol_arena)

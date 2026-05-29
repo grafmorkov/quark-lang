@@ -32,6 +32,12 @@ int main(int argc, char **argv)
         auto start = high_resolution_clock::now();
 
         quark::CompilerContext ctx;
+
+        ctx.root_path = std::filesystem::absolute(argv[0]).parent_path();
+        if (!std::filesystem::exists(ctx.root_path / "std" / "io.qk")) {
+            ctx.root_path = std::filesystem::absolute(QUARK_ROOT);
+        }
+
         quark::modules::ModuleManager mm(ctx);
         quark::linker::Linker linker(mm);
 
@@ -72,7 +78,7 @@ int main(int argc, char **argv)
             utils::logger::info(asm_code);
         }
         // Write Asm File
-        auto root = std::filesystem::absolute(QUARK_ROOT);
+        auto& root = ctx.root_path;
         auto asm_path = root / "out.S";
 
         {
