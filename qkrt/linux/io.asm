@@ -21,14 +21,15 @@ public qk_printz
 public qk_eprintz
 
 
-extrn qk_strlen_impl
+extrn qk_write_fd
+extrn qk_read_fd
 
 ; Syscall numbers
 SYS_WRITE   equ 1
 SYS_READ    equ 0
 SYS_EXIT    equ 60
 
-section '.text' executable readable
+section '.text' executable
 
 ; ================================================================
 ; Initialization
@@ -119,26 +120,32 @@ qk_eputc:
 
 ; size_t qk_strlen(const char* s)
 qk_strlen:
-    mov rdi, rdi
-    jmp qk_strlen_impl
+    xor eax, eax
+.loop:
+    cmp byte [rdi + rax], 0
+    je .done
+    inc rax
+    jmp .loop
+.done:
+    ret
 
 
 ; ssize_t qk_printz(const char* s)
 qk_printz:
-    push rdi
+    mov rsi, rdi
     call qk_strlen
-    pop rdi
     mov rdx, rax
-    jmp qk_print
+    mov rdi, 1
+    jmp qk_write_fd
 
 
 ; ssize_t qk_eprintz(const char* s)
 qk_eprintz:
-    push rdi
+    mov rsi, rdi
     call qk_strlen
-    pop rdi
     mov rdx, rax
-    jmp qk_eprint
+    mov rdi, 2
+    jmp qk_write_fd
 
 
 ; ================================================================
@@ -166,10 +173,8 @@ qk_std__io__print:
     jmp qk_printz
 qk_std__io__println:
     call qk_printz
-    push 10
-    mov rdi, rsp
+    mov edi, 10
     call qk_putc
-    pop rax
     ret
 qk_std__io__eprint:
     jmp qk_eprintz

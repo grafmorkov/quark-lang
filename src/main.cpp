@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <iostream>
 #include <chrono>
 #include <fstream>
@@ -91,10 +92,6 @@ int main(int argc, char **argv)
         #ifdef _WIN32
             auto fasm_path = root / "fasm" / "fasm.exe";
             auto exe_path = root / "out.exe";
-        #else
-            auto fasm_path = root / "fasm" / "fasm";
-            auto exe_path = root / "out.o";
-        #endif
 
             std::string build_cmd = fasm_path.string() + " " + asm_path.string() + " " + exe_path.string();
 
@@ -102,6 +99,55 @@ int main(int argc, char **argv)
                 utils::logger::error("build failed\n");
                 return 1;
             }
+        #else
+            auto fasm_path = root / "fasm" / "fasm";
+            auto obj_path = root / "out.o";
+            auto exe_path = root / "out.exe";
+
+            // Assemble runtime files
+            struct RuntimeAsm {
+                std::filesystem::path src;
+                std::string obj_name;
+            };
+            RuntimeAsm runtime_files[] = {
+                { root / "qkrt" / "linux" / "io.asm", "qkrt_io.o" },
+                { root / "qkrt" / "linux" / "file.asm", "qkrt_file.o" },
+                { root / "qkrt" / "linux" / "format.asm", "qkrt_format.o" },
+            };
+
+            std::string link_objs;
+            for (const auto& r : runtime_files) {
+                auto obj = root / r.obj_name;
+                std::string cmd = fasm_path.string() + " " + r.src.string() + " " + obj.string();
+                if (std::system(cmd.c_str()) != 0) {
+                    utils::logger::error("build failed: runtime assembly\n");
+                    return 1;
+                }
+                if (!link_objs.empty()) link_objs += " ";
+                link_objs += obj.string();
+            }
+
+            // Assemble generated code
+            std::string asm_cmd = fasm_path.string() + " " + asm_path.string() + " " + obj_path.string();
+            if (std::system(asm_cmd.c_str()) != 0) {
+                utils::logger::error("build failed\n");
+                return 1;
+            }
+
+            // Link with ld
+            std::string link_cmd = "ld -o " + exe_path.string() + " " + obj_path.string() + " " + link_objs;
+            if (std::system(link_cmd.c_str()) != 0) {
+                utils::logger::error("link failed\n");
+                return 1;
+            }
+
+            // Cleanup object files
+            for (const auto& r : runtime_files) {
+                std::filesystem::remove(root / r.obj_name);
+            }
+            std::filesystem::remove(obj_path);
+        #endif
+            std::filesystem::remove(asm_path);
         }
 
         // Run

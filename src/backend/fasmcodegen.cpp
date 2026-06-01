@@ -586,9 +586,8 @@ namespace {
         emit_line();
         emit_line("section '.text' code readable executable");
 #else
-        emit_line("format ELF64 executable 3");
-        emit_line("entry start");
-        emit_line("segment readable executable");
+        emit_line("format ELF64");
+        emit_line("section '.text' executable");
 #endif
 #ifndef _WIN32
         for (const auto& fn : program.functions) {
@@ -596,6 +595,10 @@ namespace {
                 emit_line("extrn " + abi_name(fn));
             }
         }
+        emit_line("extrn qk_format_i64");
+        emit_line("extrn qk_format_u64");
+        emit_line("extrn qk_format_f64");
+        emit_line("public _start");
 #endif
         for (const auto& fn : program.functions) {
             if (fn.is_extern) {
@@ -708,7 +711,7 @@ namespace {
         emit_line("    db 'VirtualFree',0");
         emit_line("kernel_name db 'KERNEL32.DLL',0");
 #else
-        emit_line("start:");
+        emit_line("_start:");
         emit_line("    call " + function_name(*find_entry(program)));
         emit_line("    mov rdi, rax");
         emit_line("    mov rax, 60");
@@ -720,7 +723,7 @@ namespace {
         }
 #else
         if (!program.strings.empty()) {
-            emit_line("segment readable writeable");
+            emit_line("section '.data' writeable");
         }
 #endif
 

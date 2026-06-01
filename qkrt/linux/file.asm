@@ -21,7 +21,7 @@ SYS_READ    equ 0
 
 AT_FDCWD    equ -100
 
-section '.text' executable readable
+section '.text' executable
 
 ; ================================================================
 ; i64 qk_open(const char* path, int flags, int mode)

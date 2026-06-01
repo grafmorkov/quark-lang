@@ -16,7 +16,7 @@ echo "[4/5] Staging..."
 mkdir -p dist
 cp build/quark dist/
 
-echo "[5/5] Packaging..."
-tar -czf quark-linux-x86_64.tar.gz -C dist quark
+#echo "[5/5] Packaging..."
+#tar -czf quark-linux-x86_64.tar.gz -C dist quark
 
 echo "Done."
