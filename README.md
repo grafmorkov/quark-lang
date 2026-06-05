@@ -52,7 +52,7 @@ Load modules -> AST -> semantic analysis -> IR -> fasm -> native binary
 ## Features
 
 * minimal hidden behaviour
-* attributes(i'll add them soon)
+* attributes
 * explicit behaviour
 * arena-based compiler memory management
 
@@ -128,11 +128,11 @@ Build and run:
 ### Short-term
 
 * improved diagnostics
-* create assign modules parsing and validation
+* add generic types
 
 ### Long-term
 
-* optimizations(maybe)
+* optimizations
 * self-hosting compiler
 
 ---
