@@ -382,6 +382,6 @@ Requires: CMake 3.20+, flat assembler (fasm), C++20 compiler.
 
 ## Notes
 
-- String literals do not support escape sequences. `\n` is stored as two bytes (backslash and 'n').
+- String literals support escape sequences: `\n`, `\t`, `\r`, `\\`, `\"`, `\'`, `\0`.
+- Character literals use single quotes: `'a'`, `'\n'`, etc. `char` is an alias for `u8`.
 - Number literals are decimal only (no hex, octal, or binary prefixes).
-- No character literals (no single-quote syntax).

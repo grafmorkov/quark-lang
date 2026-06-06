@@ -15,6 +15,7 @@ namespace quark{
         TOKEN_IDENT,
         TOKEN_NUMBER,
         TOKEN_STRING,
+        TOKEN_CHAR_LITERAL,
 
         // keywords
         TOKEN_IF,
@@ -53,6 +54,7 @@ namespace quark{
         TOKEN_F64,
 
         TOKEN_STR_TYPE,
+        TOKEN_CHAR_TYPE,
 
         TOKEN_PTR,
 
@@ -92,7 +94,8 @@ namespace quark{
         std::string_view text;
 
         union {
-            double number; // TOKEN_NUMBER
+            double number;    // TOKEN_NUMBER
+            uint8_t char_val; // TOKEN_CHAR_LITERAL
         };
 
         SourceLocation loc;

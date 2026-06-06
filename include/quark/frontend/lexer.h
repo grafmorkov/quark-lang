@@ -34,6 +34,7 @@ namespace quark::lx{
             Token number();
             Token identifier();
             Token string();
+            Token char_literal();
 
         public:
             Token next_token();

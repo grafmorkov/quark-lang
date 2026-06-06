@@ -372,6 +372,9 @@ std::optional<int64_t> SemanticAnalyzer::try_eval_const(const ast::Expr* expr) {
     if (const auto* be = std::get_if<ast::BoolExpr>(&expr->kind)) {
         return be->value ? 1 : 0;
     }
+    if (const auto* ce = std::get_if<ast::CharExpr>(&expr->kind)) {
+        return ce->value;
+    }
     if (const auto* ve = std::get_if<ast::VarExpr>(&expr->kind)) {
         auto* sym = ctx.symbols.lookup(ve->name);
         if (sym && std::holds_alternative<symb_t::VarSymbol>(sym->data)) {
@@ -429,6 +432,12 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
             if (sym && std::holds_alternative<symb_t::VarSymbol>(sym->data)) {
                 auto& vs = std::get<symb_t::VarSymbol>(sym->data);
                 vs.const_value = be->value ? 1 : 0;
+            }
+        } else if (const auto* ce = std::get_if<ast::CharExpr>(&var.value->kind)) {
+            auto* sym = ctx.symbols.lookup(var.name);
+            if (sym && std::holds_alternative<symb_t::VarSymbol>(sym->data)) {
+                auto& vs = std::get<symb_t::VarSymbol>(sym->data);
+                vs.const_value = ce->value;
             }
         }
     }
@@ -639,6 +648,9 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
         },
         [&](const ast::StringExpr&) -> const ast::Type* {
             return ctx.types.get_builtin(TypeKind::String);
+        },
+        [&](const ast::CharExpr&) -> const ast::Type* {
+            return ctx.types.get_builtin(TypeKind::U8);
         },
         [&](const ast::VarExpr& n) -> const ast::Type* {
             return analyze_var(n);

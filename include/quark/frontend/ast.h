@@ -70,6 +70,10 @@ namespace quark::ast {
         std::string value;
     };
 
+    struct CharExpr {
+        uint8_t value;
+    };
+
     struct VarExpr {
         std::string name;
     };
@@ -136,6 +140,7 @@ namespace quark::ast {
         BoolExpr,
         FloatExpr,
         StringExpr,
+        CharExpr,
         VarExpr,
         BinaryExpr,
         AssignExpr,

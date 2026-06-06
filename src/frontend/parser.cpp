@@ -16,11 +16,45 @@ bool is_type_token(TokenType t) {
         case TOKEN_U8: case TOKEN_U16: case TOKEN_U32: case TOKEN_U64:
         case TOKEN_F32: case TOKEN_F64:
         case TOKEN_STR_TYPE:
+        case TOKEN_CHAR_TYPE:
         case TOKEN_STAR:
             return true;
         default:
             return false;
     }
+}
+
+std::string process_escapes(const std::string& raw, SourceLocation loc) {
+    std::string result;
+    result.reserve(raw.size());
+
+    for (size_t i = 0; i < raw.size(); ++i) {
+        if (raw[i] == '\\') {
+            if (i + 1 >= raw.size()) {
+                error(loc, "Invalid escape sequence at end of string");
+                result += '\\';
+                continue;
+            }
+            char c = raw[++i]; // consume the escape char
+            switch (c) {
+                case 'n':  result += '\n'; break;
+                case 't':  result += '\t'; break;
+                case 'r':  result += '\r'; break;
+                case '\\': result += '\\'; break;
+                case '"':  result += '"';  break;
+                case '\'': result += '\''; break;
+                case '0':  result += '\0'; break;
+                default:
+                    error(loc, "Invalid escape sequence: \\" + std::string(1, c));
+                    result += c;
+                    break;
+            }
+        } else {
+            result += raw[i];
+        }
+    }
+
+    return result;
 }
 
 ast::BinaryOp get_op_from_token(TokenType type) {
@@ -475,7 +509,11 @@ ast::Expr* Parser::parse_prefix() {
     }
 
     if (match(TOKEN_STRING)) {
-        return make_expr(ctx, ast::StringExpr{ std::string(previous.text) }, previous.loc);
+        return make_expr(ctx, ast::StringExpr{ process_escapes(std::string(previous.text), previous.loc) }, previous.loc);
+    }
+
+    if (match(TOKEN_CHAR_LITERAL)) {
+        return make_expr(ctx, ast::CharExpr{ previous.char_val }, previous.loc);
     }
 
     if (match(TOKEN_TRUE)) {
@@ -641,6 +679,7 @@ const ast::Type* Parser::parse_type(bool allow_implicit_void, const std::vector<
     if (match(TOKEN_F64))     return ctx.types.get_builtin(TypeKind::F64);
 
     if (match(TOKEN_STR_TYPE)) return ctx.types.get_builtin(TypeKind::String);
+    if (match(TOKEN_CHAR_TYPE)) return ctx.types.get_builtin(TypeKind::U8);
 
     if (match(TOKEN_IDENT)) {
         std::string name(previous.text);

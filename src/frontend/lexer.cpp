@@ -58,6 +58,8 @@ namespace quark::lx {
             return identifier();
         } else if (c == '"') {
             return string();
+        } else if (c == '\'') {
+            return char_literal();
         }
 
         switch (c) {
@@ -196,6 +198,7 @@ namespace quark::lx {
             case str_hash("f32"):  return make_token(TOKEN_F32);
             case str_hash("f64"):  return make_token(TOKEN_F64);
             case str_hash("str"):  return make_token(TOKEN_STR_TYPE);
+            case str_hash("char"): return make_token(TOKEN_CHAR_TYPE);
             case str_hash("as"): return make_token(TOKEN_AS);
             case str_hash("region"): return make_token(TOKEN_REGION);
             case str_hash("true"): return make_token(TOKEN_TRUE);
@@ -205,6 +208,11 @@ namespace quark::lx {
     }
     Token Lexer::string() {
         while (peek() != '"' && !is_at_end()) {
+            if (peek() == '\\') {
+                advance();
+                if (!is_at_end()) advance();
+                continue;
+            }
             if (peek() == '\n') {
                 ctx.srcloc.line++;
                 ctx.srcloc.column = 1;
@@ -221,5 +229,46 @@ namespace quark::lx {
             {},
             {ctx.srcloc.file, token_line, token_column}
         };
+    }
+    Token Lexer::char_literal() {
+        uint8_t value = 0;
+
+        if (is_at_end()) {
+            return make_token(TOKEN_ILLEGAL);
+        }
+
+        char c = advance();
+        if (c == '\'') {
+            return make_token(TOKEN_ILLEGAL); // empty
+        }
+
+        if (c == '\\') {
+            if (is_at_end()) {
+                return make_token(TOKEN_ILLEGAL);
+            }
+            char esc = advance();
+            switch (esc) {
+                case 'n':  value = '\n'; break;
+                case 't':  value = '\t'; break;
+                case 'r':  value = '\r'; break;
+                case '\\': value = '\\'; break;
+                case '\'': value = '\''; break;
+                case '"':  value = '"';  break;
+                case '0':  value = '\0'; break;
+                default:
+                    return make_token(TOKEN_ILLEGAL);
+            }
+        } else {
+            value = static_cast<uint8_t>(c);
+        }
+
+        if (is_at_end() || peek() != '\'') {
+            return make_token(TOKEN_ILLEGAL); // missing close or multi-char
+        }
+        advance(); // consume closing '
+
+        Token tok = make_token(TOKEN_CHAR_LITERAL);
+        tok.char_val = value;
+        return tok;
     }
 }

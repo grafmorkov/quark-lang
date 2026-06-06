@@ -1,0 +1,7 @@
+func main() i32 {
+    s: str = "hello\nworld\t!";
+    s2: str = "quote\"here";
+    s3: str = "null\0end";
+    s4: str = "back\\slash";
+    return 0 as i32;
+}

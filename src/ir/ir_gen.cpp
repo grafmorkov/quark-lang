@@ -608,6 +608,12 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             return dst;
         },
 
+        [&](const ast::CharExpr& node) -> uint32_t {
+            const uint32_t dst = new_reg();
+            emit(IRLoadConst{ dst, node.value });
+            return dst;
+        },
+
         [&](const ast::VarExpr& node) -> uint32_t {
             uint32_t local = 0;
             const ast::Type* type = nullptr;

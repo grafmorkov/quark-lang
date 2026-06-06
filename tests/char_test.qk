@@ -1,0 +1,10 @@
+func main() i32 {
+    c: char = 'a';
+    newline: char = '\n';
+    tab: char = '\t';
+    ret: char = '\r';
+    backslash: char = '\\';
+    quote: char = '\'';
+    nullc: char = '\0';
+    return c as i32;
+}
