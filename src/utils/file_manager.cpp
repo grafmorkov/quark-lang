@@ -1,5 +1,4 @@
 #include "utils/file_manager.h"
-
 #if defined(_WIN32)
     #define NOMINMAX
     #include <windows.h>
@@ -34,7 +33,7 @@ namespace utils::io{
         if (length == 0) {
             return "";
         }
-        return fs::path(path).parent_path();
+        return std::filesystem::path(path).parent_path();
 
 #elif defined(__linux__)
         char path[PATH_MAX];
