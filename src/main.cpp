@@ -34,10 +34,7 @@ int main(int argc, char **argv)
 
         quark::CompilerContext ctx;
 
-        ctx.root_path = std::filesystem::absolute(argv[0]).parent_path();
-        if (!std::filesystem::exists(ctx.root_path / "std" / "io.qk")) {
-            ctx.root_path = std::filesystem::absolute(QUARK_ROOT);
-        }
+        ctx.root_path = utils::io::get_executable_directory();
 
         quark::modules::ModuleManager mm(ctx);
         quark::linker::Linker linker(mm);
