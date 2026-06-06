@@ -2,21 +2,17 @@
 
 set -e
 
-echo "[1/5] Cleaning..."
-rm -rf build
-rm -rf dist
+echo "[1/4] Cleaning..."
+rm -rf build dist
 
-echo "[2/5] Configuring..."
+echo "[2/4] Configuring..."
 cmake -B build -DCMAKE_BUILD_TYPE=Release -G Ninja
 
-echo "[3/5] Building..."
-cmake --build build
+echo "[3/4] Building..."
+ninja -C build
 
-echo "[4/5] Staging..."
+echo "[4/4] Staging..."
 mkdir -p dist
 cp build/quark dist/
-
-#echo "[5/5] Packaging..."
-#tar -czf quark-linux-x86_64.tar.gz -C dist quark
 
 echo "Done."

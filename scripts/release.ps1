@@ -3,10 +3,10 @@ Remove-Item -Recurse -Force build -ErrorAction Ignore
 Remove-Item -Recurse -Force dist -ErrorAction Ignore
 
 Write-Host "[2/4] Configuring..."
-cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
 Write-Host "[3/4] Building..."
-cmake --build build --config Release
+ninja -C build
 
 Write-Host "[4/4] Packaging..."
 New-Item -ItemType Directory -Force dist | Out-Null
