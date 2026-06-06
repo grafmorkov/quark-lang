@@ -233,9 +233,15 @@ ast::VarDecl Parser::parse_var_decl() {
 ast::StructDecl Parser::parse_struct_decl() {
     ast::StructDecl ret;
 
-    Token name = expect(TOKEN_IDENT, "Expected struct name");
-    ret.name = name.text;
-
+    ret.name = std::string(expect(TOKEN_IDENT, "Expected struct name").text);
+    
+    if(match(TOKEN_LT)){
+        do{
+            Token param = expect(TOKEN_IDENT, "Expected type parameter name");
+            ret.type_params.push_back(std::string(param.text));
+        } while(match(TOKEN_COMMA));
+        expect(TOKEN_GT, "Expected '>' after type parameters");
+    }
     expect(TOKEN_LBRACE, "Expected '{' after struct name");
 
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
@@ -248,7 +254,7 @@ ast::StructDecl Parser::parse_struct_decl() {
         field.name = field_name.text;
 
         expect(TOKEN_COLON, "Expected ':' after field name");
-        field.type = parse_type();
+        field.type = parse_type(false, &ret.type_params);
 
         field.default_value = nullptr;
         if (match(TOKEN_EQ)) {
@@ -610,7 +616,7 @@ ast::Expr* Parser::make_cast(ast::Expr* value, const ast::Type* target, ast::Cas
     );
 }
 
-const ast::Type* Parser::parse_type(bool allow_implicit_void) {
+const ast::Type* Parser::parse_type(bool allow_implicit_void, const std::vector<std::string>* type_params) {
 
     if (match(TOKEN_STAR)) {
         const ast::Type* base = parse_type();
@@ -637,7 +643,26 @@ const ast::Type* Parser::parse_type(bool allow_implicit_void) {
     if (match(TOKEN_STR_TYPE)) return ctx.types.get_builtin(TypeKind::String);
 
     if (match(TOKEN_IDENT)) {
-        return ctx.types.get_struct(std::string(previous.text));
+        std::string name(previous.text);
+
+        if (type_params) {
+            for (const auto& p : *type_params) {
+                if (name == p) {
+                    return ctx.types.get_generic_param(std::string(p));
+                }
+            }
+        }
+
+        if (match(TOKEN_LT)) {
+            std::vector<const ast::Type*> args;
+            do {
+                args.push_back(parse_type(false, type_params));
+            } while (match(TOKEN_COMMA));
+            expect(TOKEN_GT, "Expected '>' after type arguments");
+            return ctx.types.get_deferred_generic(name, args);
+        }
+
+        return ctx.types.get_struct(name);
     }
 
     if (allow_implicit_void) {

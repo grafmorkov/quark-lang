@@ -148,6 +148,36 @@ struct Counter {
 
 ---
 
+## Generics
+
+Structs can have type parameters with `<>`:
+
+```
+struct Box<T> {
+    value: T;
+};
+```
+
+When you use a generic struct, pass the type argument in `<>`:
+
+```
+@init mut b: Box<i32>;
+b.value = 42;
+```
+
+Multiple type parameters are also supported:
+
+```
+struct Pair<A, B> {
+    first: A;
+    second: B;
+};
+```
+
+Generics are compiled lazily: the concrete struct (like `Box$i32`) is created only when you first access a field.
+
+---
+
 ## Modules
 
 Use `load` to import a module:
@@ -224,12 +254,16 @@ x = 42;              // error: assignment blocked by guard
 x = 42;              // ok
 ```
 
-The guard expression may also reference an immutable variable with a constant initializer:
+The guard expression can also reference an immutable variable with a constant initializer:
 
 ```
-cond: i32 = 0;
+cond: bool = false;
 @guard(cond) mut x: i32;
 x = 42;              // error: guard(cond) evaluates to false
+
+locked: i32 = 0;
+@guard(locked) mut y: i32;
+y = 7;               // error: guard(locked) is 0
 ```
 
 ### `@private`
@@ -242,7 +276,7 @@ Restricts access to the declaring module. Other modules cannot call or reference
 }
 
 func public_fn() i32 {
-    return helper();     // ok — same module
+    return helper();     // ok - same module
 }
 ```
 

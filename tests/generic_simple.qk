@@ -1,0 +1,9 @@
+struct Box<T> {
+    value: T;
+};
+
+@entry func main() i32 {
+    @init mut b: Box<i32>;
+    b.value = 42;
+    return b.value;
+}

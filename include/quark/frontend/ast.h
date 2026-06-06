@@ -39,7 +39,9 @@ namespace quark::ast {
 
         Struct,
         Pointer,
-
+	
+	Generic,
+	
         Count
     };
 
@@ -47,6 +49,7 @@ namespace quark::ast {
         TypeKind kind;
         std::string struct_name; // struct only
         const Type* pointed; // ptr only
+	std::vector<const Type*> type_args;		     
     };
 
     // Expressions
@@ -197,6 +200,7 @@ namespace quark::ast {
         std::string name;
         std::vector<StructField> fields;
         std::vector<Attribute> attributes;
+	std::vector<std::string> type_params;
     };
 
     struct FuncStmt {

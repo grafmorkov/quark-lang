@@ -1,0 +1,11 @@
+struct Optional<T> {
+    has_value: bool = false;
+    value: T;
+};
+
+@entry func main() i32 {
+    @init mut opt: Optional<i32>;
+    opt.has_value = true;
+    opt.value = 42;
+    return opt.value;
+}

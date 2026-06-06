@@ -164,6 +164,15 @@ const ast::Type* resolve_struct_field(
     }
 
     auto* sym = ctx.symbols.lookup(base_type->struct_name);
+    if (!sym && !base_type->type_args.empty()) {
+        if (ctx.types.try_instantiate(base_type->struct_name, base_type->type_args)) {
+            const auto* fields = ctx.types.get_struct_fields(base_type->struct_name);
+            if (fields) {
+                ctx.symbols.declare_struct_global(base_type->struct_name, *fields);
+                sym = ctx.symbols.lookup(base_type->struct_name);
+            }
+        }
+    }
     if (!sym) {
         crash("Unknown struct: " + base_type->struct_name);
         return nullptr;
@@ -274,6 +283,7 @@ void SemanticAnalyzer::analyze(const std::vector<ast::Stmt*>& stmts, modules::Mo
                     }
                 },
                 [&](const ast::StructDecl& str) {
+                    if (!str.type_params.empty()) return; // generic — no symbol
                     if (!has_attr(str.attributes, "public")) {
                         auto* sym = ctx.symbols.lookup(str.name);
                         if (sym) sym->attributes.push_back({"private", {}});
@@ -312,8 +322,15 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                 }
             },
             [&](const ast::StructDecl& str) {
-                if (!ctx.symbols.declare(str)) {
-                    crash("Struct redeclaration: " + str.name);
+                if (!str.type_params.empty()) {
+                    types::GenericStructDef def;
+                    def.params = str.type_params;
+                    def.fields = str.fields;
+                    ctx.types.register_generic_struct(str.name, def);
+                } else {
+                    if (!ctx.symbols.declare(str)) {
+                        crash("Struct redeclaration: " + str.name);
+                    }
                 }
             },
             [&](const ast::NamespaceStmt& ns) {
@@ -432,6 +449,11 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
 }
 
 void SemanticAnalyzer::analyze_struct_decl(const ast::StructDecl& str) {
+    if (!str.type_params.empty()) {
+        // Generic struct - fields may reference type params;
+        // skip deep analysis, concrete instances are checked at instantiation.
+        return;
+    }
 
     std::unordered_set<std::string> seen;
 
