@@ -9,4 +9,5 @@
 
 namespace utils::io{
     std::string read_file(const std::filesystem::path& filePath);
+    std::filesystem::path get_executable_directory();
 }
