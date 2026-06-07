@@ -10,7 +10,7 @@ The compiler currently targets fasm as a backend.
 ## Example
 
 ```qk
-load "std/io.qk";
+load "std::io";
 
 func main() i32 {
     value: i32 = 10;
