@@ -1,4 +1,4 @@
-load "tests/lib_hidden.qk";
+load "tests::lib_hidden";
 
 @entry func main() i32 {
     return tests::lib_hidden::pub_fn();

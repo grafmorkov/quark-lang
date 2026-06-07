@@ -1,3 +1,5 @@
+module "tests::lib_priv";
+
 @private func secret() i32 {
     return 42;
 }

@@ -1,3 +1,5 @@
+module "tests::lib_hidden";
+
 @hide func internal_fn() i32 {
     return 2;
 }

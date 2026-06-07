@@ -1,4 +1,4 @@
-load "tests/lib_priv.qk";
+load "tests::lib_priv";
 
 @entry func main() i32 {
     return tests::lib_priv::secret();

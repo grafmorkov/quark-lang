@@ -1,3 +1,5 @@
+module "std::io";
+
 extern func print(text: str) void;
 extern func println(text: str) void;
 extern func eprint(text: str) void;

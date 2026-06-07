@@ -260,6 +260,17 @@ void SemanticAnalyzer::analyze(const std::vector<ast::Stmt*>& stmts, modules::Mo
                         }
                     }
                 },
+                [&](ast::ModuleDecl& mod_decl) {
+                    // Module-level attributes (@hide etc.) now live on the decl itself
+                    for (auto it = mod_decl.attributes.begin(); it != mod_decl.attributes.end(); ) {
+                        if (it->name == "hide") {
+                            current_module->attributes.push_back(std::move(*it));
+                            it = mod_decl.attributes.erase(it);
+                        } else {
+                            ++it;
+                        }
+                    }
+                },
                 [&](const auto&) {}
             }, stmt->kind);
         }
@@ -339,6 +350,7 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                     collect_declarations(ns.body->stmts);
                 }
             },
+            [&](const ast::ModuleDecl&) {},
             [&](const auto&) {}
         }, stmt->kind);
     }
@@ -356,6 +368,7 @@ void SemanticAnalyzer::analyze_stmt(const ast::Stmt* stmt) {
         [&](const ast::FuncStmt& n) { analyze_func(n); },
         [&](const ast::IfStmt& n) { analyze_if(n); },
         [&](const ast::WhileStmt& n) { analyze_while(n); },
+        [&](const ast::ModuleDecl&) {},
         [&](const ast::LoadStmt&) {},
         [&](const ast::RegionStmt& n) { analyze_region(n); },
         [&](const auto&) {
