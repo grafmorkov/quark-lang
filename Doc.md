@@ -176,6 +176,32 @@ struct Pair<A, B> {
 
 Generics are compiled lazily: the concrete struct (like `Box$i32`) is created only when you first access a field.
 
+### Generic Functions
+
+Functions can also have type parameters:
+
+```
+func identity<T>(x: T) T {
+    return x;
+}
+```
+
+Pass the type argument when calling:
+
+```
+identity<i32>(42);
+```
+
+Multiple type parameters work too:
+
+```
+func swap<A, B>(a: A, b: B) A {
+    return a;
+}
+```
+
+Generic function bodies are compiled separately for each set of type arguments you actually use (monomorphization). For example, `identity<i32>` and `identity<bool>` become two independent functions.
+
 ---
 
 ## Modules

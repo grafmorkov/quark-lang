@@ -380,15 +380,27 @@ ast::FuncStmt Parser::parse_func(bool is_extern) {
 
     Token name = expect(TOKEN_IDENT, "Expected function name");
     ret.name = name.text;
+
+    if(match(TOKEN_LT)){
+        do{
+            Token param = expect(TOKEN_IDENT, "Expected type parameter name");
+            ret.type_params.push_back(std::string(param.text));
+        } while(match(TOKEN_COMMA));
+        expect(TOKEN_GT, "Expected '>' after type parameters");
+    }
+
     ret.is_extern = is_extern;
     ret.has_body = false;
     ret.body = nullptr;
 
+    const auto* saved_type_params = current_type_params;
+    current_type_params = ret.type_params.empty() ? nullptr : &ret.type_params;
+
     expect(TOKEN_LPAREN, "Expected '('");
-    ret.args = parse_func_args();
+    ret.args = parse_func_args(current_type_params);
     expect(TOKEN_RPAREN, "Expected ')'");
 
-    ret.return_type = parse_type(true);
+    ret.return_type = parse_type(true, current_type_params);
 
     if (check(TOKEN_LBRACE)) {
         ret.body = parse_block();   
@@ -396,6 +408,8 @@ ast::FuncStmt Parser::parse_func(bool is_extern) {
     } else {
         expect(TOKEN_SEMICOLON, "Expected ';' after function declaration");
     }
+
+    current_type_params = saved_type_params;
 
     return ret;
 }
@@ -407,7 +421,7 @@ ast::RegionStmt Parser::parse_region(){
 
     return ret;
 }
-std::vector<ast::FuncArg> Parser::parse_func_args() {
+std::vector<ast::FuncArg> Parser::parse_func_args(const std::vector<std::string>* type_params) {
     std::vector<ast::FuncArg> args;
 
     if (check(TOKEN_RPAREN)) {
@@ -420,7 +434,7 @@ std::vector<ast::FuncArg> Parser::parse_func_args() {
         Token name = expect(TOKEN_IDENT, "Expected argument name");
         expect(TOKEN_COLON, "Expected ':' after argument name");
 
-        const ast::Type* type = parse_type(true);
+        const ast::Type* type = parse_type(true, type_params);
 
         args.push_back({
             std::string(name.text),
@@ -590,6 +604,31 @@ ast::Expr* Parser::parse_prefix() {
 
 ast::Expr* Parser::parse_postfix(ast::Expr* left) {
     while (true) {
+        if (check(TOKEN_LT)) {
+            auto n1 = peek(0);
+            if (n1.type == TOKEN_IDENT || is_type_token(n1.type)) {
+                auto n2 = peek(1);
+                if (n2.type == TOKEN_GT || n2.type == TOKEN_COMMA) {
+                    advance(); // consume <
+                    std::vector<const ast::Type*> type_args;
+                    do {
+                        type_args.push_back(parse_type(false, current_type_params));
+                    } while (match(TOKEN_COMMA));
+                    expect(TOKEN_GT, "Expected '>' after generic type arguments");
+                    expect(TOKEN_LPAREN, "Expected '(' after generic function name");
+                    std::vector<ast::Expr*> args;
+                    if (!check(TOKEN_RPAREN)) {
+                        do {
+                            args.push_back(parse_expr(0));
+                        } while (match(TOKEN_COMMA));
+                    }
+                    expect(TOKEN_RPAREN, "Expected ')'");
+                    left = make_expr(ctx, ast::CallExpr{ left, args, type_args }, left->loc);
+                    continue;
+                }
+            }
+        }
+
         if (match(TOKEN_LPAREN)) {
             std::vector<ast::Expr*> args;
 

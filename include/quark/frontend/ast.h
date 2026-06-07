@@ -105,6 +105,7 @@ namespace quark::ast {
     struct CallExpr {
         Expr* callee;
         std::vector<Expr*> args;
+        std::vector<const Type*> type_args;
     };
 
     struct FieldExpr {
@@ -205,13 +206,14 @@ namespace quark::ast {
         std::string name;
         std::vector<StructField> fields;
         std::vector<Attribute> attributes;
-	std::vector<std::string> type_params;
+	    std::vector<std::string> type_params;
     };
 
     struct FuncStmt {
         std::string name;
         std::vector<FuncArg> args;
         const Type* return_type;
+        std::vector<std::string> type_params;
 
         bool is_extern;
         bool is_forward;

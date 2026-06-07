@@ -1,0 +1,7 @@
+func identity<T>(x: T) T {
+    return x;
+}
+
+@entry func main() i32 {
+    return identity<i32>(42);
+}

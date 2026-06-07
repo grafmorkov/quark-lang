@@ -165,6 +165,45 @@ namespace {
         generic_defs[name] = def;
     }
 
+    void TypeContext::register_generic_func(const std::string& name, const GenericFuncDef& def) {
+        generic_func_defs[name] = def;
+    }
+
+    const GenericFuncDef* TypeContext::get_generic_func(const std::string& name) const {
+        auto it = generic_func_defs.find(name);
+        if (it == generic_func_defs.end())
+            return nullptr;
+        return &it->second;
+    }
+
+    std::string TypeContext::mangle_func_name(const std::string& name, const std::vector<const Type*>& args) const {
+        return mangle_name(name, args);
+    }
+
+    ast::FuncArg TypeContext::substitute_func_arg(const ast::FuncArg& arg, const std::unordered_map<std::string, const Type*>& subst) const {
+        ast::FuncArg result;
+        result.name = arg.name;
+        result.is_mut = arg.is_mut;
+        result.type = substitute_type(arg.type, subst);
+        return result;
+    }
+
+    const Type* TypeContext::substitute_type(const Type* type, const std::unordered_map<std::string, const Type*>& subst) const {
+        if (!type) return nullptr;
+        if (type->kind == TypeKind::Generic) {
+            auto it = subst.find(type->struct_name);
+            if (it != subst.end())
+                return it->second;
+            return type;
+        }
+        if (type->kind == TypeKind::Pointer && type->pointed) {
+            const Type* new_pointed = substitute_type(type->pointed, subst);
+            if (new_pointed != type->pointed)
+                return get_pointer(new_pointed);
+        }
+        return type;
+    }
+
     const std::vector<std::pair<std::string, const Type*>>* TypeContext::get_struct_fields(const std::string& name) const{
         auto it = structs.find(name);
         if (it == structs.end())
@@ -194,7 +233,7 @@ namespace {
         return nullptr;
     }
 
-    const Type* TypeContext::get_pointer(const Type* base) {
+    const Type* TypeContext::get_pointer(const Type* base) const {
         auto it = pointer_cache.find(base);
         if (it != pointer_cache.end())
             return &it->second;

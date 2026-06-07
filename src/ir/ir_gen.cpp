@@ -210,9 +210,92 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
         collect_functions_in_stmts(collect_functions_in_stmts, mod->ast, mod);
     }
 
+    // Register concrete generic function instantiations
+    for (const auto& fn : ctx.generic_instantiations) {
+        register_function(fn.name);
+    }
+
     for (auto* mod : modules) {
         if (!mod) continue;
         gen_module(*mod);
+    }
+
+    // Generate IR for concrete generic instantiations
+    for (const auto& fn : ctx.generic_instantiations) {
+        auto it = function_ids.find(fn.name);
+        if (it == function_ids.end()) {
+            crash("Generic instantiation not registered: " + fn.name);
+        }
+
+        IRFunction* saved_func = current_func;
+        uint32_t saved_next_reg = next_reg;
+        uint32_t saved_next_label = next_label;
+        uint32_t saved_next_local = next_local;
+        bool saved_terminated = current_terminated;
+        auto saved_locals = local_scopes;
+        auto saved_types = type_scopes;
+
+        current_func = &program.functions[it->second];
+        current_func->body.clear();
+        current_func->arg_count = static_cast<uint32_t>(fn.args.size());
+        current_func->local_count = 0;
+        current_func->temp_count = 0;
+        current_func->is_extern = fn.is_extern;
+
+        current_func->is_entry = false;
+
+        next_reg = 0;
+        next_label = 0;
+        next_local = 0;
+        current_terminated = false;
+
+        local_scopes.clear();
+        type_scopes.clear();
+        local_scopes.emplace_back();
+        type_scopes.emplace_back();
+
+        for (const auto& arg : fn.args) {
+            const uint32_t local = new_local();
+            local_scopes.back()[arg.name] = local;
+            type_scopes.back()[arg.name] = arg.type;
+        }
+
+        if (fn.is_extern) {
+            current_func = saved_func;
+            next_reg = saved_next_reg;
+            next_label = saved_next_label;
+            next_local = saved_next_local;
+            current_terminated = saved_terminated;
+            local_scopes = std::move(saved_locals);
+            type_scopes = std::move(saved_types);
+            continue;
+        }
+
+        if (fn.body) {
+            gen_block(*fn.body);
+        }
+
+        if (!current_terminated) {
+            if (fn.return_type && fn.return_type->kind == ast::TypeKind::Void) {
+                const uint32_t zero = new_reg();
+                emit(IRLoadConst{ zero, 0 });
+                emit(IRReturn{ zero });
+                current_terminated = true;
+            } else {
+                crash("Missing return in non-void generic function: " + fn.name);
+            }
+        }
+
+        current_func->local_count = next_local;
+        current_func->temp_count = next_reg;
+
+        current_func = saved_func;
+        next_reg = saved_next_reg;
+        next_label = saved_next_label;
+        next_local = saved_next_local;
+        current_terminated = saved_terminated;
+        local_scopes = std::move(saved_locals);
+        type_scopes = std::move(saved_types);
     }
 }
 void IRGenerator::gen_module(const quark::modules::Module& mod) {
@@ -825,7 +908,14 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             uint32_t func_id = 0;
 
             const auto callee_path = support::flatten_path(node.callee);
-            func_id = resolve_function_id(callee_path);
+
+            // Handle generic function calls: use mangled name
+            if (!node.type_args.empty()) {
+                std::string mangled = ctx.types.mangle_func_name(callee_path.back(), node.type_args);
+                func_id = resolve_function_id({mangled});
+            } else {
+                func_id = resolve_function_id(callee_path);
+            }
 
             const uint32_t dst = new_reg();
             emit(IRCall{

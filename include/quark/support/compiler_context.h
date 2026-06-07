@@ -21,6 +21,9 @@ namespace quark {
 
         std::filesystem::path root_path;
 
+        // Concrete instantiations of generic functions (monomorphization)
+        std::vector<ast::FuncStmt> generic_instantiations;
+
         CompilerContext()
             : symbols(symbol_arena)
         {}

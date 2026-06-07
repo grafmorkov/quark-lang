@@ -1,0 +1,11 @@
+func identity<T>(x: T) T {
+    return x;
+}
+
+func double_identity<T>(x: T) T {
+    return identity<T>(x);
+}
+
+@entry func main() i32 {
+    return identity<i32>(42);
+}

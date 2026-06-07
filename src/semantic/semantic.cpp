@@ -328,8 +328,18 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
 
         std::visit(overloaded{
             [&](const ast::FuncStmt& fn) {
-                if (!ctx.symbols.declare(fn)) {
-                    crash("Function redeclaration: " + fn.name);
+                if (!fn.type_params.empty()) {
+                    types::GenericFuncDef def;
+                    def.params = fn.type_params;
+                    def.args = fn.args;
+                    def.return_type = fn.return_type;
+                    def.body = fn.body;
+                    def.attributes = fn.attributes;
+                    ctx.types.register_generic_func(fn.name, def);
+                } else {
+                    if (!ctx.symbols.declare(fn)) {
+                        crash("Function redeclaration: " + fn.name);
+                    }
                 }
             },
             [&](const ast::StructDecl& str) {
@@ -557,6 +567,11 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
             crash("Function argument missing type: " + arg.name);
             return;
         }
+    }
+
+    // Generic functions: register only, body is analyzed at instantiation
+    if (!func.type_params.empty()) {
+        return;
     }
 
     if (!func.body) {
@@ -897,6 +912,106 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
         return ctx.types.get_pointer(ctx.types.get_builtin(TypeKind::Void));
     }
 
+    std::string func_name = path.back();
+
+    // Check if this is a generic function call
+    const auto* generic_def = ctx.types.get_generic_func(func_name);
+    if (generic_def && !call.type_args.empty()) {
+        // Build substitution map: param name -> concrete type
+        std::unordered_map<std::string, const Type*> subst;
+        if (call.type_args.size() != generic_def->params.size()) {
+            crash("Type argument count mismatch for generic function: " + func_name);
+            return nullptr;
+        }
+        for (size_t i = 0; i < generic_def->params.size(); ++i) {
+            subst[generic_def->params[i]] = call.type_args[i];
+        }
+
+        // Mangle the concrete function name
+        std::string mangled = ctx.types.mangle_func_name(func_name, call.type_args);
+
+        // Check if already instantiated
+        auto* concrete_sym = ctx.symbols.lookup(mangled);
+        if (!concrete_sym) {
+            // Create concrete arg types by substitution
+            std::vector<const Type*> concrete_arg_types;
+            std::vector<ast::FuncArg> concrete_args;
+            for (const auto& arg : generic_def->args) {
+                concrete_arg_types.push_back(ctx.types.substitute_type(arg.type, subst));
+                concrete_args.push_back(ctx.types.substitute_func_arg(arg, subst));
+            }
+            const Type* concrete_return = ctx.types.substitute_type(generic_def->return_type, subst);
+
+            // Create and register the concrete function symbol
+            symb_t::FuncSymbol concrete_fn_sym;
+            concrete_fn_sym.arg_types = concrete_arg_types;
+            concrete_fn_sym.return_type = concrete_return;
+            concrete_fn_sym.is_extern = generic_def->body == nullptr;
+            concrete_fn_sym.is_defined = generic_def->body != nullptr;
+            concrete_fn_sym.is_entry = false;
+
+            ctx.symbols.declare_symbol(mangled, symb_t::Symbol{
+                mangled,
+                concrete_fn_sym,
+                {}
+            });
+
+            // Create a concrete FuncStmt for body analysis and IR gen
+            ast::FuncStmt concrete_fn_stmt;
+            concrete_fn_stmt.name = mangled;
+            concrete_fn_stmt.args = concrete_args;
+            concrete_fn_stmt.return_type = concrete_return;
+            concrete_fn_stmt.type_params = {};
+            concrete_fn_stmt.is_extern = generic_def->body == nullptr;
+            concrete_fn_stmt.is_forward = false;
+            concrete_fn_stmt.is_entry = false;
+            concrete_fn_stmt.has_body = generic_def->body != nullptr;
+            concrete_fn_stmt.body = const_cast<ast::Block*>(generic_def->body);
+            concrete_fn_stmt.attributes = generic_def->attributes;
+
+            // Analyze the concrete function body (type-check with concrete types)
+            if (concrete_fn_stmt.body) {
+                analyze_func(concrete_fn_stmt);
+            }
+
+            // Store for IR generation
+            ctx.generic_instantiations.push_back(std::move(concrete_fn_stmt));
+
+            concrete_sym = ctx.symbols.lookup(mangled);
+        }
+
+        if (!concrete_sym) {
+            crash("Failed to instantiate generic function: " + func_name);
+            return nullptr;
+        }
+
+        auto* concrete_fn = std::get_if<symb_t::FuncSymbol>(&concrete_sym->data);
+        if (!concrete_fn) {
+            crash("Invalid concrete function symbol: " + mangled);
+            return nullptr;
+        }
+
+        // Check argument count and types
+        if (concrete_fn->arg_types.size() != call.args.size()) {
+            crash("Argument count mismatch in generic call: " + func_name);
+            return nullptr;
+        }
+
+        for (size_t i = 0; i < call.args.size(); ++i) {
+            ast::Expr* arg = call.args[i];
+            const ast::Type* arg_type = arg ? analyze_expr(arg) : nullptr;
+            if (!arg_type) return nullptr;
+
+            if (!is_assignable(concrete_fn->arg_types[i], arg_type)) {
+                crash("Argument type mismatch in generic call: " + func_name);
+                return nullptr;
+            }
+        }
+
+        return concrete_fn->return_type;
+    }
+
+    // Non-generic function lookup
     auto* sym = path.size() == 1
         ? ctx.symbols.lookup(path[0])
         : ctx.symbols.lookup_qualified(path);

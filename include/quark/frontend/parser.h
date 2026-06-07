@@ -25,6 +25,8 @@ namespace quark::ps {
 
             std::deque<Token> buffer;
 
+            const std::vector<std::string>* current_type_params = nullptr;
+
         private:
             // core token control
             Token advance();
@@ -47,7 +49,7 @@ namespace quark::ps {
             ast::ReturnStmt parse_return();
             ast::FuncStmt parse_func(bool is_extern);
             ast::RegionStmt parse_region();
-            std::vector<ast::FuncArg> parse_func_args();
+            std::vector<ast::FuncArg> parse_func_args(const std::vector<std::string>* type_params = nullptr);
             
             // expressions(Pratt)
             ast::Expr* parse_expr(int precedence = 0);
