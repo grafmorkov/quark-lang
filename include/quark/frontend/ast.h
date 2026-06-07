@@ -229,6 +229,10 @@ namespace quark::ast {
         std::string name; 
         Block* body; 
     };
+    struct ModuleDecl {
+        std::string name;
+        std::vector<Attribute> attributes;
+    };
     struct LoadStmt {
         std::string module;
     };
@@ -247,6 +251,7 @@ namespace quark::ast {
         FuncStmt,
         NamespaceStmt,
         RegionStmt,
+        ModuleDecl,
         LoadStmt
     >;
 

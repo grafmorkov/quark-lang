@@ -225,8 +225,8 @@ void IRGenerator::gen_module(const quark::modules::Module& mod) {
     for (const auto* stmt : mod.ast) {
         if (!stmt) continue;
 
-        // LoadStmt — это compile-time only, в IR его лучше просто игнорировать.
-        if (std::holds_alternative<ast::LoadStmt>(stmt->kind)) {
+        if (std::holds_alternative<ast::LoadStmt>(stmt->kind) ||
+            std::holds_alternative<ast::ModuleDecl>(stmt->kind)) {
             continue;
         }
 

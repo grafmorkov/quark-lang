@@ -1,4 +1,4 @@
-load "std/io.qk";
+load "std::io";
 
 func main() i32 {
     // GENERIC_WRITE = 1073741824, CREATE_ALWAYS = 2

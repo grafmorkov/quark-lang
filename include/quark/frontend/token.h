@@ -29,7 +29,8 @@ namespace quark{
         TOKEN_AT, // @
         TOKEN_DOT, // .
         TOKEN_NAMESPACE,
-        TOKEN_LOAD, 
+        TOKEN_LOAD,
+        TOKEN_MODULE,
         TOKEN_EXTERN,
         TOKEN_AS,
         TOKEN_REGION,

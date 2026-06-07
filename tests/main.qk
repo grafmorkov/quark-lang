@@ -1,7 +1,5 @@
-load "std/io.qk";
+load "std::io";
 
-struct Test{
-    mut v: i32 = 10;
-};
-func main(){
+func main() {
+    std::io::print("Hello World!\n");
 }

@@ -211,6 +211,12 @@ ast::Stmt Parser::parse_statement() {
         return ast::Stmt{ ast::NamespaceStmt{ parse_namespace_stmt() } };
     }
 
+    if (match(TOKEN_MODULE)) {
+        auto decl = parse_module_decl();
+        decl.attributes = std::move(attrs);
+        return ast::Stmt{ std::move(decl) };
+    }
+
     if (match(TOKEN_LOAD)) {
         return ast::Stmt{ ast::LoadStmt{ parse_load() } };
     }
@@ -452,6 +458,14 @@ ast::Block* Parser::parse_block() {
 
     return block;
 }
+ast::ModuleDecl Parser::parse_module_decl() {
+    ast::ModuleDecl ret;
+    std::string_view raw = expect(TokenType::TOKEN_STRING, "Expected module name").text;
+    ret.name = raw;
+    expect(TOKEN_SEMICOLON, "Expected ';' after module");
+    return ret;
+}
+
 ast::LoadStmt Parser::parse_load() {
     ast::LoadStmt ret;
 

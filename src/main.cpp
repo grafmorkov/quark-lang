@@ -34,7 +34,14 @@ int main(int argc, char **argv)
 
         quark::CompilerContext ctx;
 
-        ctx.root_path = utils::io::get_executable_directory();
+        {
+            ctx.root_path = utils::io::get_executable_directory();
+            // If binary is in build/ subdirectory, use parent (source root)
+            auto parent = ctx.root_path.parent_path();
+            if (std::filesystem::exists(parent / "std" / "io.qk")) {
+                ctx.root_path = parent;
+            }
+        }
 
         quark::modules::ModuleManager mm(ctx);
         quark::linker::Linker linker(mm);

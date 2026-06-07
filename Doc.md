@@ -183,7 +183,7 @@ Generics are compiled lazily: the concrete struct (like `Box$i32`) is created on
 Use `load` to import a module:
 
 ```
-load "std/io.qk";
+load "std::io";
 ```
 
 Functions in other files are accessed via namespace:
@@ -318,15 +318,19 @@ region r {
 ```alloc(T, size);``` or ```alloc(size)``` for void; 
 However, you can allocate memory in the more familiar way via the "std/arena.qk" library:
 ```
-load "std/arena.qk";
-p: *void = std::arena::_create(4096);
-std::arena::_destroy(p);
+load "std::arena";
+
+func main() i32 {
+    p: *void = std::arena::_create(4096);
+    std::arena::_destroy(p);
+    return 0;
+}
 ```
 ---
 
 ## Standard Library 
 
-### std/io.qk
+### std::io
 
 | Function         | Description                      |
 |------------------|----------------------------------|
@@ -345,7 +349,7 @@ std::arena::_destroy(p);
 | strlen(s)        | get string length                |
 | exit(code)       | exit process                     |
 
-### std/arena.qk
+### std::arena
 | Function           | Description                      |
 |--------------------|----------------------------------|
 | _create(size: u64) | create new arena                 |

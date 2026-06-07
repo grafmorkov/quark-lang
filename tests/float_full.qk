@@ -1,4 +1,4 @@
-load "std/io.qk";
+load "std::io";
 
 func main() i32 {
     a: f64 = 3.14;
