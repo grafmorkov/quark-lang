@@ -1,7 +1,7 @@
 #include "quark/semantic/semantic.h"
 #include "quark/support/compiler_context.h"
 #include "quark/support/symbol_path.h"
-#include "quark/semantic/attributes.h"
+#include "quark/attributes/attributes.h"
 
 #include "utils/logger.h"
 
@@ -831,11 +831,6 @@ const ast::Type* SemanticAnalyzer::analyze_assign(const ast::AssignExpr& asg) {
 
     if (const auto* root = get_root_var(asg.target)) {
         if (auto* sym = ctx.symbols.lookup(root->name)) {
-            if (auto* vs = std::get_if<symb_t::VarSymbol>(&sym->data)) {
-                if (vs->guard_blocked) {
-                    crash("Assignment to guarded variable '" + root->name + "' is blocked by guard condition");
-                }
-            }
             mark_symbol_initialized(*sym);
         }
     }

@@ -238,7 +238,7 @@ Supported attributes:
 |------------|--------------------------------------|------|------------------------------------------------------|
 | `@entry`   | function                             | 0    | Mark function as program entry point                 |
 | `@init`    | variable                             | 0    | Suppress uninitialized variable check                |
-| `@guard`   | variable                             | 1    | Block assignment if guard condition is false         |
+| `@guard`   | variable                             | 1    | Runtime check: validate condition before each read   |
 | `@public`  | function / variable / field / struct | 0    | Make symbol visible outside the module               |
 | `@private` | function / variable / field / struct | 0    | Hide symbol from other modules                       |
 | `@hide`    | module                               | 0    | Make all module symbols private by default           |
@@ -268,29 +268,36 @@ Without `@init`, an immutable variable without a value is a compile error.
 
 ### `@guard`
 
-Protects a variable from being assigned when the guard condition is false. The guard expression is evaluated at compile time; a constant `0` or `false` blocks all assignments.
+Inserts a runtime check before every read of the variable. If the guard condition is false, the program prints an error and exits.
+
+The guard condition is evaluated at runtime - it does not need to be a constant.
 
 ```
-@guard(0) mut x: i32;
-x = 42;              // error: assignment blocked by guard
+@guard(count > 0)
+mut value: i32;
+
+value = 10;          // ok, guards do not block writes
+
+func work() {
+    std::io::print(value as str); // <- __guard_check("value", count > 0) runs first
+}
 ```
 
-```
-@guard(1) mut x: i32;
-x = 42;              // ok
-```
-
-The guard expression can also reference an immutable variable with a constant initializer:
+The check is performed by `std::attrs::__guard_check`, defined in `std/guard.qk`:
 
 ```
-cond: bool = false;
-@guard(cond) mut x: i32;
-x = 42;              // error: guard(cond) evaluates to false
+module "std::attrs";
+load "std::io";
 
-locked: i32 = 0;
-@guard(locked) mut y: i32;
-y = 7;               // error: guard(locked) is 0
+func __guard_check(var_name: str, cond: bool){
+    if(cond == false){
+        std::io::eprint("[runtime_error]: Guard failed to: " + var_name);
+        std::io::exit(1);
+    }
+}
 ```
+
+The `std::attrs` module is loaded automatically by the compiler — you do not need to `load "std::attrs"` yourself.
 
 ### `@private`
 

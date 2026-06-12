@@ -3,6 +3,7 @@
 #include <variant>
 
 #include "quark/ir/ir_gen.h"
+#include "quark/attributes/attributes.h"
 #include "quark/support/symbol_path.h"
 #include "utils/logger.h"
 
@@ -103,6 +104,49 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
 
 
 } // namespace
+
+void IRGenerator::emit_attr_lowering(const std::string& var_name) {
+    auto* sym = ctx.symbols.lookup(var_name);
+    if (!sym) return;
+
+    for (const auto& attr : sym->attributes) {
+        auto it = attrs::attributes.find(attr.name);
+        if (it == attrs::attributes.end()) continue;
+        auto* info = &it->second;
+        if (!info || info->lowering_fn.empty()) continue;
+
+        auto fn_it = function_ids.find(info->lowering_fn);
+        if (fn_it == function_ids.end()) continue;
+
+        std::vector<uint32_t> call_args;
+        for (const auto& la : info->lowering_args) {
+            switch (la.source) {
+                case attrs::LoweringArg::Source::VarName: {
+                    Reg r = new_reg();
+                    uint32_t sid = program.strings.size();
+                    program.strings.push_back({sid, var_name});
+                    emit(IRLoadString{r, sid});
+                    call_args.push_back(r);
+                    break;
+                }
+                case attrs::LoweringArg::Source::AttrExpr: {
+                    if (la.attr_arg_index < attr.args.size() && attr.args[la.attr_arg_index]) {
+                        Reg r = gen_expr(*attr.args[la.attr_arg_index]);
+                        call_args.push_back(r);
+                    }
+                    break;
+                }
+                case attrs::LoweringArg::Source::Literal:
+                    break;
+            }
+        }
+
+        if (call_args.size() == info->lowering_args.size()) {
+            Reg dst = new_reg();
+            emit(IRCall{dst, fn_it->second, call_args});
+        }
+    }
+}
 
 IRGenerator::IRGenerator(CompilerContext& c)
     : ctx(c) {}
@@ -702,6 +746,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             const ast::Type* type = nullptr;
 
             if (lookup_local(node.name, local, type)) {
+                emit_attr_lowering(node.name);
                 (void)type;
                 const uint32_t dst = new_reg();
                 emit(IRLoadLocal{ dst, local });

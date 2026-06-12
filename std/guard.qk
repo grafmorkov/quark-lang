@@ -1,0 +1,9 @@
+module "std::attrs";
+load "std::io";
+
+func __guard_check(var_name: str, cond: bool){
+    if(cond == false){
+        std::io::eprint("[runtime_error]: Guard failed to: " + var_name);
+        std::io::exit(1);
+    }
+}

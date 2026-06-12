@@ -57,6 +57,8 @@ struct IRGenerator {
 
     void gen_function(const ast::FuncStmt& fn);
 
+    void emit_attr_lowering(const std::string& var_name);
+
     // Statements
 
     void gen_stmt(const ast::Stmt& stmt);

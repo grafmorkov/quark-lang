@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "quark/support/compiler_context.h"
-#include "quark/semantic/attributes.h"
+#include "quark/attributes/attributes.h"
 #include "quark/modules/module.h"
 
 namespace quark::sm {

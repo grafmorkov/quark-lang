@@ -47,6 +47,20 @@ int main(int argc, char **argv)
         quark::linker::Linker linker(mm);
 
         auto* entry = mm.load_entry(opts.input_file);
+
+        // Load std::attrs for runtime attribute lowering (e.g. @guard)
+        {
+            auto guard_path = ctx.root_path / "std" / "guard.qk";
+            if (std::filesystem::exists(guard_path)) {
+                auto* guard_mod = mm.load_module(guard_path);
+                auto io_path = ctx.root_path / "std" / "io.qk";
+                if (std::filesystem::exists(io_path)) {
+                    auto* io_mod = mm.load_module(io_path);
+                    guard_mod->dependencies.push_back(io_mod);
+                }
+            }
+        }
+
         mm.build_graph(entry);
 
         // Semantic analysis
