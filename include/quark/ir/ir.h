@@ -117,6 +117,11 @@ struct IRRegionEnd {
     Local cap_local;
 };
 
+struct IRAlloca {
+    Reg dst;
+    uint32_t size;
+};
+
 struct IRLoadElement {
     Reg dst;
     Reg base;
@@ -150,7 +155,8 @@ using IRInst = std::variant<
     IRStoreElement,
     IRRegionBegin,
     IRRegionAlloc,
-    IRRegionEnd
+    IRRegionEnd,
+    IRAlloca
 >;
 
 struct IRFunction {
@@ -160,6 +166,7 @@ struct IRFunction {
     uint32_t arg_count = 0;
     uint32_t local_count = 0;
     uint32_t temp_count = 0;
+    uint32_t extra_stack = 0;
 
     std::vector<IRInst> body;
 

@@ -3,7 +3,9 @@ load "std::io";
 
 func __guard_check(var_name: str, cond: bool){
     if(cond == false){
-        std::io::eprint("[runtime_error]: Guard failed to: " + var_name);
+        std::io::eprint("[runtime_error]: Guard failed to: ");
+        std::io::eprint(var_name);
+        std::io::eprint("\n");
         std::io::exit(1);
     }
 }

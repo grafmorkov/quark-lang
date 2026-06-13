@@ -189,10 +189,12 @@ namespace quark::symb_t {
 
         sym.field_names.reserve(str.fields.size());
         sym.field_types.reserve(str.fields.size());
+        sym.field_attributes.reserve(str.fields.size());
 
         for (const auto& field : str.fields) {
             sym.field_names.push_back(field.name);
             sym.field_types.push_back(field.type);
+            sym.field_attributes.push_back(field.attributes);
         }
 
         return declare_symbol(str.name, Symbol{
@@ -205,11 +207,13 @@ namespace quark::symb_t {
     bool SymbolTable::declare_struct(
         const std::string& name,
         const std::vector<std::pair<std::string, const ast::Type*>>& fields,
-        const std::vector<ast::Attribute>& attrs
+        const std::vector<ast::Attribute>& attrs,
+        const std::vector<std::vector<ast::Attribute>>& field_attrs
     ) {
         StructSymbol sym;
         sym.field_names.reserve(fields.size());
         sym.field_types.reserve(fields.size());
+        sym.field_attributes = field_attrs;
         for (const auto& [fname, ftype] : fields) {
             sym.field_names.push_back(fname);
             sym.field_types.push_back(ftype);
@@ -220,11 +224,13 @@ namespace quark::symb_t {
     bool SymbolTable::declare_struct_global(
         const std::string& name,
         const std::vector<std::pair<std::string, const ast::Type*>>& fields,
-        const std::vector<ast::Attribute>& attrs
+        const std::vector<ast::Attribute>& attrs,
+        const std::vector<std::vector<ast::Attribute>>& field_attrs
     ) {
         StructSymbol sym;
         sym.field_names.reserve(fields.size());
         sym.field_types.reserve(fields.size());
+        sym.field_attributes = field_attrs;
         for (const auto& [fname, ftype] : fields) {
             sym.field_names.push_back(fname);
             sym.field_types.push_back(ftype);

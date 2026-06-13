@@ -37,6 +37,9 @@ struct IRGenerator {
     // variable type scopes
     std::vector<std::unordered_map<std::string, const ast::Type*>> type_scopes;
 
+    // local variable attributes (for @guard etc.)
+    std::unordered_map<std::string, std::vector<ast::Attribute>> local_var_attrs;
+
     // namespace nesting
     std::vector<std::string> namespace_stack;
 
@@ -58,6 +61,7 @@ struct IRGenerator {
     void gen_function(const ast::FuncStmt& fn);
 
     void emit_attr_lowering(const std::string& var_name);
+    void emit_attr_lowering(const std::string& var_name, const std::vector<ast::Attribute>& attrs);
 
     // Statements
 

@@ -35,7 +35,8 @@ public:
     bool try_instantiate(const std::string& mangled, const std::vector<const Type*>& type_args);
 
     void register_struct(const std::string& name, 
-        const std::vector<std::pair<std::string, const Type*>>& fields);
+        const std::vector<std::pair<std::string, const Type*>>& fields,
+        const std::vector<std::vector<ast::Attribute>>& field_attrs = {});
 
     void register_generic_struct(const std::string& name, const GenericStructDef& def);
 
@@ -47,6 +48,8 @@ public:
     std::string mangle_func_name(const std::string& name, const std::vector<const Type*>& args) const;
 
     const std::vector<std::pair<std::string, const Type*>>* get_struct_fields(const std::string& name) const;
+
+    const std::vector<std::vector<ast::Attribute>>* get_struct_field_attrs(const std::string& name) const;
 
     int get_field_index(const std::string& struct_name, const std::string& field) const;
 
@@ -64,6 +67,8 @@ private:
         std::string,
         std::vector<std::pair<std::string, const Type*>>
     > structs;
+
+    std::unordered_map<std::string, std::vector<std::vector<ast::Attribute>>> struct_field_attrs_map;
 
     std::unordered_map<std::string, GenericStructDef> generic_defs;
     std::unordered_map<std::string, GenericFuncDef> generic_func_defs;

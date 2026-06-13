@@ -168,7 +168,11 @@ const ast::Type* resolve_struct_field(
         if (ctx.types.try_instantiate(base_type->struct_name, base_type->type_args)) {
             const auto* fields = ctx.types.get_struct_fields(base_type->struct_name);
             if (fields) {
-                ctx.symbols.declare_struct_global(base_type->struct_name, *fields);
+                const auto* field_attrs = ctx.types.get_struct_field_attrs(base_type->struct_name);
+                ctx.symbols.declare_struct_global(
+                    base_type->struct_name, *fields, {},
+                    field_attrs ? *field_attrs : std::vector<std::vector<ast::Attribute>>{}
+                );
                 sym = ctx.symbols.lookup(base_type->struct_name);
             }
         }
@@ -472,9 +476,6 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
             auto guard_val = try_eval_const(attr.args[0]);
             if (guard_val && *guard_val == 0) {
                 auto* sym = ctx.symbols.lookup(var.name);
-                if (sym && std::holds_alternative<symb_t::VarSymbol>(sym->data)) {
-                    std::get<symb_t::VarSymbol>(sym->data).guard_blocked = true;
-                }
             }
         }
     }
@@ -655,8 +656,8 @@ void SemanticAnalyzer::analyze_attribute(const ast::Attribute& attr, const attrs
                                   + "Got: '" + std::to_string(attr.args.size()) );
 	}
 	else if(attr.args.size() < it->min_args){
-		crash("Expected '" + std::to_string(it->min_args) 
-				+ "' count of args for '@" + attr.name + "' attribute." 
+		crash("Expected '" + std::to_string(it->min_args)
+				+ "' count of args for '@" + attr.name + "' attribute."
 				+ "Got: '" + std::to_string(attr.args.size()) );
 	}
 }

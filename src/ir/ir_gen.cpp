@@ -13,7 +13,7 @@ namespace quark::codegen {
 
 namespace {
 
-int type_size(const ast::Type* t) {
+int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
     if (!t) return 0;
     switch (t->kind) {
         case ast::TypeKind::Bool:
@@ -28,6 +28,18 @@ int type_size(const ast::Type* t) {
         case ast::TypeKind::I64:
         case ast::TypeKind::U64:  return 8;
         case ast::TypeKind::Pointer: return 8;
+        case ast::TypeKind::Struct: {
+            if (!ctx) return 0;
+            auto* sym = ctx->symbols.lookup(t->struct_name);
+            if (!sym) return 0;
+            auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
+            if (!ss) return 0;
+            int total = 0;
+            for (const auto* ft : ss->field_types) {
+                total += type_size(ft, ctx);
+            }
+            return total;
+        }
         default: return 0;
     }
 }
@@ -106,10 +118,20 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
 } // namespace
 
 void IRGenerator::emit_attr_lowering(const std::string& var_name) {
+    // Check local variable attributes first (e.g. @guard on local vars)
+    auto local_it = local_var_attrs.find(var_name);
+    if (local_it != local_var_attrs.end()) {
+        emit_attr_lowering(var_name, local_it->second);
+        return;
+    }
+    // Then check global symbol table
     auto* sym = ctx.symbols.lookup(var_name);
     if (!sym) return;
+    emit_attr_lowering(var_name, sym->attributes);
+}
 
-    for (const auto& attr : sym->attributes) {
+void IRGenerator::emit_attr_lowering(const std::string& var_name, const std::vector<ast::Attribute>& attrs) {
+    for (const auto& attr : attrs) {
         auto it = attrs::attributes.find(attr.name);
         if (it == attrs::attributes.end()) continue;
         auto* info = &it->second;
@@ -194,6 +216,7 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
     namespace_stack.clear();
     local_scopes.clear();
     type_scopes.clear();
+    local_var_attrs.clear();
 
     next_reg = 0;
     next_label = 0;
@@ -498,8 +521,17 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
             const uint32_t local = new_local();
             local_scopes.back()[node.name] = local;
             type_scopes.back()[node.name] = node.type;
+            local_var_attrs[node.name] = node.attributes;
 
-            if (node.value) {
+            if (node.type->kind == ast::TypeKind::Struct) {
+                int sz = type_size(node.type, &ctx);
+                if (sz > 0) {
+                    Reg ptr = new_reg();
+                    emit(IRAlloca{ptr, static_cast<uint32_t>(sz)});
+                    emit(IRStoreLocal{local, ptr});
+                    if (current_func) current_func->extra_stack += sz;
+                }
+            } else if (node.value) {
                 const uint32_t value = gen_expr(*node.value);
                 emit(IRStoreLocal{ local, value });
             }
@@ -816,7 +848,18 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             }
 
             if (const auto* field = std::get_if<ast::FieldExpr>(&node.target->kind)) {
-                const uint32_t base = gen_expr(*field->base);
+                const uint32_t base = [&]() -> uint32_t {
+                    if (const auto* bv = std::get_if<ast::VarExpr>(&field->base->kind)) {
+                        uint32_t loc = 0;
+                        const ast::Type* t = nullptr;
+                        if (lookup_local(bv->name, loc, t)) {
+                            const uint32_t d = new_reg();
+                            emit(IRLoadLocal{ d, loc });
+                            return d;
+                        }
+                    }
+                    return gen_expr(*field->base);
+                }();
                 const ast::Type* base_type = nullptr;
 
                 if (const auto* base_var = std::get_if<ast::VarExpr>(&field->base->kind)) {
@@ -888,6 +931,22 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
             const auto [offset, field_type] = resolve_struct_field(ctx, base_type, node.field);
             (void)field_type;
+
+            // Emit attribute lowering for struct field reads (e.g. @guard)
+            if (base_type && base_type->kind == ast::TypeKind::Struct) {
+                auto* sym = ctx.symbols.lookup(base_type->struct_name);
+                if (sym) {
+                    auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
+                    if (ss) {
+                        for (size_t i = 0; i < ss->field_names.size(); ++i) {
+                            if (ss->field_names[i] == node.field && i < ss->field_attributes.size()) {
+                                emit_attr_lowering(node.field, ss->field_attributes[i]);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
 
             const uint32_t dst = new_reg();
             emit(IRGetField{

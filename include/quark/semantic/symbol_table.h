@@ -1,7 +1,6 @@
 #pragma once
 
 #include <unordered_map>
-#include <memory>
 #include <variant>
 #include <vector>
 #include <string>
@@ -15,7 +14,6 @@ namespace quark::symb_t {
         const ast::Type* type;
         bool is_mut;
         bool is_initialized;
-        bool guard_blocked = false;
         std::optional<int64_t> const_value;
     };
 
@@ -27,6 +25,7 @@ namespace quark::symb_t {
     struct StructSymbol {
         std::vector<std::string> field_names;
         std::vector<const ast::Type*> field_types;
+        std::vector<std::vector<ast::Attribute>> field_attributes;
     };
     struct FuncSymbol {
         std::vector<const ast::Type*> arg_types;
@@ -76,10 +75,12 @@ namespace quark::symb_t {
         bool declare(const ast::StructDecl& str);
         bool declare_struct(const std::string& name,
             const std::vector<std::pair<std::string, const ast::Type*>>& fields,
-            const std::vector<ast::Attribute>& attrs = {});
+            const std::vector<ast::Attribute>& attrs = {},
+            const std::vector<std::vector<ast::Attribute>>& field_attrs = {});
         bool declare_struct_global(const std::string& name,
             const std::vector<std::pair<std::string, const ast::Type*>>& fields,
-            const std::vector<ast::Attribute>& attrs = {});
+            const std::vector<ast::Attribute>& attrs = {},
+            const std::vector<std::vector<ast::Attribute>>& field_attrs = {});
         bool declare(const ast::RegionStmt& reg);
 
         bool declare_symbol(const std::string& name, Symbol symbol);

@@ -95,6 +95,7 @@ namespace {
 
         // Create concrete fields by substituting type params
         std::vector<std::pair<std::string, const Type*>> concrete_fields;
+        std::vector<std::vector<ast::Attribute>> concrete_field_attrs;
         for (const auto& f : def_it->second.fields) {
             const Type* field_type = f.type;
             if (field_type && field_type->kind == TypeKind::Generic) {
@@ -104,9 +105,10 @@ namespace {
                 }
             }
             concrete_fields.emplace_back(f.name, field_type);
+            concrete_field_attrs.push_back(f.attributes);
         }
 
-        register_struct(mangled, concrete_fields);
+        register_struct(mangled, concrete_fields, concrete_field_attrs);
         mangled_to_base[mangled] = name;
 
         return get_struct(mangled);
@@ -156,9 +158,13 @@ namespace {
 
     void TypeContext::register_struct(
         const std::string& name,
-        const std::vector<std::pair<std::string, const Type*>>& fields
+        const std::vector<std::pair<std::string, const Type*>>& fields,
+        const std::vector<std::vector<ast::Attribute>>& field_attrs
     ) {
         structs[name] = fields;
+        if (!field_attrs.empty()) {
+            struct_field_attrs_map[name] = field_attrs;
+        }
     }
 
     void TypeContext::register_generic_struct(const std::string& name, const GenericStructDef& def) {
@@ -202,6 +208,13 @@ namespace {
                 return get_pointer(new_pointed);
         }
         return type;
+    }
+
+    const std::vector<std::vector<ast::Attribute>>* TypeContext::get_struct_field_attrs(const std::string& name) const {
+        auto it = struct_field_attrs_map.find(name);
+        if (it == struct_field_attrs_map.end())
+            return nullptr;
+        return &it->second;
     }
 
     const std::vector<std::pair<std::string, const Type*>>* TypeContext::get_struct_fields(const std::string& name) const{

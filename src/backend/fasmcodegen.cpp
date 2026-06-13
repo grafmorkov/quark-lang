@@ -524,6 +524,15 @@ namespace {
             [&](const IRRegionEnd& x) {
                 emit_region_end(x, fn);
             },
+            [&](const IRAlloca& x) {
+                // Compute address: rbp - base_offset - extra_stack_offset
+                // extra_stack_offset = fn.extra_stack (total extra) - x.size (remaining after this alloc)
+                const std::size_t base = (static_cast<std::size_t>(fn.local_count) +
+                                          static_cast<std::size_t>(fn.temp_count)) * 8u;
+                const std::size_t offset = base + static_cast<std::size_t>(fn.extra_stack) - static_cast<std::size_t>(x.size);
+                emit_line("    lea rax, [rbp - " + std::to_string(offset) + "]");
+                emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
+            },
         }, inst);
     }
 
@@ -611,7 +620,8 @@ namespace {
             const std::size_t stack_size =
                 align16(
                     (static_cast<std::size_t>(fn.local_count) +
-                     static_cast<std::size_t>(fn.temp_count)) * 8u
+                     static_cast<std::size_t>(fn.temp_count)) * 8u +
+                     static_cast<std::size_t>(fn.extra_stack)
                 );
 
             emit_line(function_name(fn) + ":");
