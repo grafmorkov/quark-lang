@@ -12,7 +12,7 @@ The compiler currently targets fasm as a backend.
 ```qk
 load "std::io";
 
-func main() i32 {
+@entry func main() {
     value: i32 = 10;
     mut result: i32 = value + 2;
 

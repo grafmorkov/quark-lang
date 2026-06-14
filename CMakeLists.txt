@@ -33,7 +33,7 @@ target_include_directories(libquark
         ${PROJECT_SOURCE_DIR}/third_party/
 )
 target_compile_definitions(libquark PUBLIC
-    QUARK_ROOT="${CMAKE_SOURCE_DIR}"
+    QUARK_ROOT="${PROJECT_SOURCE_DIR}"
 )
 
 # Executable file Quark (main.cpp)
