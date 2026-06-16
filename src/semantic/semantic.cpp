@@ -1,4 +1,5 @@
 #include "quark/semantic/semantic.h"
+#include "quark/semantic/symbol_table.h"
 #include "quark/support/compiler_context.h"
 #include "quark/support/symbol_path.h"
 #include "quark/attributes/attributes.h"
@@ -408,6 +409,20 @@ std::optional<int64_t> SemanticAnalyzer::try_eval_const(const ast::Expr* expr) {
             return std::get<symb_t::VarSymbol>(sym->data).const_value;
         }
     }
+    if (const auto* be = std::get_if<ast::BinaryExpr>(&expr->kind)) {
+        auto lhs = try_eval_const(be->lhs);
+        auto rhs = try_eval_const(be->rhs);
+        if (!lhs || !rhs) return std::nullopt;
+        switch (be->op) {
+            case ast::BinaryOp::Eq:  return *lhs == *rhs ? 1 : 0;
+            case ast::BinaryOp::Neq: return *lhs != *rhs ? 1 : 0;
+            case ast::BinaryOp::Lt:  return *lhs <  *rhs ? 1 : 0;
+            case ast::BinaryOp::Lte: return *lhs <= *rhs ? 1 : 0;
+            case ast::BinaryOp::Gt:  return *lhs >  *rhs ? 1 : 0;
+            case ast::BinaryOp::Gte: return *lhs >= *rhs ? 1 : 0;
+            default: return std::nullopt;
+        }
+    }
     return std::nullopt;
 }
 
@@ -422,8 +437,16 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
     }
 
     bool has_init = false;
+    bool has_guard = false;
     for (const auto& attr : var.attributes) {
-        if (attr.name == "init") has_init = true;
+        if (attr.name == "init"){
+            has_init = true;
+        }
+        else if (attr.name == "guard" && !attr.args.empty()) {
+            auto* guard_type = analyze_expr(attr.args[0]);
+            if (!guard_type) continue;
+            has_guard = true;
+        }
     }
 
     if (var.value) {
@@ -447,6 +470,19 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
         ctx.symbols.mark_initialized(var.name);
     }
 
+    if (has_guard) {
+        auto* sym = ctx.symbols.lookup(var.name);
+        if (sym && std::holds_alternative<symb_t::VarSymbol>(sym->data)) {
+            auto& vs = std::get<symb_t::VarSymbol>(sym->data);
+            for (const auto& attr : var.attributes) {
+                if (attr.name == "guard" && !attr.args.empty()) {
+                    vs.guard_cond = attr.args[0];
+                    break;
+                }
+            }
+        }
+    }
+
     if (var.value) {
         if (const auto* ie = std::get_if<ast::IntExpr>(&var.value->kind)) {
             auto* sym = ctx.symbols.lookup(var.name);
@@ -465,17 +501,6 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
             if (sym && std::holds_alternative<symb_t::VarSymbol>(sym->data)) {
                 auto& vs = std::get<symb_t::VarSymbol>(sym->data);
                 vs.const_value = ce->value;
-            }
-        }
-    }
-
-    for (const auto& attr : var.attributes) {
-        if (attr.name == "guard" && !attr.args.empty()) {
-            const ast::Type* guard_type = analyze_expr(attr.args[0]);
-            if (!guard_type) continue;
-            auto guard_val = try_eval_const(attr.args[0]);
-            if (guard_val && *guard_val == 0) {
-                auto* sym = ctx.symbols.lookup(var.name);
             }
         }
     }
@@ -843,6 +868,28 @@ const ast::Type* SemanticAnalyzer::analyze_field(const ast::FieldExpr& node) {
     const ast::Type* base = analyze_expr(node.base);
     if (!base) return nullptr;
 
+    // Compile-time guard check for struct fields with @guard
+    if (base->kind == ast::TypeKind::Struct) {
+        auto* s_sym = ctx.symbols.lookup(base->struct_name);
+        if (s_sym) {
+            auto* ss = std::get_if<symb_t::StructSymbol>(&s_sym->data);
+            if (ss) {
+                for (size_t i = 0; i < ss->field_names.size(); ++i) {
+                    if (ss->field_names[i] != node.field) continue;
+                    for (const auto& fa : ss->field_attributes[i]) {
+                        if (fa.name == "guard" && !fa.args.empty()) {
+                            auto val = try_eval_const(fa.args[0]);
+                            if (val && *val == 0) {
+                                crash("guard failed for field '" + node.field + "'");
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     return resolve_struct_field(ctx, base, node.field);
 }
 
@@ -858,6 +905,43 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b) {
     }
 
     return l;
+}
+
+void SemanticAnalyzer::check_arg_guard(const ast::Expr* arg, const std::string& call_name) {
+    if (!arg) return;
+
+    if (const auto* ve = std::get_if<ast::VarExpr>(&arg->kind)) {
+        auto* sym = ctx.symbols.lookup(ve->name);
+        if (!sym) return;
+        auto* vs = std::get_if<symb_t::VarSymbol>(&sym->data);
+        if (!vs || !vs->guard_cond) return;
+        auto val = try_eval_const(vs->guard_cond);
+        if (val && *val == 0) {
+            crash("guard failed for '" + ve->name + "' in call to '" + call_name + "'");
+        }
+        return;
+    }
+
+    if (const auto* fe = std::get_if<ast::FieldExpr>(&arg->kind)) {
+        const ast::Type* base_type = fe->base ? fe->base->resolved_type : nullptr;
+        if (!base_type || base_type->kind != ast::TypeKind::Struct) return;
+        auto* s_sym = ctx.symbols.lookup(base_type->struct_name);
+        if (!s_sym) return;
+        auto* ss = std::get_if<symb_t::StructSymbol>(&s_sym->data);
+        if (!ss) return;
+        for (size_t i = 0; i < ss->field_names.size(); ++i) {
+            if (ss->field_names[i] != fe->field) continue;
+            for (const auto& fa : ss->field_attributes[i]) {
+                if (fa.name == "guard" && !fa.args.empty()) {
+                    auto val = try_eval_const(fa.args[0]);
+                    if (val && *val == 0) {
+                        crash("guard failed for field '" + fe->field + "' in call to '" + call_name + "'");
+                    }
+                }
+            }
+            break;
+        }
+    }
 }
 
 const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
@@ -998,6 +1082,8 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
             const ast::Type* arg_type = arg ? analyze_expr(arg) : nullptr;
             if (!arg_type) return nullptr;
 
+            check_arg_guard(arg, mangled);
+
             if (!is_assignable(concrete_fn->arg_types[i], arg_type)) {
                 crash("Argument type mismatch in generic call: " + func_name);
                 return nullptr;
@@ -1033,6 +1119,8 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
         ast::Expr* arg = call.args[i];
         const ast::Type* arg_type = arg ? analyze_expr(arg) : nullptr;
         if (!arg_type) return nullptr;
+
+        check_arg_guard(arg, support::join_namespace(path));
 
         if (!is_assignable(fn->arg_types[i], arg_type)) {
             crash("Argument type mismatch in call: " + support::join_namespace(path));

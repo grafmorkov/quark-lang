@@ -37,7 +37,7 @@ struct IRGenerator {
     // variable type scopes
     std::vector<std::unordered_map<std::string, const ast::Type*>> type_scopes;
 
-    // local variable attributes (for @guard etc.)
+    // local variable attributes (for runtime attrs)
     std::unordered_map<std::string, std::vector<ast::Attribute>> local_var_attrs;
 
     // namespace nesting
@@ -60,6 +60,7 @@ struct IRGenerator {
 
     void gen_function(const ast::FuncStmt& fn);
 
+    // For runtime attributes. (Now there is no runtime attributes)
     void emit_attr_lowering(const std::string& var_name);
     void emit_attr_lowering(const std::string& var_name, const std::vector<ast::Attribute>& attrs);
 

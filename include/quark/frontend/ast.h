@@ -39,9 +39,9 @@ namespace quark::ast {
 
         Struct,
         Pointer,
-	
+
 	Generic,
-	
+
         Count
     };
 
@@ -49,7 +49,7 @@ namespace quark::ast {
         TypeKind kind;
         std::string struct_name; // struct only
         const Type* pointed; // ptr only
-	std::vector<const Type*> type_args;		     
+	std::vector<const Type*> type_args;
     };
 
     // Expressions
@@ -185,7 +185,6 @@ namespace quark::ast {
         const Type* type;
         bool is_mut;
     };
-
     struct StructField {
         std::string name;
         const Type* type;
@@ -223,13 +222,13 @@ namespace quark::ast {
         Block* body;
         std::vector<Attribute> attributes;
     };
-    struct Attribute { 
-        std::string name;  
-        std::vector<Expr*> args; 
+    struct Attribute {
+        std::string name;
+        std::vector<Expr*> args;
     };
-    struct NamespaceStmt { 
-        std::string name; 
-        Block* body; 
+    struct NamespaceStmt {
+        std::string name;
+        Block* body;
     };
     struct ModuleDecl {
         std::string name;

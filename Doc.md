@@ -238,7 +238,7 @@ Supported attributes:
 |------------|--------------------------------------|------|------------------------------------------------------|
 | `@entry`   | function                             | 0    | Mark function as program entry point                 |
 | `@init`    | variable                             | 0    | Suppress uninitialized variable check                |
-| `@guard`   | variable                             | 1    | Runtime check: validate condition before each read   |
+| `@guard`   | variable / field                      | 1    | Compile-time check: validate condition on use        |
 | `@public`  | function / variable / field / struct | 0    | Make symbol visible outside the module               |
 | `@private` | function / variable / field / struct | 0    | Hide symbol from other modules                       |
 | `@hide`    | module                               | 0    | Make all module symbols private by default           |
@@ -268,36 +268,37 @@ Without `@init`, an immutable variable without a value is a compile error.
 
 ### `@guard`
 
-Inserts a runtime check before every read of the variable. If the guard condition is false, the program prints an error and exits.
+Validates a condition at compile time when the value is used (passed to a function or when a struct field is accessed). If the condition evaluates to `false`, the compiler reports a `guard failed` error.
 
-The guard condition is evaluated at runtime - it does not need to be a constant.
-
-```
-@guard(count > 0)
-mut value: i32;
-
-value = 10;          // ok, guards do not block writes
-
-func work() {
-    std::io::print(value as str); // <- __guard_check("value", count > 0) runs first
-}
-```
-
-The check is performed by `std::attrs::__guard_check`, defined in `std/guard.qk`:
+The guard condition must be a compile-time constant expression (literals, const variables, and comparisons between them).
 
 ```
-module "std::attrs";
-load "std::io";
+count: i32 = 1;
+@guard(count > 0) mut value: i32;
 
-func __guard_check(var_name: str, cond: bool){
-    if(cond == false){
-        std::io::eprint("[runtime_error]: Guard failed to: " + var_name);
-        std::io::exit(1);
-    }
-}
+value = 10;               // ok (writes are not guarded)
+
+func work(x: i32) {}
+work(value);              // passes: count > 0 is true at compile time
 ```
 
-The `std::attrs` module is loaded automatically by the compiler — you do not need to `load "std::attrs"` yourself.
+If the condition is false, compilation fails:
+
+```
+count: i32 = 0;
+@guard(count > 0) mut value: i32;
+
+func work(x: i32) {}
+work(value);              // error: guard failed for 'value' in call to 'work'
+```
+
+Guard also works on struct fields:
+
+```
+struct X {
+    @guard(true) data: i32;
+};
+```
 
 ### `@private`
 

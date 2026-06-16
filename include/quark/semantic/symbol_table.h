@@ -15,6 +15,7 @@ namespace quark::symb_t {
         bool is_mut;
         bool is_initialized;
         std::optional<int64_t> const_value;
+        ast::Expr* guard_cond = nullptr;
     };
 
     struct FuncArgSymbol {

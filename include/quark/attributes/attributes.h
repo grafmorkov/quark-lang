@@ -36,7 +36,7 @@ namespace quark::attrs{
 	inline std::unordered_map<std::string, AttributeInfo> attributes = {
     	{ "entry", { "entry", std::string(), {}, AttributeTarget::Function, 0, 0 }},
 		{ "init",  { "init", std::string(), {}, AttributeTarget::Variable, 0, 0 }},
-		{ "guard", { "guard", "std::attrs::__guard_check",{ {LoweringArg::Source::VarName}, { LoweringArg::Source::AttrExpr, 0} },
+		{ "guard", { "guard", std::string(), {},
 		                                AttributeTarget::Variable | AttributeTarget::Field, 1, 1 }},
 		{ "public", { "public", std::string(),{},AttributeTarget::Function | AttributeTarget::Variable
                         | AttributeTarget::Field | AttributeTarget::Struct, 0, 0}},

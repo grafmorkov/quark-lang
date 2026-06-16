@@ -117,57 +117,14 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
 
 } // namespace
 
+// For runtime attributes. (Now there is no runtime attributes)
 void IRGenerator::emit_attr_lowering(const std::string& var_name) {
-    // Check local variable attributes first (e.g. @guard on local vars)
-    auto local_it = local_var_attrs.find(var_name);
-    if (local_it != local_var_attrs.end()) {
-        emit_attr_lowering(var_name, local_it->second);
-        return;
-    }
-    // Then check global symbol table
-    auto* sym = ctx.symbols.lookup(var_name);
-    if (!sym) return;
-    emit_attr_lowering(var_name, sym->attributes);
+    (void)var_name;
 }
 
 void IRGenerator::emit_attr_lowering(const std::string& var_name, const std::vector<ast::Attribute>& attrs) {
-    for (const auto& attr : attrs) {
-        auto it = attrs::attributes.find(attr.name);
-        if (it == attrs::attributes.end()) continue;
-        auto* info = &it->second;
-        if (!info || info->lowering_fn.empty()) continue;
-
-        auto fn_it = function_ids.find(info->lowering_fn);
-        if (fn_it == function_ids.end()) continue;
-
-        std::vector<uint32_t> call_args;
-        for (const auto& la : info->lowering_args) {
-            switch (la.source) {
-                case attrs::LoweringArg::Source::VarName: {
-                    Reg r = new_reg();
-                    uint32_t sid = program.strings.size();
-                    program.strings.push_back({sid, var_name});
-                    emit(IRLoadString{r, sid});
-                    call_args.push_back(r);
-                    break;
-                }
-                case attrs::LoweringArg::Source::AttrExpr: {
-                    if (la.attr_arg_index < attr.args.size() && attr.args[la.attr_arg_index]) {
-                        Reg r = gen_expr(*attr.args[la.attr_arg_index]);
-                        call_args.push_back(r);
-                    }
-                    break;
-                }
-                case attrs::LoweringArg::Source::Literal:
-                    break;
-            }
-        }
-
-        if (call_args.size() == info->lowering_args.size()) {
-            Reg dst = new_reg();
-            emit(IRCall{dst, fn_it->second, call_args});
-        }
-    }
+    (void)var_name;
+    (void)attrs;
 }
 
 IRGenerator::IRGenerator(CompilerContext& c)

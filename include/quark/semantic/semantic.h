@@ -42,6 +42,7 @@ class SemanticAnalyzer {
         void analyze_region(const ast::RegionStmt& reg);
         void analyze_attribute(const ast::Attribute& attribute, const attrs::AttributeTarget target);
         void check_visibility(const symb_t::Symbol& sym, const std::string& context);
+        void check_arg_guard(const ast::Expr* arg, const std::string& call_name);
 
         const ast::Type* analyze_int(const ast::IntExpr&);
         const ast::Type* analyze_string(const ast::StringExpr&);
