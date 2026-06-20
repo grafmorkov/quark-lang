@@ -162,6 +162,10 @@ IRBinaryOp IRGenerator::map_op(ast::BinaryOp op) {
         case ast::BinaryOp::Lte:  return IRBinaryOp::Lte;
         case ast::BinaryOp::Gt:   return IRBinaryOp::Gt;
         case ast::BinaryOp::Gte:  return IRBinaryOp::Gte;
+        case ast::BinaryOp::BitAnd:   return IRBinaryOp::BitAnd;
+        case ast::BinaryOp::BitOr:    return IRBinaryOp::BitOr;
+        case ast::BinaryOp::LogicAnd: return IRBinaryOp::LogicAnd;
+        case ast::BinaryOp::LogicOr:  return IRBinaryOp::LogicOr;
         default:
             crash("Unsupported binary op");
     }
@@ -837,6 +841,10 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                     case ast::BinaryOp::Lte: op_name = "operator<="; break;
                     case ast::BinaryOp::Gt:  op_name = "operator>"; break;
                     case ast::BinaryOp::Gte: op_name = "operator>="; break;
+                    case ast::BinaryOp::BitAnd:   op_name = "operator&"; break;
+                    case ast::BinaryOp::BitOr:    op_name = "operator|"; break;
+                    case ast::BinaryOp::LogicAnd: op_name = "operator&&"; break;
+                    case ast::BinaryOp::LogicOr:  op_name = "operator||"; break;
                 }
 
                 const uint32_t lhs = gen_expr(*node.lhs);

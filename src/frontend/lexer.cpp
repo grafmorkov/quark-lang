@@ -82,6 +82,14 @@ namespace quark::lx {
                 }
 
             case '!': return make_token(match('=') ? TOKEN_NEQ : TOKEN_NOT);
+            case '&':
+                if (match('&')) return make_token(TOKEN_AMP_AMP);
+                if (match('=')) return make_token(TOKEN_AMP_EQ);
+                return make_token(TOKEN_AMP);
+            case '|':
+                if (match('|')) return make_token(TOKEN_PIPE_PIPE);
+                if (match('=')) return make_token(TOKEN_PIPE_EQ);
+                return make_token(TOKEN_PIPE);
             case '<': return make_token(match('=') ? TOKEN_LTE : TOKEN_LT);
             case '>': return make_token(match('=') ? TOKEN_GTE : TOKEN_GT);
             case '+': return make_token(match('=') ? TOKEN_PLUS_EQ: TOKEN_PLUS);

@@ -71,6 +71,10 @@ ast::BinaryOp get_op_from_token(TokenType type) {
         case TOKEN_LTE:    return ast::BinaryOp::Lte;
         case TOKEN_GT:     return ast::BinaryOp::Gt;
         case TOKEN_GTE:    return ast::BinaryOp::Gte;
+        case TOKEN_AMP:    return ast::BinaryOp::BitAnd;
+        case TOKEN_PIPE:   return ast::BinaryOp::BitOr;
+        case TOKEN_AMP_AMP: return ast::BinaryOp::LogicAnd;
+        case TOKEN_PIPE_PIPE: return ast::BinaryOp::LogicOr;
         default:           return ast::BinaryOp::Add;
     }
 }
@@ -82,23 +86,39 @@ int get_precedence(TokenType t) {
         case TOKEN_MINUS_EQ:
         case TOKEN_STAR_EQ:
         case TOKEN_SLASH_EQ:
+        case TOKEN_AMP_EQ:
+        case TOKEN_PIPE_EQ:
             return 1;
+
+        case TOKEN_PIPE_PIPE:
+            return 2;
+
+        case TOKEN_AMP_AMP:
+            return 3;
+
+        case TOKEN_PIPE:
+            return 4;
+
+        case TOKEN_AMP:
+            return 5;
 
         case TOKEN_EQEQ:
         case TOKEN_NEQ:
+            return 6;
+
         case TOKEN_LT:
         case TOKEN_LTE:
         case TOKEN_GT:
         case TOKEN_GTE:
-            return 2;
+            return 7;
 
         case TOKEN_PLUS:
         case TOKEN_MINUS:
-            return 3;
+            return 8;
 
         case TOKEN_STAR:
         case TOKEN_SLASH:
-            return 4;
+            return 9;
 
         default:
             return -1;
@@ -438,6 +458,10 @@ ast::FuncStmt Parser::parser_operator_func() {
         case TOKEN_GT:    op_text = "operator>";  break;
         case TOKEN_GTE:   op_text = "operator>="; break;
         case TOKEN_NOT:   op_text = "operator!";  break;
+        case TOKEN_AMP:    op_text = "operator&";  break;
+        case TOKEN_PIPE:   op_text = "operator|";  break;
+        case TOKEN_AMP_AMP:  op_text = "operator&&"; break;
+        case TOKEN_PIPE_PIPE: op_text = "operator||"; break;
         default:
             error(op_token.loc, "Expected operator token after 'operator' keyword");
             ret.name = "operator_";
@@ -574,7 +598,8 @@ ast::Expr* Parser::parse_expr(int min_prec) {
         }
 
         if (op.type == TOKEN_PLUS_EQ || op.type == TOKEN_MINUS_EQ ||
-            op.type == TOKEN_STAR_EQ || op.type == TOKEN_SLASH_EQ) {
+            op.type == TOKEN_STAR_EQ || op.type == TOKEN_SLASH_EQ ||
+            op.type == TOKEN_AMP_EQ || op.type == TOKEN_PIPE_EQ) {
             ast::Expr* rhs = parse_expr(prec);
             TokenType base_op;
             switch (op.type) {
@@ -582,6 +607,8 @@ ast::Expr* Parser::parse_expr(int min_prec) {
                 case TOKEN_MINUS_EQ: base_op = TOKEN_MINUS; break;
                 case TOKEN_STAR_EQ:  base_op = TOKEN_STAR;  break;
                 case TOKEN_SLASH_EQ: base_op = TOKEN_SLASH; break;
+                case TOKEN_AMP_EQ:   base_op = TOKEN_AMP;   break;
+                case TOKEN_PIPE_EQ:  base_op = TOKEN_PIPE;  break;
                 default:             base_op = TOKEN_PLUS;  break;
             }
             auto* bin = make_binary(left, rhs, base_op);
@@ -623,11 +650,11 @@ ast::Expr* Parser::parse_prefix() {
         return make_expr(ctx, ast::BoolExpr{ false }, previous.loc);
     }
     if (match(TOKEN_NOT)){
-        auto* operand = parse_expr(6);
+        auto* operand = parse_expr(10);
         return make_expr(ctx, UnaryExpr{operand, ast::UnaryOp::Not}, previous.loc);
     }
     if (match(TOKEN_MINUS)){
-        auto* operand = parse_expr(6);
+        auto* operand = parse_expr(10);
         return make_expr(ctx, UnaryExpr{operand, ast::UnaryOp::Neg}, previous.loc);
     }
 

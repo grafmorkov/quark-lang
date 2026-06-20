@@ -232,6 +232,30 @@ namespace {
                 emit_line("    cqo");
                 emit_line("    idiv rbx");
                 break;
+            case IRBinaryOp::BitAnd:
+                emit_line("    and rax, rbx");
+                break;
+            case IRBinaryOp::BitOr:
+                emit_line("    or rax, rbx");
+                break;
+            case IRBinaryOp::LogicAnd:
+                emit_line("    test rax, rax");
+                emit_line("    setne al");
+                emit_line("    movzx rax, al");
+                emit_line("    test rbx, rbx");
+                emit_line("    setne bl");
+                emit_line("    movzx rbx, bl");
+                emit_line("    and rax, rbx");
+                break;
+            case IRBinaryOp::LogicOr:
+                emit_line("    test rax, rax");
+                emit_line("    setne al");
+                emit_line("    movzx rax, al");
+                emit_line("    test rbx, rbx");
+                emit_line("    setne bl");
+                emit_line("    movzx rbx, bl");
+                emit_line("    or rax, rbx");
+                break;
             case IRBinaryOp::Eq:
             case IRBinaryOp::NotEq:
             case IRBinaryOp::Lt:

@@ -65,13 +65,18 @@ namespace quark{
         TOKEN_STAR,      // *
         TOKEN_SLASH,     // /
         TOKEN_NOT,        // !
+        TOKEN_AMP,         // &
+        TOKEN_PIPE,        // |
+        TOKEN_AMP_AMP,     // &&
+        TOKEN_PIPE_PIPE,   // ||
         TOKEN_COLON,      // :
 
         TOKEN_PLUS_EQ,      // +=
         TOKEN_MINUS_EQ,     // -=
         TOKEN_STAR_EQ,      // *=
         TOKEN_SLASH_EQ,     // /=
-
+        TOKEN_AMP_EQ,       // &=
+        TOKEN_PIPE_EQ,      // |=
 
         TOKEN_EQ,        // =
         TOKEN_EQEQ,      // ==

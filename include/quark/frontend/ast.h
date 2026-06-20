@@ -88,7 +88,11 @@ namespace quark::ast {
         Lt,
         Lte,
         Gt,
-        Gte
+        Gte,
+        BitAnd,
+        BitOr,
+        LogicAnd,
+        LogicOr
     };
 
     struct BinaryExpr {

@@ -16,7 +16,9 @@ using Label = uint32_t;
 enum class IRBinaryOp {
     Add, Sub, Mul, Div,
     Eq, NotEq,
-    Lt, Lte, Gt, Gte
+    Lt, Lte, Gt, Gte,
+    BitAnd, BitOr,
+    LogicAnd, LogicOr
 };
 
 struct IRLoadConst {

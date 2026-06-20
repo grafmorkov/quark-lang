@@ -910,6 +910,10 @@ namespace {
             case ast::BinaryOp::Lte: return "operator<=";
             case ast::BinaryOp::Gt:  return "operator>";
             case ast::BinaryOp::Gte: return "operator>=";
+            case ast::BinaryOp::BitAnd: return "operator&";
+            case ast::BinaryOp::BitOr:  return "operator|";
+            case ast::BinaryOp::LogicAnd: return "operator&&";
+            case ast::BinaryOp::LogicOr:  return "operator||";
         }
         return "operator?";
     }
