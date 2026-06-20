@@ -80,6 +80,11 @@ namespace quark::symb_t {
             const std::vector<std::pair<std::string, const ast::Type*>>& fields,
             const std::vector<ast::Attribute>& attrs = {},
             const std::vector<std::vector<ast::Attribute>>& field_attrs = {});
+        bool declare_struct_in_ns(const std::vector<std::string>& ns_path,
+            const std::string& name,
+            const std::vector<std::pair<std::string, const ast::Type*>>& fields,
+            const std::vector<ast::Attribute>& attrs = {},
+            const std::vector<std::vector<ast::Attribute>>& field_attrs = {});
         bool declare(const ast::RegionStmt& reg);
 
         bool declare_symbol(const std::string& name, Symbol symbol);
@@ -87,6 +92,7 @@ namespace quark::symb_t {
         Symbol* lookup(const std::string& name);
         Symbol* lookup_qualified(const std::vector<std::string>& path);
         Symbol* lookup_current_namespace(const std::string& name);
+        Namespace* get_current_namespace() const { return current_namespace; }
 
         void mark_initialized(const std::string& name);
         Namespace* create_namespace_path(const std::vector<std::string>& path);

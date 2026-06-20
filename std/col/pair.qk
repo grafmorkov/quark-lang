@@ -1,0 +1,6 @@
+module "std::col";
+
+struct pair<A,B> {
+    first: A;
+    second: B;
+};

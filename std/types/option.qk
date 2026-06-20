@@ -1,0 +1,11 @@
+module "std::core";
+
+struct option<T> {
+    has_value: bool = false;
+
+    @guard(has_value) @init value: T;
+};
+func option_set<T>(value: T) option<T> {
+    out.value = value;
+    has_value = true;
+}

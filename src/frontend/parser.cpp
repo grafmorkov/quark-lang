@@ -843,6 +843,11 @@ const ast::Type* Parser::parse_type(bool allow_implicit_void, const std::vector<
     if (match(TOKEN_IDENT)) {
         std::string name(previous.text);
 
+        while (match(TOKEN_COLON_COLON)) {
+            name += "::";
+            name += expect(TOKEN_IDENT, "Expected identifier after ::").text;
+        }
+
         if (type_params) {
             for (const auto& p : *type_params) {
                 if (name == p) {

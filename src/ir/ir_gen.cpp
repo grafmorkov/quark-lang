@@ -13,6 +13,36 @@ namespace quark::codegen {
 
 namespace {
 
+symb_t::Symbol* resolve_qualified(CompilerContext& ctx, const std::vector<std::string>& path) {
+    if (path.empty()) return nullptr;
+    if (path.size() == 1) return ctx.symbols.lookup(path[0]);
+
+    auto* ns = ctx.symbols.get_current_namespace();
+    while (ns) {
+        auto* target = ns;
+        for (size_t i = 0; i + 1 < path.size() && target; ++i) {
+            auto it = target->children.find(path[i]);
+            if (it == target->children.end()) {
+                target = nullptr;
+                break;
+            }
+            target = it->second;
+        }
+        if (target) {
+            auto sym_it = target->symbols.find(path.back());
+            if (sym_it != target->symbols.end()) {
+                return sym_it->second;
+            }
+        }
+        ns = ns->parent;
+    }
+    return ctx.symbols.lookup(support::join_namespace(path));
+};
+
+auto lookup_struct = [](CompilerContext& ctx, const std::string& struct_name) -> symb_t::Symbol* {
+    return resolve_qualified(ctx, support::split_path(struct_name));
+};
+
 int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
     if (!t) return 0;
     switch (t->kind) {
@@ -30,7 +60,7 @@ int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
         case ast::TypeKind::Pointer: return 8;
         case ast::TypeKind::Struct: {
             if (!ctx) return 0;
-            auto* sym = ctx->symbols.lookup(t->struct_name);
+            auto* sym = lookup_struct(*ctx, t->struct_name);
             if (!sym) return 0;
             auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
             if (!ss) return 0;
@@ -92,7 +122,7 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
         crash("Field access on non-struct type");
     }
 
-    auto* sym = ctx.symbols.lookup(base_type->struct_name);
+    auto* sym = lookup_struct(ctx, base_type->struct_name);
     if (!sym) {
         crash("Unknown struct: " + base_type->struct_name);
     }
@@ -553,7 +583,7 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                 // Copy each field from result to sret buffer
                 if (current_func_return_type &&
                     current_func_return_type->kind == ast::TypeKind::Struct) {
-                    auto* sym = ctx.symbols.lookup(current_func_return_type->struct_name);
+                    auto* sym = lookup_struct(ctx, current_func_return_type->struct_name);
                     if (sym) {
                         auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
                         if (ss) {
@@ -745,15 +775,38 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             return it->second;
         }
 
-        if (path.size() == 1 && current_module) {
-            const std::string qualified = support::qualify_name(
-                current_module->namespace_path,
-                namespace_stack,
-                path[0]
-            );
-            auto it2 = function_ids.find(qualified);
-            if (it2 != function_ids.end()) {
-                return it2->second;
+
+        if (current_module) {
+            {
+                const std::string qualified = support::qualify_name(
+                    current_module->namespace_path,
+                    namespace_stack,
+                    support::join_namespace(path)
+                );
+                auto it2 = function_ids.find(qualified);
+                if (it2 != function_ids.end()) {
+                    return it2->second;
+                }
+            }
+            {
+                std::vector<std::string> mod_path = current_module->namespace_path;
+                mod_path.insert(mod_path.end(), path.begin(), path.end());
+                const std::string qualified = support::join_namespace(mod_path);
+                auto it2 = function_ids.find(qualified);
+                if (it2 != function_ids.end()) {
+                    return it2->second;
+                }
+            }
+            if (path.size() == 1) {
+                const std::string qualified = support::qualify_name(
+                    current_module->namespace_path,
+                    namespace_stack,
+                    path[0]
+                );
+                auto it2 = function_ids.find(qualified);
+                if (it2 != function_ids.end()) {
+                    return it2->second;
+                }
             }
         }
 
@@ -1040,7 +1093,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
             // Emit attribute lowering for struct field reads (e.g. @guard)
             if (base_type && base_type->kind == ast::TypeKind::Struct) {
-                auto* sym = ctx.symbols.lookup(base_type->struct_name);
+                auto* sym = lookup_struct(ctx, base_type->struct_name);
                 if (sym) {
                     auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
                     if (ss) {
@@ -1131,10 +1184,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             bool is_sret_call = false;
             uint32_t sret_ptr = 0;
             {
-                auto* fn_sym = ctx.symbols.lookup(callee_path.back());
-                if (!fn_sym && callee_path.size() > 1) {
-                    fn_sym = ctx.symbols.lookup_qualified(callee_path);
-                }
+                auto* fn_sym = resolve_qualified(ctx, callee_path);
                 if (fn_sym) {
                     auto* fs = std::get_if<quark::symb_t::FuncSymbol>(&fn_sym->data);
                     if (fs && fs->return_type &&

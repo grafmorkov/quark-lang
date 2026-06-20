@@ -30,7 +30,7 @@ public:
     const Type* get_pointer(const Type* base) const;
     const Type* get_generic_param(const std::string& name);
     const Type* get_generic_instantiation(const std::string& name, const std::vector<const Type*>& args);
-    const Type* get_deferred_generic(const std::string& name, const std::vector<const Type*>& args);
+    const Type* get_deferred_generic(const std::string& name, const std::vector<const Type*>& args) const;
     bool is_mangled_name(const std::string& mangled, std::string& out_base) const;
     bool try_instantiate(const std::string& mangled, const std::vector<const Type*>& type_args);
 
@@ -59,7 +59,7 @@ public:
 
 private:
     std::array<Type, (size_t)TypeKind::Count> builtin_types;
-    std::unordered_map<std::string, Type> struct_types;
+    mutable std::unordered_map<std::string, Type> struct_types;
     mutable std::unordered_map<const Type*, Type> pointer_cache;
     std::unordered_map<std::string, Type> generic_param_types;
 
@@ -72,7 +72,7 @@ private:
 
     std::unordered_map<std::string, GenericStructDef> generic_defs;
     std::unordered_map<std::string, GenericFuncDef> generic_func_defs;
-    std::unordered_map<std::string, std::string> mangled_to_base;
+    mutable std::unordered_map<std::string, std::string> mangled_to_base;
 };
 
 }

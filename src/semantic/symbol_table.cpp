@@ -254,6 +254,45 @@ namespace quark::symb_t {
         return true;
     }
 
+    bool SymbolTable::declare_struct_in_ns(
+        const std::vector<std::string>& ns_path,
+        const std::string& name,
+        const std::vector<std::pair<std::string, const ast::Type*>>& fields,
+        const std::vector<ast::Attribute>& attrs,
+        const std::vector<std::vector<ast::Attribute>>& field_attrs
+    ) {
+        StructSymbol sym;
+        sym.field_names.reserve(fields.size());
+        sym.field_types.reserve(fields.size());
+        sym.field_attributes = field_attrs;
+        for (const auto& [fname, ftype] : fields) {
+            sym.field_names.push_back(fname);
+            sym.field_types.push_back(ftype);
+        }
+
+        Namespace* saved = current_namespace;
+        current_namespace = global_namespace;
+        for (const auto& part : ns_path) {
+            auto it = current_namespace->children.find(part);
+            if (it == current_namespace->children.end()) {
+                current_namespace = saved;
+                return false;
+            }
+            current_namespace = it->second;
+        }
+        Symbol symbol{name, std::move(sym), attrs};
+        symbol.owning_module = current_module_ns;
+        auto& current = current_namespace->symbols;
+        if (current.contains(name)) {
+            current_namespace = saved;
+            return false;
+        }
+        auto* sym_ptr = memory::make<Symbol>(arena, std::move(symbol));
+        current.emplace(name, sym_ptr);
+        current_namespace = saved;
+        return true;
+    }
+
     Symbol* SymbolTable::lookup(const std::string& name) {
         for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
             auto it = scopes[i].find(name);

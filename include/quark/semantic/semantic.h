@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 #include "quark/frontend/ast.h"
@@ -23,8 +24,10 @@ class SemanticAnalyzer {
         CompilerContext& ctx;
         const ast::Type* current_function_return_type = nullptr;
         std::vector<std::string> module_namespace;
+        std::vector<std::string> namespace_path;
         modules::Module* current_module = nullptr;
         bool is_in_region = false;
+        const std::unordered_map<std::string, const ast::Type*>* current_type_subst = nullptr;
 
         void analyze_stmt(const ast::Stmt* stmt);
         const ast::Type* analyze_expr(ast::Expr* expr);

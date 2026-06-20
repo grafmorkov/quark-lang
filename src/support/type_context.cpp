@@ -114,7 +114,7 @@ namespace {
         return get_struct(mangled);
     }
 
-    const Type* TypeContext::get_deferred_generic(const std::string& name, const std::vector<const Type*>& args) {
+    const Type* TypeContext::get_deferred_generic(const std::string& name, const std::vector<const Type*>& args) const {
         std::string mangled = mangle_name(name, args);
         auto existing = struct_types.find(mangled);
         if (existing != struct_types.end())
@@ -206,6 +206,24 @@ namespace {
             const Type* new_pointed = substitute_type(type->pointed, subst);
             if (new_pointed != type->pointed)
                 return get_pointer(new_pointed);
+            return type;
+        }
+        if (type->kind == TypeKind::Struct && !type->type_args.empty()) {
+            std::vector<const Type*> new_args;
+            bool changed = false;
+            for (const auto* arg : type->type_args) {
+                const Type* new_arg = substitute_type(arg, subst);
+                new_args.push_back(new_arg);
+                if (new_arg != arg) changed = true;
+            }
+            if (changed) {
+                std::string base_name = type->struct_name;
+                std::string unmangled;
+                if (is_mangled_name(base_name, unmangled)) {
+                    base_name = unmangled;
+                }
+                return get_deferred_generic(base_name, new_args);
+            }
         }
         return type;
     }

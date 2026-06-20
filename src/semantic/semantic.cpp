@@ -12,6 +12,72 @@
 #include <utility>
 #include <variant>
 
+namespace {
+
+symb_t::Symbol* resolve_qualified(
+    quark::symb_t::SymbolTable& symbols,
+    const std::vector<std::string>& path
+) {
+    if (path.empty()) return nullptr;
+    if (path.size() == 1) return symbols.lookup(path[0]);
+
+    auto* ns = symbols.get_current_namespace();
+    while (ns) {
+        auto* target = ns;
+        for (size_t i = 0; i + 1 < path.size() && target; ++i) {
+            auto it = target->children.find(path[i]);
+            if (it == target->children.end()) {
+                target = nullptr;
+                break;
+            }
+            target = it->second;
+        }
+        if (target) {
+            auto sym_it = target->symbols.find(path.back());
+            if (sym_it != target->symbols.end()) {
+                return sym_it->second;
+            }
+        }
+        ns = ns->parent;
+    }
+    return symbols.lookup(quark::support::join_namespace(path));
+}
+
+symb_t::Symbol* lookup_struct(quark::CompilerContext& ctx, const std::string& struct_name) {
+    return resolve_qualified(ctx.symbols, quark::support::split_path(struct_name));
+}
+
+struct NamespacePathGuard {
+    std::vector<std::string>& path;
+    size_t prev_size;
+    NamespacePathGuard(std::vector<std::string>& p, const std::string& name) : path(p) {
+        prev_size = path.size();
+        path.push_back(name);
+    }
+    ~NamespacePathGuard() { path.resize(prev_size); }
+};
+
+std::string full_qualified(const std::vector<std::string>& module_ns,
+                           const std::vector<std::string>& ns_path,
+                           const std::string& name) {
+    std::vector<std::string> full = module_ns;
+    full.insert(full.end(), ns_path.begin(), ns_path.end());
+    full.push_back(name);
+    return support::join_namespace(full);
+}
+
+std::string generic_key(const std::vector<std::string>& ns_path,
+                        const std::string& name) {
+    if (!ns_path.empty()) {
+        auto full = ns_path;
+        full.push_back(name);
+        return support::join_namespace(full);
+    }
+    return name;
+}
+
+} // namespace
+
 using namespace utils::logger;
 
 namespace quark::sm {
@@ -165,7 +231,7 @@ const ast::Type* resolve_struct_field(
         return nullptr;
     }
 
-    auto* sym = ctx.symbols.lookup(base_type->struct_name);
+    auto* sym = lookup_struct(ctx, base_type->struct_name);
     if (!sym && !base_type->type_args.empty()) {
         if (ctx.types.try_instantiate(base_type->struct_name, base_type->type_args)) {
             const auto* fields = ctx.types.get_struct_fields(base_type->struct_name);
@@ -175,7 +241,7 @@ const ast::Type* resolve_struct_field(
                     base_type->struct_name, *fields, {},
                     field_attrs ? *field_attrs : std::vector<std::vector<ast::Attribute>>{}
                 );
-                sym = ctx.symbols.lookup(base_type->struct_name);
+                sym = lookup_struct(ctx, base_type->struct_name);
             }
         }
     }
@@ -341,7 +407,12 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                     def.return_type = fn.return_type;
                     def.body = fn.body;
                     def.attributes = fn.attributes;
-                    ctx.types.register_generic_func(fn.name, def);
+                    std::string qualified = generic_key(namespace_path, fn.name);
+                    ctx.types.register_generic_func(qualified, def);
+                    std::string full_q = full_qualified(module_namespace, namespace_path, fn.name);
+                    if (full_q != qualified) {
+                        ctx.types.register_generic_func(full_q, def);
+                    }
                 } else {
                     if (!ctx.symbols.declare(fn)) {
                         crash("Function redeclaration: " + fn.name);
@@ -354,6 +425,14 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                     def.params = str.type_params;
                     def.fields = str.fields;
                     ctx.types.register_generic_struct(str.name, def);
+                    std::string qualified = generic_key(namespace_path, str.name);
+                    if (qualified != str.name) {
+                        ctx.types.register_generic_struct(qualified, def);
+                    }
+                    std::string full_q = full_qualified(module_namespace, namespace_path, str.name);
+                    if (full_q != qualified && full_q != str.name) {
+                        ctx.types.register_generic_struct(full_q, def);
+                    }
                 } else {
                     if (!ctx.symbols.declare(str)) {
                         crash("Struct redeclaration: " + str.name);
@@ -362,6 +441,7 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
             },
             [&](const ast::NamespaceStmt& ns) {
                 NamespaceGuard guard(ctx.symbols, ns.name);
+                NamespacePathGuard path_guard(namespace_path, ns.name);
                 if (ns.body) {
                     collect_declarations(ns.body->stmts);
                 }
@@ -433,6 +513,12 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
         return;
     }
 
+    // Substitute generic type params if in a concrete instantiation context
+    const ast::Type* resolved_type = var.type;
+    if (current_type_subst && !current_type_subst->empty()) {
+        resolved_type = ctx.types.substitute_type(var.type, *current_type_subst);
+    }
+
     for (const auto& attr : var.attributes) {
         analyze_attribute(attr, attrs::AttributeTarget::Variable);
     }
@@ -454,7 +540,7 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
         const ast::Type* value_type = analyze_expr(var.value);
         if (!value_type) return;
 
-        if (!is_assignable(var.type, value_type)) {
+        if (!is_assignable(resolved_type, value_type)) {
             crash("Type mismatch in variable initialization: " + var.name);
             return;
         }
@@ -463,7 +549,12 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
         return;
     }
 
-    if (!ctx.symbols.declare(var)) {
+    // Declare with resolved type
+    if (!ctx.symbols.declare_symbol(var.name, symb_t::Symbol{
+        var.name,
+        symb_t::VarSymbol{resolved_type, var.is_mut, var.value != nullptr},
+        var.attributes
+    })) {
         crash("Variable already declared: " + var.name);
     }
 
@@ -613,6 +704,21 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
     for (const auto& arg : func.args) {
         if (!ctx.symbols.declare(arg)) {
             crash("Duplicate function argument: " + arg.name);
+            current_function_return_type = prev_return_type;
+            return;
+        }
+    }
+
+    // Declare implicit 'out' variable for struct-returning functions
+    if (func.return_type && func.return_type->kind == TypeKind::Struct) {
+        ast::VarDecl out_var;
+        out_var.name = "out";
+        out_var.type = func.return_type;
+        out_var.is_mut = true;
+        out_var.value = nullptr;
+        out_var.attributes = {};
+        if (!ctx.symbols.declare(out_var)) {
+            crash("Failed to declare implicit 'out' variable");
             current_function_return_type = prev_return_type;
             return;
         }
@@ -791,6 +897,16 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(const ast::Expr* expr) {
     if (const auto* var = std::get_if<ast::VarExpr>(&expr->kind)) {
         auto* sym = ctx.symbols.lookup(var->name);
         if (!sym) {
+            // Check for implicit 'out' struct field access
+            if (current_function_return_type && current_function_return_type->kind == TypeKind::Struct) {
+                if (!current_function_return_type->type_args.empty()) {
+                    ctx.types.try_instantiate(current_function_return_type->struct_name, current_function_return_type->type_args);
+                }
+                const ast::Type* field_type = ctx.types.get_field_type(current_function_return_type->struct_name, var->name);
+                if (field_type) {
+                    return field_type;
+                }
+            }
             crash("Undefined variable: " + var->name);
             return nullptr;
         }
@@ -855,7 +971,9 @@ const ast::Type* SemanticAnalyzer::analyze_assign(const ast::AssignExpr& asg) {
     if (!target_type) return nullptr;
 
     if (!is_assignable(target_type, value_type)) {
-        crash("Type mismatch in assignment");
+        std::string tname = target_type ? (target_type->kind == TypeKind::Struct ? target_type->struct_name : (target_type->kind == TypeKind::Generic ? "Generic:" + target_type->struct_name : std::to_string((int)target_type->kind))) : "null";
+        std::string vname = value_type ? (value_type->kind == TypeKind::Struct ? value_type->struct_name : (value_type->kind == TypeKind::Generic ? "Generic:" + value_type->struct_name : std::to_string((int)value_type->kind))) : "null";
+        crash("Type mismatch in assignment: " + tname + " vs " + vname);
         return nullptr;
     }
 
@@ -874,7 +992,7 @@ const ast::Type* SemanticAnalyzer::analyze_field(const ast::FieldExpr& node) {
 
     // Compile-time guard check for struct fields with @guard
     if (base->kind == ast::TypeKind::Struct) {
-        auto* s_sym = ctx.symbols.lookup(base->struct_name);
+        auto* s_sym = lookup_struct(ctx, base->struct_name);
         if (s_sym) {
             auto* ss = std::get_if<symb_t::StructSymbol>(&s_sym->data);
             if (ss) {
@@ -1031,7 +1149,7 @@ void SemanticAnalyzer::check_arg_guard(const ast::Expr* arg, const std::string& 
 
         if (!base_type || base_type->kind != ast::TypeKind::Struct) return;
 
-        auto* s_sym = ctx.symbols.lookup(base_type->struct_name);
+        auto* s_sym = lookup_struct(ctx, base_type->struct_name);
         if (!s_sym) return;
 
         auto* ss = std::get_if<symb_t::StructSymbol>(&s_sym->data);
@@ -1101,14 +1219,15 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
     }
 
     std::string func_name = path.back();
+    std::string qualified_func_name = support::join_namespace(path);
 
     // Check if this is a generic function call
-    const auto* generic_def = ctx.types.get_generic_func(func_name);
+    const auto* generic_def = ctx.types.get_generic_func(qualified_func_name);
     if (generic_def && !call.type_args.empty()) {
         // Build substitution map: param name -> concrete type
         std::unordered_map<std::string, const Type*> subst;
         if (call.type_args.size() != generic_def->params.size()) {
-            crash("Type argument count mismatch for generic function: " + func_name);
+            crash("Type argument count mismatch for generic function: " + qualified_func_name);
             return nullptr;
         }
         for (size_t i = 0; i < generic_def->params.size(); ++i) {
@@ -1116,7 +1235,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
         }
 
         // Mangle the concrete function name
-        std::string mangled = ctx.types.mangle_func_name(func_name, call.type_args);
+        std::string mangled = ctx.types.mangle_func_name(qualified_func_name, call.type_args);
 
         // Check if already instantiated
         auto* concrete_sym = ctx.symbols.lookup(mangled);
@@ -1129,6 +1248,27 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
                 concrete_args.push_back(ctx.types.substitute_func_arg(arg, subst));
             }
             const Type* concrete_return = ctx.types.substitute_type(generic_def->return_type, subst);
+
+            // Substitute type args in struct return types
+            if (concrete_return && concrete_return->kind == TypeKind::Struct && !concrete_return->type_args.empty()) {
+                std::vector<const Type*> concrete_type_args;
+                for (const auto* arg : concrete_return->type_args) {
+                    concrete_type_args.push_back(ctx.types.substitute_type(arg, subst));
+                }
+                // Extract base struct name (handle mangled names like "option$T" → "option")
+                std::string base_name = concrete_return->struct_name;
+                std::string unmangled;
+                if (ctx.types.is_mangled_name(base_name, unmangled)) {
+                    base_name = unmangled;
+                }
+                // Qualify the struct name with the function's module namespace for cross-module consistency
+                std::string qualified_base = base_name;
+                if (path.size() > 1) {
+                    std::vector<std::string> func_ns(path.begin(), path.end() - 1);
+                    qualified_base = full_qualified(func_ns, {}, base_name);
+                }
+                concrete_return = ctx.types.get_deferred_generic(qualified_base, concrete_type_args);
+            }
 
             // Create and register the concrete function symbol
             symb_t::FuncSymbol concrete_fn_sym;
@@ -1159,7 +1299,10 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
 
             // Analyze the concrete function body (type-check with concrete types)
             if (concrete_fn_stmt.body) {
+                auto* prev_subst = current_type_subst;
+                current_type_subst = &subst;
                 analyze_func(concrete_fn_stmt);
+                current_type_subst = prev_subst;
             }
 
             // Store for IR generation
@@ -1202,9 +1345,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
     }
 
     // Non-generic function lookup
-    auto* sym = path.size() == 1
-        ? ctx.symbols.lookup(path[0])
-        : ctx.symbols.lookup_qualified(path);
+    auto* sym = resolve_qualified(ctx.symbols, path);
     if (!sym) {
         crash("Undefined function: " + support::join_namespace(path));
         return nullptr;
@@ -1282,7 +1423,7 @@ const ast::Type* SemanticAnalyzer::analyze_block(const ast::Block* block) {
 const ast::Type* SemanticAnalyzer::analyze_namespace(const ast::NamespaceExpr& n) {
     auto expr = ast::Expr{n};
     auto path = support::flatten_path(&expr);
-    auto* sym = ctx.symbols.lookup_qualified(path);
+    auto* sym = resolve_qualified(ctx.symbols, path);
 
     if (!sym) {
         crash("Undefined qualified symbol");

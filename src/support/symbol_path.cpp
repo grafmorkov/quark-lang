@@ -51,6 +51,21 @@ std::string join_namespace(const std::vector<std::string>& path) {
     return out;
 }
 
+std::vector<std::string> split_path(const std::string& qualified_name) {
+    std::vector<std::string> parts;
+    size_t start = 0;
+    while (true) {
+        size_t sep = qualified_name.find("::", start);
+        if (sep == std::string::npos) {
+            parts.push_back(qualified_name.substr(start));
+            break;
+        }
+        parts.push_back(qualified_name.substr(start, sep - start));
+        start = sep + 2;
+    }
+    return parts;
+}
+
 // module + nested namespaces + name
 std::string qualify_name(
     const std::vector<std::string>& module_path,
