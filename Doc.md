@@ -93,10 +93,70 @@ while (x > 0) {
 ==   !=   <   <=   >   >=
 ```
 
-### Assignment
+### Bitwise
 ```
-x = x + 1;
+&    (bitwise AND)
+|    (bitwise OR)
 ```
+
+### Logical (result is i32, 0 or 1)
+```
+&&   (logical AND - both operands non-zero -> 1)
+||   (logical OR  - at least one non-zero -> 1)
+```
+
+### Compound Assignment
+```
++=   -=   *=   /=   &=   |=
+```
+Each desugars to `x = x op y` at parse time.
+
+### Precedence (lowest → highest)
+```
+=   +=   -=   *=   /=   &=   |=
+||
+&&
+|
+&
+==   !=
+<   <=   >   >=
++   -
+*   /
+```
+
+### Operator Overloading
+
+Struct types can overload binary operators by defining a free function:
+
+```
+func operator +(a: Point, b: Point) Point {
+    @init mut r: Point;
+    r.x = a.x + b.x;
+    r.y = a.y + b.y;
+    return r;
+}
+```
+
+Supported overloadable operators:
+
+| Token | Function name |
+|-------|---------------|
+| `+`   | `operator+`   |
+| `-`   | `operator-`   |
+| `*`   | `operator*`   |
+| `/`   | `operator/`   |
+| `==`  | `operator==`  |
+| `!=`  | `operator!=`  |
+| `<`   | `operator<`   |
+| `<=`  | `operator<=`  |
+| `>`   | `operator>`   |
+| `>=`  | `operator>=`  |
+| `&`   | `operator&`   |
+| `\|`  | `operator\|`  |
+| `&&`  | `operator&&`  |
+| `\|\|` | `operator\|\|` |
+
+Unary operators (`-`, `!`) can also be overloaded for struct types via `operator-` and `operator!`.
 
 ---
 
