@@ -24,7 +24,6 @@ namespace quark{
         TOKEN_RETURN,
         TOKEN_FUNC,
         TOKEN_STRUCT,
-        TOKEN_VAR,
         TOKEN_MUT,
         TOKEN_AT, // @
         TOKEN_DOT, // .
@@ -32,6 +31,7 @@ namespace quark{
         TOKEN_LOAD,
         TOKEN_MODULE,
         TOKEN_EXTERN,
+        TOKEN_OPERATOR,
         TOKEN_AS,
         TOKEN_REGION,
         TOKEN_TRUE,
@@ -66,7 +66,13 @@ namespace quark{
         TOKEN_SLASH,     // /
         TOKEN_NOT,        // !
         TOKEN_COLON,      // :
-        
+
+        TOKEN_PLUS_EQ,      // +=
+        TOKEN_MINUS_EQ,     // -=
+        TOKEN_STAR_EQ,      // *=
+        TOKEN_SLASH_EQ,     // /=
+
+
         TOKEN_EQ,        // =
         TOKEN_EQEQ,      // ==
         TOKEN_NEQ,       // !=
@@ -76,9 +82,7 @@ namespace quark{
         TOKEN_LTE,       // <=
         TOKEN_GT,        // >
         TOKEN_GTE,       // >=
-        TOKEN_QUESTION, // ?
-        TOKEN_QUESTION_QUESTION, // ??
-        TOKEN_COLON_COLON,
+        TOKEN_COLON_COLON, // ::
 
         // delimiters
         TOKEN_LPAREN,    // (
@@ -90,6 +94,7 @@ namespace quark{
         TOKEN_COMMA,     // ,
         TOKEN_SEMICOLON // ;
     };
+
     struct Token {
         TokenType type;
         std::string_view text;

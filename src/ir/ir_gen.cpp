@@ -35,8 +35,8 @@ int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
             auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
             if (!ss) return 0;
             int total = 0;
-            for (const auto* ft : ss->field_types) {
-                total += type_size(ft, ctx);
+            for (size_t i = 0; i < ss->field_names.size(); ++i) {
+                total += 8;  // each field occupies 8 bytes (qword)
             }
             return total;
         }
@@ -264,6 +264,7 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
         current_func->arg_count = static_cast<uint32_t>(fn.args.size());
         current_func->local_count = 0;
         current_func->temp_count = 0;
+        current_func->extra_stack = 0;
         current_func->is_extern = fn.is_extern;
 
         current_func->is_entry = false;
@@ -329,6 +330,11 @@ void IRGenerator::gen_module(const quark::modules::Module& mod) {
     current_module = &mod;
     namespace_stack.clear();
 
+    // Enter the module's namespace so symbol lookups (e.g. struct types) can find them
+    for (const auto& part : mod.namespace_path) {
+        ctx.symbols.enter_namespace(part);
+    }
+
     for (const auto* stmt : mod.ast) {
         if (!stmt) continue;
 
@@ -342,6 +348,11 @@ void IRGenerator::gen_module(const quark::modules::Module& mod) {
         }
 
         gen_stmt(*stmt);
+    }
+
+    // Exit the module's namespace
+    for (size_t i = 0; i < mod.namespace_path.size(); ++i) {
+        ctx.symbols.exit_namespace();
     }
 
     current_module = saved_module;
@@ -367,10 +378,11 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
 
     current_func = &program.functions[it->second];
     current_func->body.clear();
-    current_func->arg_count = static_cast<uint32_t>(func.args.size());
     current_func->local_count = 0;
     current_func->temp_count = 0;
+    current_func->extra_stack = 0;
     current_func->is_extern = func.is_extern;
+    current_func_return_type = func.return_type;
 
     current_func->is_entry = false;
     for (const auto& attr : func.attributes) {
@@ -379,6 +391,12 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
             break;
         }
     }
+
+    // Sret: return struct via hidden pointer arg
+    const bool is_sret = func.return_type &&
+                         func.return_type->kind == ast::TypeKind::Struct;
+    current_func->sret = is_sret;
+    current_func->arg_count = static_cast<uint32_t>(func.args.size()) + (is_sret ? 1 : 0);
 
     next_reg = 0;
     next_label = 0;
@@ -389,6 +407,12 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
     type_scopes.clear();
     local_scopes.emplace_back();
     type_scopes.emplace_back();
+
+    if (is_sret) {
+        const uint32_t sret_local = new_local();
+        local_scopes.back()["__sret_ptr"] = sret_local;
+        type_scopes.back()["__sret_ptr"] = nullptr;
+    }
 
     for (const auto& arg : func.args) {
         const uint32_t local = new_local();
@@ -483,10 +507,10 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
             if (node.type->kind == ast::TypeKind::Struct) {
                 int sz = type_size(node.type, &ctx);
                 if (sz > 0) {
-                    Reg ptr = new_reg();
-                    emit(IRAlloca{ptr, static_cast<uint32_t>(sz)});
-                    emit(IRStoreLocal{local, ptr});
                     if (current_func) current_func->extra_stack += sz;
+                    Reg ptr = new_reg();
+                    emit(IRAlloca{ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0)});
+                    emit(IRStoreLocal{local, ptr});
                 }
             } else if (node.value) {
                 const uint32_t value = gen_expr(*node.value);
@@ -499,7 +523,50 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                 crash("Return outside function");
             }
 
-            if (node.value) {
+            if (current_func->sret && node.value) {
+                // Load sret pointer from the hidden arg
+                uint32_t sret_local = 0;
+                {
+                    bool found = false;
+                    for (int i = static_cast<int>(local_scopes.size()) - 1; i >= 0; --i) {
+                        auto it = local_scopes[i].find("__sret_ptr");
+                        if (it != local_scopes[i].end()) {
+                            sret_local = it->second;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        crash("sret pointer not found");
+                    }
+                }
+                const uint32_t sret_ptr = new_reg();
+                emit(IRLoadLocal{ sret_ptr, sret_local });
+
+                // Evaluate return value (produces a pointer to the struct data)
+                const uint32_t result_ptr = gen_expr(*node.value);
+
+                // Copy each field from result to sret buffer
+                if (current_func_return_type &&
+                    current_func_return_type->kind == ast::TypeKind::Struct) {
+                    auto* sym = ctx.symbols.lookup(current_func_return_type->struct_name);
+                    if (sym) {
+                        auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
+                        if (ss) {
+                            for (size_t i = 0; i < ss->field_names.size(); ++i) {
+                                const uint32_t offset = static_cast<uint32_t>(i * 8u);
+                                const uint32_t tmp = new_reg();
+                                emit(IRGetField{ tmp, result_ptr, offset });
+                                emit(IRSetField{ sret_ptr, tmp, offset });
+                            }
+                        }
+                    }
+                }
+
+                const uint32_t zero = new_reg();
+                emit(IRLoadConst{ zero, 0 });
+                emit(IRReturn{ zero });
+            } else if (node.value) {
                 const uint32_t value = gen_expr(*node.value);
                 emit(IRReturn{ value });
             } else {
@@ -755,6 +822,38 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::BinaryExpr& node) -> uint32_t {
+            const ast::Type* lhs_type = node.lhs ? node.lhs->resolved_type : nullptr;
+
+            if (lhs_type && lhs_type->kind == ast::TypeKind::Struct) {
+                std::string op_name;
+                switch (node.op) {
+                    case ast::BinaryOp::Add: op_name = "operator+"; break;
+                    case ast::BinaryOp::Sub: op_name = "operator-"; break;
+                    case ast::BinaryOp::Mul: op_name = "operator*"; break;
+                    case ast::BinaryOp::Div: op_name = "operator/"; break;
+                    case ast::BinaryOp::Eq:  op_name = "operator=="; break;
+                    case ast::BinaryOp::Neq: op_name = "operator!="; break;
+                    case ast::BinaryOp::Lt:  op_name = "operator<"; break;
+                    case ast::BinaryOp::Lte: op_name = "operator<="; break;
+                    case ast::BinaryOp::Gt:  op_name = "operator>"; break;
+                    case ast::BinaryOp::Gte: op_name = "operator>="; break;
+                }
+
+                const uint32_t lhs = gen_expr(*node.lhs);
+                const uint32_t rhs = gen_expr(*node.rhs);
+
+                // Allocate temp buffer for the struct result (sret)
+                int sz = type_size(lhs_type, &ctx);
+                if (current_func) current_func->extra_stack += sz;
+                const uint32_t sret_ptr = new_reg();
+                emit(IRAlloca{ sret_ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0) });
+
+                const uint32_t dst = new_reg();
+                uint32_t func_id = resolve_function_id({op_name});
+                emit(IRCall{ dst, func_id, {sret_ptr, lhs, rhs}, true });
+                return sret_ptr;
+            }
+
             const uint32_t lhs = gen_expr(*node.lhs);
             const uint32_t rhs = gen_expr(*node.rhs);
             const uint32_t dst = new_reg();
@@ -771,6 +870,48 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 rhs,
                 tk
             });
+
+            return dst;
+        },
+
+        [&](const ast::UnaryExpr& node) -> uint32_t {
+            const ast::Type* op_type = node.operand ? node.operand->resolved_type : nullptr;
+
+            if (op_type && op_type->kind == ast::TypeKind::Struct) {
+                std::string op_name;
+                switch (node.op) {
+                    case ast::UnaryOp::Neg: op_name = "operator-"; break;
+                    case ast::UnaryOp::Not: op_name = "operator!"; break;
+                }
+
+                const uint32_t operand = gen_expr(*node.operand);
+
+                int sz = type_size(op_type, &ctx);
+                if (current_func) current_func->extra_stack += sz;
+                const uint32_t sret_ptr = new_reg();
+                emit(IRAlloca{ sret_ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0) });
+
+                const uint32_t dst = new_reg();
+                uint32_t func_id = resolve_function_id({op_name});
+                emit(IRCall{ dst, func_id, {sret_ptr, operand}, true });
+                return sret_ptr;
+            }
+
+            const uint32_t operand = gen_expr(*node.operand);
+            const uint32_t dst = new_reg();
+            const uint32_t zero = new_reg();
+            emit(IRLoadConst{ zero, 0 });
+
+            ast::TypeKind tk = ast::TypeKind::I32;
+            if (node.operand && node.operand->resolved_type) {
+                tk = node.operand->resolved_type->kind;
+            }
+
+            if (node.op == ast::UnaryOp::Neg) {
+                emit(IRBinary{ IRBinaryOp::Sub, dst, zero, operand, tk });
+            } else {
+                emit(IRBinary{ IRBinaryOp::Eq, dst, operand, zero, tk });
+            }
 
             return dst;
         },
@@ -978,13 +1119,39 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 func_id = resolve_function_id(callee_path);
             }
 
+            // Check if callee returns a struct (needs sret)
+            bool is_sret_call = false;
+            uint32_t sret_ptr = 0;
+            {
+                auto* fn_sym = ctx.symbols.lookup(callee_path.back());
+                if (!fn_sym && callee_path.size() > 1) {
+                    fn_sym = ctx.symbols.lookup_qualified(callee_path);
+                }
+                if (fn_sym) {
+                    auto* fs = std::get_if<quark::symb_t::FuncSymbol>(&fn_sym->data);
+                    if (fs && fs->return_type &&
+                        fs->return_type->kind == ast::TypeKind::Struct) {
+                        is_sret_call = true;
+                        int sz = type_size(fs->return_type, &ctx);
+                        if (current_func) current_func->extra_stack += sz;
+                        sret_ptr = new_reg();
+                        emit(IRAlloca{ sret_ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0) });
+                        args.insert(args.begin(), sret_ptr);
+                    }
+                }
+            }
+
             const uint32_t dst = new_reg();
             emit(IRCall{
                 dst,
                 func_id,
-                args
+                args,
+                is_sret_call
             });
 
+            if (is_sret_call) {
+                return sret_ptr;
+            }
             return dst;
         },
 

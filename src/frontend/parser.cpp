@@ -1,4 +1,6 @@
 #include "quark/frontend/parser.h"
+#include "quark/frontend/ast.h"
+#include "quark/frontend/token.h"
 #include "utils/logger.h"
 
 #include <utility>
@@ -76,7 +78,11 @@ ast::BinaryOp get_op_from_token(TokenType type) {
 int get_precedence(TokenType t) {
     switch (t) {
         case TOKEN_EQ:
-            return 1; 
+        case TOKEN_PLUS_EQ:
+        case TOKEN_MINUS_EQ:
+        case TOKEN_STAR_EQ:
+        case TOKEN_SLASH_EQ:
+            return 1;
 
         case TOKEN_EQEQ:
         case TOKEN_NEQ:
@@ -196,6 +202,11 @@ ast::Stmt Parser::parse_statement() {
     }
 
     if (match(TOKEN_FUNC)) {
+        if (match(TOKEN_OPERATOR)) {
+            auto func = parser_operator_func();
+            func.attributes = std::move(attrs);
+            return ast::Stmt{ std::move(func) };
+        }
         auto func = parse_func(false);
         func.attributes = std::move(attrs);
         return ast::Stmt{ std::move(func) };
@@ -240,16 +251,12 @@ bool Parser::is_var_decl() {
     if (check(TOKEN_MUT)) {
         return peek(0).type == TOKEN_IDENT && peek(1).type == TOKEN_COLON;
     }
-    if (check(TOKEN_VAR)) {
-        return peek(0).type == TOKEN_IDENT && peek(1).type == TOKEN_COLON;
-    }
     return check(TOKEN_IDENT) && peek(0).type == TOKEN_COLON;
 }
 
 ast::VarDecl Parser::parse_var_decl() {
     ast::VarDecl ret;
     ret.is_mut = match(TOKEN_MUT);
-    match(TOKEN_VAR);
 
     Token name = expect(TOKEN_IDENT, "Expected variable name");
     ret.name = name.text;
@@ -274,7 +281,7 @@ ast::StructDecl Parser::parse_struct_decl() {
     ast::StructDecl ret;
 
     ret.name = std::string(expect(TOKEN_IDENT, "Expected struct name").text);
-    
+
     if(match(TOKEN_LT)){
         do{
             Token param = expect(TOKEN_IDENT, "Expected type parameter name");
@@ -403,7 +410,7 @@ ast::FuncStmt Parser::parse_func(bool is_extern) {
     ret.return_type = parse_type(true, current_type_params);
 
     if (check(TOKEN_LBRACE)) {
-        ret.body = parse_block();   
+        ret.body = parse_block();
         ret.has_body = true;
     } else {
         expect(TOKEN_SEMICOLON, "Expected ';' after function declaration");
@@ -413,6 +420,55 @@ ast::FuncStmt Parser::parse_func(bool is_extern) {
 
     return ret;
 }
+
+ast::FuncStmt Parser::parser_operator_func() {
+    ast::FuncStmt ret;
+
+    Token op_token = advance();
+    std::string op_text;
+    switch (op_token.type) {
+        case TOKEN_PLUS:  op_text = "operator+"; break;
+        case TOKEN_MINUS: op_text = "operator-"; break;
+        case TOKEN_STAR:  op_text = "operator*"; break;
+        case TOKEN_SLASH: op_text = "operator/"; break;
+        case TOKEN_EQEQ:  op_text = "operator=="; break;
+        case TOKEN_NEQ:   op_text = "operator!="; break;
+        case TOKEN_LT:    op_text = "operator<";  break;
+        case TOKEN_LTE:   op_text = "operator<="; break;
+        case TOKEN_GT:    op_text = "operator>";  break;
+        case TOKEN_GTE:   op_text = "operator>="; break;
+        case TOKEN_NOT:   op_text = "operator!";  break;
+        default:
+            error(op_token.loc, "Expected operator token after 'operator' keyword");
+            ret.name = "operator_";
+            return ret;
+    }
+    ret.name = op_text;
+    ret.is_extern = false;
+    ret.has_body = false;
+    ret.body = nullptr;
+
+    const auto* saved_type_params = current_type_params;
+    current_type_params = nullptr;
+
+    expect(TOKEN_LPAREN, "Expected '(' after operator");
+    ret.args = parse_func_args(current_type_params);
+    expect(TOKEN_RPAREN, "Expected ')'");
+
+    ret.return_type = parse_type(true, current_type_params);
+
+    if (check(TOKEN_LBRACE)) {
+        ret.body = parse_block();
+        ret.has_body = true;
+    } else {
+        expect(TOKEN_SEMICOLON, "Expected ';' after operator declaration");
+    }
+
+    current_type_params = saved_type_params;
+
+    return ret;
+}
+
 ast::RegionStmt Parser::parse_region(){
     ast::RegionStmt ret;
 
@@ -517,6 +573,21 @@ ast::Expr* Parser::parse_expr(int min_prec) {
             return make_expr(ctx, ast::AssignExpr{ left, right }, left->loc);
         }
 
+        if (op.type == TOKEN_PLUS_EQ || op.type == TOKEN_MINUS_EQ ||
+            op.type == TOKEN_STAR_EQ || op.type == TOKEN_SLASH_EQ) {
+            ast::Expr* rhs = parse_expr(prec);
+            TokenType base_op;
+            switch (op.type) {
+                case TOKEN_PLUS_EQ:  base_op = TOKEN_PLUS;  break;
+                case TOKEN_MINUS_EQ: base_op = TOKEN_MINUS; break;
+                case TOKEN_STAR_EQ:  base_op = TOKEN_STAR;  break;
+                case TOKEN_SLASH_EQ: base_op = TOKEN_SLASH; break;
+                default:             base_op = TOKEN_PLUS;  break;
+            }
+            auto* bin = make_binary(left, rhs, base_op);
+            return make_expr(ctx, ast::AssignExpr{ left, bin }, left->loc);
+        }
+
         ast::Expr* right = parse_expr(prec + 1);
         left = make_binary(left, right, op.type);
     }
@@ -550,6 +621,14 @@ ast::Expr* Parser::parse_prefix() {
 
     if (match(TOKEN_FALSE)) {
         return make_expr(ctx, ast::BoolExpr{ false }, previous.loc);
+    }
+    if (match(TOKEN_NOT)){
+        auto* operand = parse_expr(6);
+        return make_expr(ctx, UnaryExpr{operand, ast::UnaryOp::Not}, previous.loc);
+    }
+    if (match(TOKEN_MINUS)){
+        auto* operand = parse_expr(6);
+        return make_expr(ctx, UnaryExpr{operand, ast::UnaryOp::Neg}, previous.loc);
     }
 
     if (match(TOKEN_IDENT)) {

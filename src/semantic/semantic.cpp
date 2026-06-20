@@ -1,4 +1,5 @@
 #include "quark/semantic/semantic.h"
+#include "quark/frontend/ast.h"
 #include "quark/semantic/symbol_table.h"
 #include "quark/support/compiler_context.h"
 #include "quark/support/symbol_path.h"
@@ -715,6 +716,9 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
         [&](const ast::BinaryExpr& n) -> const ast::Type* {
             return analyze_binary(n);
         },
+        [&](const ast::UnaryExpr& n) -> const ast::Type* {
+            return analyze_unary(n);
+        },
         [&](const ast::CallExpr& n) -> const ast::Type* {
             return analyze_call(n);
         },
@@ -893,18 +897,114 @@ const ast::Type* SemanticAnalyzer::analyze_field(const ast::FieldExpr& node) {
     return resolve_struct_field(ctx, base, node.field);
 }
 
+namespace {
+    std::string binary_op_name(ast::BinaryOp op) {
+        switch (op) {
+            case ast::BinaryOp::Add: return "operator+";
+            case ast::BinaryOp::Sub: return "operator-";
+            case ast::BinaryOp::Mul: return "operator*";
+            case ast::BinaryOp::Div: return "operator/";
+            case ast::BinaryOp::Eq:  return "operator==";
+            case ast::BinaryOp::Neq: return "operator!=";
+            case ast::BinaryOp::Lt:  return "operator<";
+            case ast::BinaryOp::Lte: return "operator<=";
+            case ast::BinaryOp::Gt:  return "operator>";
+            case ast::BinaryOp::Gte: return "operator>=";
+        }
+        return "operator?";
+    }
+
+    std::string unary_op_name(ast::UnaryOp op) {
+        switch (op) {
+            case ast::UnaryOp::Neg: return "operator-";
+            case ast::UnaryOp::Not: return "operator!";
+        }
+        return "operator?";
+    }
+
+    bool is_builtin_type_kind(ast::TypeKind k) {
+        return k != ast::TypeKind::Struct && k != ast::TypeKind::Generic;
+    }
+}
+
 const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b) {
     const ast::Type* l = analyze_expr(b.lhs);
     const ast::Type* r = analyze_expr(b.rhs);
 
     if (!l || !r) return nullptr;
 
-    if (!types_equal(l, r)) {
-        crash("Type mismatch in binary expression");
+    if (is_builtin_type_kind(l->kind) && is_builtin_type_kind(r->kind)) {
+        if (!types_equal(l, r)) {
+            crash("Type mismatch in binary expression");
+            return nullptr;
+        }
+        return l;
+    }
+
+    std::string op_name = binary_op_name(b.op);
+    auto* sym = ctx.symbols.lookup(op_name);
+    if (!sym) {
+        crash("No matching operator '" + op_name + "' for these types");
         return nullptr;
     }
 
-    return l;
+    auto* fn = std::get_if<symb_t::FuncSymbol>(&sym->data);
+    if (!fn) {
+        crash("'" + op_name + "' is not a function");
+        return nullptr;
+    }
+
+    if (fn->arg_types.size() != 2) {
+        crash("Operator '" + op_name + "' must take 2 arguments");
+        return nullptr;
+    }
+
+    if (!is_assignable(fn->arg_types[0], l) || !is_assignable(fn->arg_types[1], r)) {
+        crash("Argument type mismatch for operator '" + op_name + "'");
+        return nullptr;
+    }
+
+    return fn->return_type;
+}
+
+const ast::Type* SemanticAnalyzer::analyze_unary(const ast::UnaryExpr& u){
+    const ast::Type* operand = analyze_expr(u.operand);
+    if (!operand) return nullptr;
+
+    if (is_builtin_type_kind(operand->kind)) {
+        if (u.op == ast::UnaryOp::Not) {
+            if (operand->kind != TypeKind::Bool && operand->kind != TypeKind::U32) {
+                crash("Unary '!' not supported for this type");
+                return nullptr;
+            }
+        } else {
+            if (!(operand->kind >= TypeKind::I8 && operand->kind <= TypeKind::F64)) {
+                crash("Unary '-' not supported for this type");
+                return nullptr;
+            }
+        }
+        return operand;
+    }
+
+    std::string op_name = unary_op_name(u.op);
+    auto* sym = ctx.symbols.lookup(op_name);
+    if (!sym) {
+        crash("No matching operator '" + op_name + "' for this type");
+        return nullptr;
+    }
+
+    auto* fn = std::get_if<symb_t::FuncSymbol>(&sym->data);
+    if (!fn || fn->arg_types.size() != 1) {
+        crash("'" + op_name + "' must be a function with 1 argument");
+        return nullptr;
+    }
+
+    if (!is_assignable(fn->arg_types[0], operand)) {
+        crash("Argument type mismatch for operator '" + op_name + "'");
+        return nullptr;
+    }
+
+    return fn->return_type;
 }
 
 void SemanticAnalyzer::check_arg_guard(const ast::Expr* arg, const std::string& call_name) {
@@ -924,11 +1024,15 @@ void SemanticAnalyzer::check_arg_guard(const ast::Expr* arg, const std::string& 
 
     if (const auto* fe = std::get_if<ast::FieldExpr>(&arg->kind)) {
         const ast::Type* base_type = fe->base ? fe->base->resolved_type : nullptr;
+
         if (!base_type || base_type->kind != ast::TypeKind::Struct) return;
+
         auto* s_sym = ctx.symbols.lookup(base_type->struct_name);
         if (!s_sym) return;
+
         auto* ss = std::get_if<symb_t::StructSymbol>(&s_sym->data);
         if (!ss) return;
+
         for (size_t i = 0; i < ss->field_names.size(); ++i) {
             if (ss->field_names[i] != fe->field) continue;
             for (const auto& fa : ss->field_attributes[i]) {

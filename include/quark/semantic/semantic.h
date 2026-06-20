@@ -3,6 +3,7 @@
 #include <optional>
 #include <vector>
 
+#include "quark/frontend/ast.h"
 #include "quark/support/compiler_context.h"
 #include "quark/attributes/attributes.h"
 #include "quark/modules/module.h"
@@ -49,6 +50,7 @@ class SemanticAnalyzer {
         const ast::Type* analyze_var(const ast::VarExpr&);
         const ast::Type* analyze_assign(const ast::AssignExpr&);
         const ast::Type* analyze_binary(const ast::BinaryExpr&);
+        const ast::Type* analyze_unary(const ast::UnaryExpr&);
         const ast::Type* analyze_call(const ast::CallExpr&);
         const ast::Type* analyze_field(const ast::FieldExpr&);
         const ast::Type* analyze_namespace(const ast::NamespaceExpr&);

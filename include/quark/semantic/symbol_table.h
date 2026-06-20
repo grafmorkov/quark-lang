@@ -22,12 +22,6 @@ namespace quark::symb_t {
         const ast::Type* type;
         bool is_mut;
     };
-
-    struct StructSymbol {
-        std::vector<std::string> field_names;
-        std::vector<const ast::Type*> field_types;
-        std::vector<std::vector<ast::Attribute>> field_attributes;
-    };
     struct FuncSymbol {
         std::vector<const ast::Type*> arg_types;
         const ast::Type* return_type;
@@ -36,7 +30,11 @@ namespace quark::symb_t {
         bool is_defined;
         bool is_entry;
     };
-
+    struct StructSymbol {
+        std::vector<std::string> field_names;
+        std::vector<const ast::Type*> field_types;
+        std::vector<std::vector<ast::Attribute>> field_attributes;
+    };
     using SymbolData = std::variant<
         VarSymbol,
         FuncArgSymbol,

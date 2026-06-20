@@ -20,6 +20,7 @@ struct IRGenerator {
     IRProgram program;
 
     IRFunction* current_func = nullptr;
+    const ast::Type* current_func_return_type = nullptr;
     const modules::Module* current_module = nullptr;
 
     Reg next_reg = 0;

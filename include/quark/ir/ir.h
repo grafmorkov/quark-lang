@@ -54,6 +54,7 @@ struct IRCall {
     Reg dst;
     uint32_t func_id;
     std::vector<Reg> args;
+    bool sret = false;   // struct return: first arg is hidden pointer to result buffer
 };
 struct IRCast {
     Reg dst;
@@ -119,7 +120,7 @@ struct IRRegionEnd {
 
 struct IRAlloca {
     Reg dst;
-    uint32_t size;
+    uint32_t offset; // cumulative byte offset from rbp (computed at IR gen time)
 };
 
 struct IRLoadElement {
@@ -172,6 +173,7 @@ struct IRFunction {
 
     bool is_extern;
     bool is_entry;
+    bool sret = false;   // returns struct via hidden pointer arg
 };
 
 struct IRProgram {

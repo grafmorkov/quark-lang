@@ -70,7 +70,7 @@ namespace quark::lx {
             case '[': return make_token(TOKEN_LBRACKET);
             case ']': return make_token(TOKEN_RBRACKET);
             case ',': return make_token(TOKEN_COMMA);
-            case '=': 
+            case '=':
                 if(match('=')){
                     return make_token(TOKEN_EQEQ);
                 }
@@ -84,23 +84,19 @@ namespace quark::lx {
             case '!': return make_token(match('=') ? TOKEN_NEQ : TOKEN_NOT);
             case '<': return make_token(match('=') ? TOKEN_LTE : TOKEN_LT);
             case '>': return make_token(match('=') ? TOKEN_GTE : TOKEN_GT);
-            case '+': return make_token(TOKEN_PLUS);
-            case '-': return make_token(TOKEN_MINUS);
-            case '*': return make_token(TOKEN_STAR);
+            case '+': return make_token(match('=') ? TOKEN_PLUS_EQ: TOKEN_PLUS);
+            case '-': return make_token(match('=') ? TOKEN_MINUS_EQ: TOKEN_MINUS);
+            case '*': return make_token(match('=') ? TOKEN_STAR_EQ: TOKEN_STAR);
             case ';': return make_token(TOKEN_SEMICOLON);
             case '@': return make_token(TOKEN_AT);
             case '.': return make_token(TOKEN_DOT);
-            case '?': 
-                if(match('?')){
-                    return make_token(TOKEN_QUESTION_QUESTION);
-                }
-                return make_token(TOKEN_QUESTION);
             case ':': return make_token(match(':') ? TOKEN_COLON_COLON: TOKEN_COLON);
             case '/':
                 if (match('/')) {
                     while (peek() != '\n' && !is_at_end()) advance();
                     return next_token();
-                } else if (match('*')) {
+                }
+                else if (match('*')) {
                     while (!is_at_end()) {
                         if (peek() == '*' && pos + 1 < buffer.size() && buffer[pos + 1] == '/') {
                             advance();
@@ -114,6 +110,9 @@ namespace quark::lx {
                         advance();
                     }
                     return next_token();
+                }
+                else if (match('=')){
+                    return make_token(TOKEN_SLASH_EQ);
                 }
                 return make_token(TOKEN_SLASH);
             case '\0': return make_token(TOKEN_EOF);
@@ -176,7 +175,6 @@ namespace quark::lx {
             case str_hash("while"):return make_token(TOKEN_WHILE);
             case str_hash("return"):return make_token(TOKEN_RETURN);
             case str_hash("func"): return make_token(TOKEN_FUNC);
-            case str_hash("var"): return make_token(TOKEN_VAR);
 
             case str_hash("mut"): return make_token(TOKEN_MUT);
             case str_hash("struct"): return make_token(TOKEN_STRUCT);
@@ -184,6 +182,7 @@ namespace quark::lx {
             case str_hash("load"): return make_token(TOKEN_LOAD);
             case str_hash("module"): return make_token(TOKEN_MODULE);
             case str_hash("extern"): return make_token(TOKEN_EXTERN);
+            case str_hash("operator"): return make_token(TOKEN_OPERATOR);
 
             // Types
             case str_hash("void"): return make_token(TOKEN_VOID);

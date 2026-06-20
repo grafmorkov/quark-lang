@@ -1,0 +1,26 @@
+struct Point {
+    x: i32;
+    y: i32;
+};
+
+func operator +(a: Point, b: Point) Point {
+    @init mut result: Point;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    return result;
+}
+
+@entry func main() i32 {
+    @init mut a: Point;
+    a.x = 10;
+    a.y = 20;
+
+    @init mut b: Point;
+    b.x = 1;
+    b.y = 2;
+
+    @init mut c: Point;
+    c = a + b;
+
+    return c.y;
+}

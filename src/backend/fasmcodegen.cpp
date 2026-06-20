@@ -303,7 +303,9 @@ namespace {
             emit_line("    add rsp, " + std::to_string(frame));
         }
 
-        emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
+        if (!x.sret) {
+            emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
+        }
     }
     void FasmCodeGenerator::emit_inst(const IRProgram& program, const IRFunction& fn, const IRInst& inst) {
         std::visit(overloaded{
@@ -525,11 +527,11 @@ namespace {
                 emit_region_end(x, fn);
             },
             [&](const IRAlloca& x) {
-                // Compute address: rbp - base_offset - extra_stack_offset
-                // extra_stack_offset = fn.extra_stack (total extra) - x.size (remaining after this alloc)
+                // x.offset is the cumulative extra_stack at time of allocation
+                // Place allocation below all local and temp slots
                 const std::size_t base = (static_cast<std::size_t>(fn.local_count) +
                                           static_cast<std::size_t>(fn.temp_count)) * 8u;
-                const std::size_t offset = base + static_cast<std::size_t>(fn.extra_stack) - static_cast<std::size_t>(x.size);
+                const std::size_t offset = base + static_cast<std::size_t>(x.offset);
                 emit_line("    lea rax, [rbp - " + std::to_string(offset) + "]");
                 emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
             },
