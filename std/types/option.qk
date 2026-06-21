@@ -1,11 +1,15 @@
-module "std::core";
+module "std::types";
 
-struct option<T> {
+struct opt<T> {
     has_value: bool = false;
 
-    @guard(has_value) @init value: T;
+    @init @guard(has_value)
+    value: T;
 };
-func option_set<T>(value: T) option<T> {
-    out.value = value;
-    has_value = true;
+
+func operator +<T>(a: opt<T>, b: opt<T>) opt<T> {
+    @init mut r: opt<T>;
+    r.value = a.value + b.value;
+    r.has_value = true;
+    return r;
 }

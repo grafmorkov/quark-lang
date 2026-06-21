@@ -173,8 +173,8 @@ struct IRFunction {
 
     std::vector<IRInst> body;
 
-    bool is_extern;
-    bool is_entry;
+    bool is_extern = false;
+    bool is_entry = false;
     bool sret = false;   // returns struct via hidden pointer arg
 };
 

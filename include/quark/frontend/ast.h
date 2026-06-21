@@ -49,7 +49,7 @@ namespace quark::ast {
         TypeKind kind;
         std::string struct_name; // struct only
         const Type* pointed; // ptr only
-	std::vector<const Type*> type_args;
+        std::vector<const Type*> type_args;
     };
 
     // Expressions

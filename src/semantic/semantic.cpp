@@ -111,6 +111,49 @@ bool types_equal(const ast::Type* a, const ast::Type* b) {
 bool is_assignable(const ast::Type* to, const ast::Type* from) {
     return types_equal(to, from);
 }
+
+bool infer_generic_params(
+    const ast::Type* pattern,
+    const ast::Type* concrete,
+    const std::vector<std::string>& generic_params,
+    std::unordered_map<std::string, const ast::Type*>& subst
+) {
+    if (!pattern || !concrete) return false;
+
+    if (pattern->kind == ast::TypeKind::Generic) {
+        if (std::find(generic_params.begin(), generic_params.end(), pattern->struct_name) != generic_params.end()) {
+            auto [it, inserted] = subst.try_emplace(pattern->struct_name, concrete);
+            if (!inserted) return types_equal(it->second, concrete);
+            return true;
+        }
+        return true;
+    }
+
+    if (pattern->kind != concrete->kind) return false;
+
+    if (pattern->kind == ast::TypeKind::Struct) {
+        auto base_of = [](const std::string& name) -> std::string {
+            auto dollar = name.find('$');
+            std::string base = (dollar != std::string::npos) ? name.substr(0, dollar) : name;
+            auto colon = base.rfind("::");
+            return (colon != std::string::npos) ? base.substr(colon + 2) : base;
+        };
+        if (base_of(pattern->struct_name) != base_of(concrete->struct_name)) return false;
+        if (pattern->type_args.size() != concrete->type_args.size()) return false;
+        for (size_t i = 0; i < pattern->type_args.size(); ++i) {
+            if (!infer_generic_params(pattern->type_args[i], concrete->type_args[i], generic_params, subst))
+                return false;
+        }
+        return true;
+    }
+
+    if (pattern->kind == ast::TypeKind::Pointer) {
+        return infer_generic_params(pattern->pointed, concrete->pointed, generic_params, subst);
+    }
+
+    return types_equal(pattern, concrete);
+}
+
 const attrs::AttributeInfo* find_attr(const std::string& name){
 	for(const auto& attr : attrs::attributes){
 		if(attr.first == name){
@@ -1065,28 +1108,198 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b) {
 
     std::string op_name = binary_op_name(b.op);
     auto* sym = ctx.symbols.lookup(op_name);
-    if (!sym) {
-        crash("No matching operator '" + op_name + "' for these types");
+
+    if (sym) {
+        auto* fn = std::get_if<symb_t::FuncSymbol>(&sym->data);
+        if (!fn) {
+            crash("'" + op_name + "' is not a function");
+            return nullptr;
+        }
+        if (fn->arg_types.size() != 2) {
+            crash("Operator '" + op_name + "' must take 2 arguments");
+            return nullptr;
+        }
+        if (!is_assignable(fn->arg_types[0], l) || !is_assignable(fn->arg_types[1], r)) {
+            crash("Argument type mismatch for operator '" + op_name + "'");
+            return nullptr;
+        }
+        return fn->return_type;
+    }
+
+    // Try generic operator as fallback
+    auto* result = try_generic_operator(op_name, l, r);
+    if (result) return result;
+
+    crash("No matching operator '" + op_name + "' for these types");
+    return nullptr;
+}
+
+const ast::Type* SemanticAnalyzer::try_generic_operator(
+    const std::string& op_name,
+    const ast::Type* lhs,
+    const ast::Type* rhs
+) {
+    if (lhs->kind != ast::TypeKind::Struct && rhs->kind != ast::TypeKind::Struct) {
         return nullptr;
     }
 
-    auto* fn = std::get_if<symb_t::FuncSymbol>(&sym->data);
-    if (!fn) {
-        crash("'" + op_name + "' is not a function");
-        return nullptr;
+    // Build candidate qualified names for the operator
+    std::vector<std::string> candidates;
+    candidates.push_back(op_name);
+
+    auto add_namespace_candidates = [&](const ast::Type* t) {
+        if (t->kind != ast::TypeKind::Struct) return;
+        std::string s = t->struct_name;
+        auto dollar = s.find('$');
+        if (dollar != std::string::npos) s = s.substr(0, dollar);
+        auto colon = s.rfind("::");
+        if (colon != std::string::npos) {
+            candidates.push_back(s.substr(0, colon) + "::" + op_name);
+        }
+    };
+    add_namespace_candidates(lhs);
+    add_namespace_candidates(rhs);
+
+    for (const auto& qualified_name : candidates) {
+        (void)0;
+        const auto* generic_def = ctx.types.get_generic_func(qualified_name);
+        if (!generic_def) {
+            continue;
+        }
+        if (generic_def->params.empty()) {
+            continue;
+        }
+        if (generic_def->args.size() != 2) {
+            continue;
+        }
+
+        // Infer type params from operand types
+        std::unordered_map<std::string, const Type*> subst;
+        if (!infer_generic_params(generic_def->args[0].type, lhs, generic_def->params, subst)) {
+            continue;
+        }
+        if (!infer_generic_params(generic_def->args[1].type, rhs, generic_def->params, subst)) {
+            continue;
+        }
+
+        // All params must be resolved
+        bool all_resolved = true;
+        for (const auto& p : generic_def->params) {
+            if (subst.find(p) == subst.end()) { all_resolved = false; break; }
+        }
+        if (!all_resolved) {
+            continue;
+        }
+        std::vector<const Type*> type_args;
+        for (const auto& p : generic_def->params) {
+            auto it = subst.find(p);
+            if (it != subst.end()) type_args.push_back(it->second);
+        }
+
+        std::string mangled = ctx.types.mangle_func_name(qualified_name, type_args);
+
+        // Check if already instantiated
+        auto* concrete_sym = ctx.symbols.lookup(mangled);
+        if (!concrete_sym) {
+            // Extract function's namespace for qualifying struct types
+            std::vector<std::string> func_ns;
+            {
+                std::string qn = qualified_name;
+                auto colon = qn.rfind("::");
+                if (colon != std::string::npos) {
+                    std::string ns = qn.substr(0, colon);
+                    func_ns = support::split_path(ns);
+                }
+            }
+
+            auto qualify_struct = [&](const Type* type) -> const Type* {
+                if (type && type->kind == TypeKind::Struct && !type->type_args.empty()) {
+                    std::vector<const Type*> concrete_type_args;
+                    for (const auto* arg : type->type_args) {
+                        concrete_type_args.push_back(ctx.types.substitute_type(arg, subst));
+                    }
+                    std::string base_name = type->struct_name;
+                    std::string unmangled;
+                    if (ctx.types.is_mangled_name(base_name, unmangled)) {
+                        base_name = unmangled;
+                    }
+                    std::string qualified_base = base_name;
+                    if (!func_ns.empty()) {
+                        qualified_base = full_qualified(func_ns, {}, base_name);
+                    }
+                    return ctx.types.get_deferred_generic(qualified_base, concrete_type_args);
+                }
+                return ctx.types.substitute_type(type, subst);
+            };
+
+            // Create concrete arg types
+            std::vector<const Type*> concrete_arg_types;
+            std::vector<ast::FuncArg> concrete_args;
+            for (const auto& arg : generic_def->args) {
+                concrete_arg_types.push_back(qualify_struct(arg.type));
+                concrete_args.push_back(ctx.types.substitute_func_arg(arg, subst));
+            }
+            // For body analysis, use unqualified return type so struct types match.
+            // The symbol keeps the qualified return type for use by callers.
+            const Type* concrete_return_unqual = ctx.types.substitute_type(generic_def->return_type, subst);
+            const Type* concrete_return_qual = qualify_struct(generic_def->return_type);
+
+            // Register concrete function symbol (with qualified return type for caller)
+            symb_t::FuncSymbol concrete_fn_sym;
+            concrete_fn_sym.arg_types = concrete_arg_types;
+            concrete_fn_sym.return_type = concrete_return_qual;
+            concrete_fn_sym.is_extern = generic_def->body == nullptr;
+            concrete_fn_sym.is_defined = generic_def->body != nullptr;
+            concrete_fn_sym.is_entry = false;
+
+            ctx.symbols.declare_symbol(mangled, symb_t::Symbol{mangled, concrete_fn_sym, {}});
+
+            // Create FuncStmt for body analysis and IR gen (with unqualified return type for body)
+            ast::FuncStmt concrete_fn_stmt;
+            concrete_fn_stmt.name = mangled;
+            concrete_fn_stmt.args = concrete_args;
+            concrete_fn_stmt.return_type = concrete_return_unqual;
+            concrete_fn_stmt.type_params = {};
+            concrete_fn_stmt.is_extern = generic_def->body == nullptr;
+            concrete_fn_stmt.is_forward = false;
+            concrete_fn_stmt.is_entry = false;
+            concrete_fn_stmt.has_body = generic_def->body != nullptr;
+            concrete_fn_stmt.body = const_cast<ast::Block*>(generic_def->body);
+            concrete_fn_stmt.attributes = generic_def->attributes;
+
+            if (concrete_fn_stmt.body) {
+                auto* prev_subst = current_type_subst;
+                current_type_subst = &subst;
+                analyze_func(concrete_fn_stmt);
+                current_type_subst = prev_subst;
+            }
+
+            ctx.generic_instantiations.push_back(std::move(concrete_fn_stmt));
+            concrete_sym = ctx.symbols.lookup(mangled);
+        }
+
+        if (!concrete_sym) {
+            continue;
+        }
+
+        auto* concrete_fn = std::get_if<symb_t::FuncSymbol>(&concrete_sym->data);
+        if (!concrete_fn) {
+            continue;
+        }
+        if (concrete_fn->arg_types.size() != 2) {
+            continue;
+        }
+        if (!is_assignable(concrete_fn->arg_types[0], lhs)) {
+            continue;
+        }
+        if (!is_assignable(concrete_fn->arg_types[1], rhs)) {
+            continue;
+        }
+
+        return concrete_fn->return_type;
     }
 
-    if (fn->arg_types.size() != 2) {
-        crash("Operator '" + op_name + "' must take 2 arguments");
-        return nullptr;
-    }
-
-    if (!is_assignable(fn->arg_types[0], l) || !is_assignable(fn->arg_types[1], r)) {
-        crash("Argument type mismatch for operator '" + op_name + "'");
-        return nullptr;
-    }
-
-    return fn->return_type;
+    return nullptr;
 }
 
 const ast::Type* SemanticAnalyzer::analyze_unary(const ast::UnaryExpr& u){
@@ -1240,14 +1453,45 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
         // Check if already instantiated
         auto* concrete_sym = ctx.symbols.lookup(mangled);
         if (!concrete_sym) {
+            // Extract function's namespace for qualifying struct types
+            std::vector<std::string> func_ns;
+            {
+                std::string qn = qualified_func_name;
+                auto colon = qn.rfind("::");
+                if (colon != std::string::npos) {
+                    std::string ns = qn.substr(0, colon);
+                    func_ns = support::split_path(ns);
+                }
+            }
+
+            auto qualify_struct = [&](const Type* type) -> const Type* {
+                if (type && type->kind == TypeKind::Struct && !type->type_args.empty()) {
+                    std::vector<const Type*> concrete_type_args;
+                    for (const auto* arg : type->type_args) {
+                        concrete_type_args.push_back(ctx.types.substitute_type(arg, subst));
+                    }
+                    std::string base_name = type->struct_name;
+                    std::string unmangled;
+                    if (ctx.types.is_mangled_name(base_name, unmangled)) {
+                        base_name = unmangled;
+                    }
+                    std::string qualified_base = base_name;
+                    if (!func_ns.empty()) {
+                        qualified_base = full_qualified(func_ns, {}, base_name);
+                    }
+                    return ctx.types.get_deferred_generic(qualified_base, concrete_type_args);
+                }
+                return ctx.types.substitute_type(type, subst);
+            };
+
             // Create concrete arg types by substitution
             std::vector<const Type*> concrete_arg_types;
             std::vector<ast::FuncArg> concrete_args;
             for (const auto& arg : generic_def->args) {
-                concrete_arg_types.push_back(ctx.types.substitute_type(arg.type, subst));
+                concrete_arg_types.push_back(qualify_struct(arg.type));
                 concrete_args.push_back(ctx.types.substitute_func_arg(arg, subst));
             }
-            const Type* concrete_return = ctx.types.substitute_type(generic_def->return_type, subst);
+            const Type* concrete_return = qualify_struct(generic_def->return_type);
 
             // Substitute type args in struct return types
             if (concrete_return && concrete_return->kind == TypeKind::Struct && !concrete_return->type_args.empty()) {

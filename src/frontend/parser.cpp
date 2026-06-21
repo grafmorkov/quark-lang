@@ -475,6 +475,16 @@ ast::FuncStmt Parser::parser_operator_func() {
     const auto* saved_type_params = current_type_params;
     current_type_params = nullptr;
 
+    if(match(TOKEN_LT)){
+        do{
+            Token param = expect(TOKEN_IDENT, "Expected type parameter name");
+            ret.type_params.push_back(std::string(param.text));
+        } while(match(TOKEN_COMMA));
+        expect(TOKEN_GT, "Expected '>' after type parameters");
+    }
+
+    current_type_params = ret.type_params.empty() ? nullptr : &ret.type_params;
+
     expect(TOKEN_LPAREN, "Expected '(' after operator");
     ret.args = parse_func_args(current_type_params);
     expect(TOKEN_RPAREN, "Expected ')'");

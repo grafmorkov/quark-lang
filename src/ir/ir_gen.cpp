@@ -61,6 +61,19 @@ int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
         case ast::TypeKind::Struct: {
             if (!ctx) return 0;
             auto* sym = lookup_struct(*ctx, t->struct_name);
+            if (!sym && !t->type_args.empty()) {
+                if (ctx->types.try_instantiate(t->struct_name, t->type_args)) {
+                    const auto* fields = ctx->types.get_struct_fields(t->struct_name);
+                    if (fields) {
+                        const auto* field_attrs = ctx->types.get_struct_field_attrs(t->struct_name);
+                        ctx->symbols.declare_struct_global(
+                            t->struct_name, *fields, {},
+                            field_attrs ? *field_attrs : std::vector<std::vector<ast::Attribute>>{}
+                        );
+                        sym = lookup_struct(*ctx, t->struct_name);
+                    }
+                }
+            }
             if (!sym) return 0;
             auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
             if (!ss) return 0;
@@ -123,6 +136,19 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
     }
 
     auto* sym = lookup_struct(ctx, base_type->struct_name);
+    if (!sym && !base_type->type_args.empty()) {
+        if (ctx.types.try_instantiate(base_type->struct_name, base_type->type_args)) {
+            const auto* fields = ctx.types.get_struct_fields(base_type->struct_name);
+            if (fields) {
+                const auto* field_attrs = ctx.types.get_struct_field_attrs(base_type->struct_name);
+                ctx.symbols.declare_struct_global(
+                    base_type->struct_name, *fields, {},
+                    field_attrs ? *field_attrs : std::vector<std::vector<ast::Attribute>>{}
+                );
+                sym = lookup_struct(ctx, base_type->struct_name);
+            }
+        }
+    }
     if (!sym) {
         crash("Unknown struct: " + base_type->struct_name);
     }
@@ -295,13 +321,19 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
 
         current_func = &program.functions[it->second];
         current_func->body.clear();
-        current_func->arg_count = static_cast<uint32_t>(fn.args.size());
         current_func->local_count = 0;
         current_func->temp_count = 0;
         current_func->extra_stack = 0;
         current_func->is_extern = fn.is_extern;
 
         current_func->is_entry = false;
+        current_func_return_type = fn.return_type;
+
+        // Sret: return struct via hidden pointer arg
+        const bool is_sret = fn.return_type &&
+                             fn.return_type->kind == ast::TypeKind::Struct;
+        current_func->sret = is_sret;
+        current_func->arg_count = static_cast<uint32_t>(fn.args.size()) + (is_sret ? 1 : 0);
 
         next_reg = 0;
         next_label = 0;
@@ -312,6 +344,12 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
         type_scopes.clear();
         local_scopes.emplace_back();
         type_scopes.emplace_back();
+
+        if (is_sret) {
+            const uint32_t sret_local = new_local();
+            local_scopes.back()["__sret_ptr"] = sret_local;
+            type_scopes.back()["__sret_ptr"] = nullptr;
+        }
 
         for (const auto& arg : fn.args) {
             const uint32_t local = new_local();
@@ -399,6 +437,11 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
     auto it = function_ids.find(qname);
     if (it == function_ids.end()) {
         crash("Function was not pre-collected: " + qname);
+    }
+
+    // Generic functions cannot be codegened without concrete type args
+    if (!func.type_params.empty()) {
+        return;
     }
 
     IRFunction* saved_func = current_func;
@@ -535,11 +578,23 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
 
             const uint32_t local = new_local();
             local_scopes.back()[node.name] = local;
-            type_scopes.back()[node.name] = node.type;
+            // Use concrete type from symbol table if available (generic instantiation)
+            const ast::Type* var_type = node.type;
+            {
+                auto* sym = ctx.symbols.lookup(node.name);
+                if (sym) {
+                    if (auto* vs = std::get_if<symb_t::VarSymbol>(&sym->data)) {
+                        var_type = vs->type;
+                    } else if (auto* as = std::get_if<symb_t::FuncArgSymbol>(&sym->data)) {
+                        var_type = as->type;
+                    }
+                }
+            }
+            type_scopes.back()[node.name] = var_type;
             local_var_attrs[node.name] = node.attributes;
 
-            if (node.type->kind == ast::TypeKind::Struct) {
-                int sz = type_size(node.type, &ctx);
+            if (var_type->kind == ast::TypeKind::Struct) {
+                int sz = type_size(var_type, &ctx);
                 if (sz > 0) {
                     if (current_func) current_func->extra_stack += sz;
                     Reg ptr = new_reg();
@@ -910,7 +965,37 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 emit(IRAlloca{ sret_ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0) });
 
                 const uint32_t dst = new_reg();
-                uint32_t func_id = resolve_function_id({op_name});
+                // Build mangled function name from struct type info
+                std::string mangled = ctx.types.mangle_func_name(op_name, lhs_type->type_args);
+                // Also try qualified name: extract namespace from struct name
+                std::string struct_base = lhs_type->struct_name;
+                {
+                    auto dollar = struct_base.find('$');
+                    if (dollar != std::string::npos)
+                        struct_base = struct_base.substr(0, dollar);
+                }
+                // First try the simple mangled name
+                uint32_t func_id;
+                auto it = function_ids.find(mangled);
+                if (it != function_ids.end()) {
+                    func_id = it->second;
+                } else {
+                    // Try qualified: extract namespace from struct name
+                    std::string ns_op = struct_base;
+                    auto colon = struct_base.rfind("::");
+                    if (colon != std::string::npos) {
+                        ns_op = struct_base.substr(0, colon) + "::" + op_name;
+                    } else {
+                        ns_op = op_name;
+                    }
+                    std::string qualified_mangled = ctx.types.mangle_func_name(ns_op, lhs_type->type_args);
+                    auto it2 = function_ids.find(qualified_mangled);
+                    if (it2 != function_ids.end()) {
+                        func_id = it2->second;
+                    } else {
+                        func_id = resolve_function_id({op_name});
+                    }
+                }
                 emit(IRCall{ dst, func_id, {sret_ptr, lhs, rhs}, true });
                 return sret_ptr;
             }

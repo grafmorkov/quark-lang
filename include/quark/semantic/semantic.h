@@ -59,6 +59,7 @@ class SemanticAnalyzer {
         const ast::Type* analyze_namespace(const ast::NamespaceExpr&);
         const ast::Type* analyze_cast(const ast::CastExpr&);
         const ast::Type* analyze_index(const ast::IndexExpr&);
+        const ast::Type* try_generic_operator(const std::string& op_name, const ast::Type* lhs, const ast::Type* rhs);
         std::optional<int64_t> try_eval_const(const ast::Expr* expr);
     };
 

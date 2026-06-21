@@ -4,3 +4,9 @@ struct pair<A,B> {
     first: A;
     second: B;
 };
+func operator +(a: pair, b: pair) pair {
+    @init mut r: pair;
+    r.x = a.x + b.x;
+    r.y = a.y + b.y;
+    return r;
+}

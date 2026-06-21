@@ -136,6 +136,14 @@ func operator +(a: Point, b: Point) Point {
     return r;
 }
 ```
+Generic types:
+```
+func operator +<T>(a: opt<T>, b: opt<T>) opt {
+    @init mut r: opt<T>;
+    r.value = a.value + b.value;
+    return r;
+}
+```
 
 Supported overloadable operators:
 
