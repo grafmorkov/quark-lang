@@ -5,6 +5,8 @@ predictable semantics, and transparent memory management.
 
 The compiler currently targets fasm as a backend.
 
+> Note: Quark is still in development and not everything is done
+
 ---
 
 ## Example
@@ -74,7 +76,7 @@ git clone --recursive https://github.com/grafmorkov/quark-lang.git
 Build the compiler:
 
 ```bash
-git clone https://github.com/grafmorkov/quark-lang.git
+git clone --recursive https://github.com/grafmorkov/quark-lang.git
 cd quark-lang
 
 mkdir build
