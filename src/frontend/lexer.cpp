@@ -132,7 +132,7 @@ namespace quark::lx {
             type,
             std::string_view(buffer.data() + start, pos - start),
             {},
-            {ctx.srcloc.file, token_line, token_column}
+            {ctx.srcloc.file, token_line, token_column, static_cast<int>(pos - start)}
         };
     }
     Token Lexer::make_number() {
@@ -235,7 +235,7 @@ namespace quark::lx {
             TOKEN_STRING,
             std::string_view(buffer.data() + start + 1, pos - start - 2),
             {},
-            {ctx.srcloc.file, token_line, token_column}
+            {ctx.srcloc.file, token_line, token_column, static_cast<int>(pos - start)}
         };
     }
     Token Lexer::char_literal() {

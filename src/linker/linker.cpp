@@ -1,4 +1,5 @@
 #include "quark/linker/linker.h"
+#include "quark/support/compiler_context.h"
 
 namespace quark::linker{
 
@@ -29,8 +30,8 @@ namespace {
     }
     void Linker::validate() {
         if (!find_entry()) {
-            utils::logger::fatal("entry point not found (add @entry or name it 'main')");
+            ctx.errors.add("entry point not found (add @entry or name it 'main')");
         }
     }
-    Linker::Linker(modules::ModuleManager& m): modules(m){}
+    Linker::Linker(modules::ModuleManager& m, CompilerContext& c): modules(m), ctx(c){}
 }

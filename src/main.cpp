@@ -44,7 +44,7 @@ int main(int argc, char **argv)
         }
 
         quark::modules::ModuleManager mm(ctx);
-        quark::linker::Linker linker(mm);
+        quark::linker::Linker linker(mm, ctx);
 
         auto* entry = mm.load_entry(opts.input_file);
 
@@ -62,6 +62,7 @@ int main(int argc, char **argv)
         }
 
         mm.build_graph(entry);
+        if (ctx.errors.has_errors()) return 1;
 
         // Semantic analysis
         for (auto* mod : mm.ordered_modules()) {
@@ -71,14 +72,19 @@ int main(int argc, char **argv)
             );
 
             sem.analyze(mod->ast, mod);
+            if (ctx.errors.has_errors()) break;
             mod->analyzed = true;
         }
+        if (ctx.errors.has_errors()) return 1;
+
         // Linker validation
         linker.validate();
+        if (ctx.errors.has_errors()) return 1;
 
         // IRGen
         quark::codegen::IRGenerator irgen(ctx);
         irgen.gen_program(mm.ordered_modules());
+        if (ctx.errors.has_errors()) return 1;
 
         if (opts.emit_ir) {
              utils::logger::info("IR");

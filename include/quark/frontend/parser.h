@@ -27,6 +27,8 @@ namespace quark::ps {
 
             const std::vector<std::string>* current_type_params = nullptr;
 
+            void sync();
+
         private:
             // core token control
             Token advance();

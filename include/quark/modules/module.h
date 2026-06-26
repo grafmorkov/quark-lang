@@ -8,6 +8,7 @@
 #include "quark/frontend/ast.h"
 #include "quark/semantic/symbol_table.h"
 #include "quark-alloc/memory/alloc.h"
+#include "utils/errors.h"
 
 namespace quark {
 struct CompilerContext;
@@ -28,6 +29,8 @@ struct Module {
     std::vector<std::string> namespace_path;
     std::vector<Module*> dependencies;           // resolved dependencies
     symb_t::Namespace* ns = nullptr;
+
+    std::unordered_map<std::string, SourceFile> source_files;
 
     bool analyzed = false;
 };

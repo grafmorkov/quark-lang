@@ -173,9 +173,40 @@ bool Parser::match(TokenType type) {
     return true;
 }
 
+void Parser::sync() {
+    int nesting = 0;
+    while (!check(TOKEN_EOF)) {
+        if (check(TOKEN_SEMICOLON) && nesting == 0) return;
+        if (check(TOKEN_RBRACE)) {
+            if (nesting == 0) return;
+            nesting--;
+        }
+        if (check(TOKEN_LBRACE)) nesting++;
+        switch (current.type) {
+            case TOKEN_FUNC: case TOKEN_STRUCT: case TOKEN_IF:
+            case TOKEN_WHILE: case TOKEN_RETURN: case TOKEN_NAMESPACE:
+            case TOKEN_MODULE: case TOKEN_LOAD: case TOKEN_AT:
+            case TOKEN_EXTERN: case TOKEN_REGION:
+                if (nesting == 0) return;
+            default: break;
+        }
+        advance();
+    }
+}
+
 Token Parser::expect(TokenType type, const char* msg) {
     if (!check(type)) {
-        error(current.loc, msg);
+        ctx.errors.add(current.loc, current.text.length(), msg);
+
+        if (type == TOKEN_LBRACE || type == TOKEN_RBRACE ||
+            type == TOKEN_SEMICOLON || type == TOKEN_RPAREN) {
+            sync();
+            // Don't advance past a closing brace we synced to
+            if ((type == TOKEN_SEMICOLON || type == TOKEN_RPAREN) &&
+                check(TOKEN_RBRACE)) {
+                return current;
+            }
+        }
 
         Token bad = current;
         if (!check(TOKEN_EOF)) {
@@ -463,7 +494,7 @@ ast::FuncStmt Parser::parser_operator_func() {
         case TOKEN_AMP_AMP:  op_text = "operator&&"; break;
         case TOKEN_PIPE_PIPE: op_text = "operator||"; break;
         default:
-            error(op_token.loc, "Expected operator token after 'operator' keyword");
+            ctx.errors.add(op_token.loc, op_token.text.length(), "Expected operator token after 'operator' keyword");
             ret.name = "operator_";
             return ret;
     }
@@ -548,7 +579,12 @@ ast::NamespaceStmt Parser::parse_namespace_stmt() {
 }
 
 ast::Block* Parser::parse_block() {
-    expect(TOKEN_LBRACE, "Expected '{'");
+    if (!check(TOKEN_LBRACE)) {
+        ctx.errors.add(current.loc, current.text.length(), "Expected '{'");
+        auto* block = memory::make_default<ast::Block>(ctx.ast_arena);
+        return block;
+    }
+    advance();
 
     auto* block = memory::make_default<ast::Block>(ctx.ast_arena);
 
@@ -558,7 +594,11 @@ ast::Block* Parser::parse_block() {
         );
     }
 
-    expect(TOKEN_RBRACE, "Expected '}'");
+    if (!check(TOKEN_RBRACE)) {
+        ctx.errors.add(current.loc, current.text.length(), "Expected '}'");
+        return block;
+    }
+    advance();
 
     return block;
 }
@@ -598,7 +638,7 @@ ast::Expr* Parser::parse_expr(int min_prec) {
             if (!std::holds_alternative<ast::VarExpr>(left->kind) &&
                 !std::holds_alternative<ast::FieldExpr>(left->kind) &&
                 !std::holds_alternative<ast::IndexExpr>(left->kind)) {
-                error(op.loc, "Invalid assignment target");
+                ctx.errors.add(op.loc, op.text.length(), "Invalid assignment target");
                 (void)parse_expr(prec);
                 return left;
             }
@@ -711,7 +751,7 @@ ast::Expr* Parser::parse_prefix() {
         }
     }
 
-    error(current.loc, "Unexpected token");
+    ctx.errors.add(current.loc, current.text.length(), "Unexpected token");
     if (!check(TOKEN_EOF)) {
         advance();
     }
@@ -788,7 +828,7 @@ ast::Expr* Parser::parse_postfix(ast::Expr* left) {
             const ast::Type* target = parse_type();
 
             if (!target) {
-                error(current.loc, "Expected type after cast");
+                ctx.errors.add(current.loc, current.text.length(), "Expected type after cast");
                 return left;
             }
 
@@ -882,7 +922,7 @@ const ast::Type* Parser::parse_type(bool allow_implicit_void, const std::vector<
         return ctx.types.get_builtin(TypeKind::Void);
     }
 
-    error(current.loc, "Expected type");
+    ctx.errors.add(current.loc, current.text.length(), "Expected type");
     return nullptr;
 }
 } // namespace quark::ps

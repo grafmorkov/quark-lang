@@ -1,4 +1,7 @@
 #include "utils/options.h"
+#include "utils/logger.h"
+
+using namespace utils::logger;
 
 namespace utils::options{
 	Options parse_args(int argc, char** argv) {

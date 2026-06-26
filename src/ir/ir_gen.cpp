@@ -128,11 +128,11 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
     const std::string& field_name
 ) {
     if (!base_type) {
-        crash("Field access base type is null");
+        ctx.errors.add("Field access base type is null"); return {};
     }
 
     if (base_type->kind != ast::TypeKind::Struct) {
-        crash("Field access on non-struct type");
+        ctx.errors.add("Field access on non-struct type"); return {};
     }
 
     auto* sym = lookup_struct(ctx, base_type->struct_name);
@@ -150,12 +150,12 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
         }
     }
     if (!sym) {
-        crash("Unknown struct: " + base_type->struct_name);
+        ctx.errors.add("Unknown struct: " + base_type->struct_name); return {};
     }
 
     auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
     if (!ss) {
-        crash("Invalid struct symbol: " + base_type->struct_name);
+        ctx.errors.add("Invalid struct symbol: " + base_type->struct_name); return {};
     }
 
     for (size_t i = 0; i < ss->field_names.size(); ++i) {
@@ -167,7 +167,7 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
         }
     }
 
-    crash("Unknown field: " + field_name);
+    ctx.errors.add("Unknown field: " + field_name); return {};
 }
 
 
@@ -200,7 +200,7 @@ uint32_t IRGenerator::new_local() {
 
 void IRGenerator::emit(const IRInst& inst) {
     if (!current_func) {
-        crash("No current IR function set");
+        ctx.errors.add("No current IR function set"); return;
     }
 
     current_func->body.push_back(inst);
@@ -223,7 +223,7 @@ IRBinaryOp IRGenerator::map_op(ast::BinaryOp op) {
         case ast::BinaryOp::LogicAnd: return IRBinaryOp::LogicAnd;
         case ast::BinaryOp::LogicOr:  return IRBinaryOp::LogicOr;
         default:
-            crash("Unsupported binary op");
+            ctx.errors.add("Unsupported binary op"); return IRBinaryOp::Add;
     }
 }
 
@@ -308,7 +308,7 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
     for (const auto& fn : ctx.generic_instantiations) {
         auto it = function_ids.find(fn.name);
         if (it == function_ids.end()) {
-            crash("Generic instantiation not registered: " + fn.name);
+            ctx.errors.add("Generic instantiation not registered: " + fn.name); return;
         }
 
         IRFunction* saved_func = current_func;
@@ -379,7 +379,7 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
                 emit(IRReturn{ zero });
                 current_terminated = true;
             } else {
-                crash("Missing return in non-void generic function: " + fn.name);
+                ctx.errors.add("Missing return in non-void generic function: " + fn.name); return;
             }
         }
 
@@ -416,7 +416,7 @@ void IRGenerator::gen_module(const quark::modules::Module& mod) {
         }
 
         if (!is_declaration_stmt(*stmt)) {
-            crash("Top-level executable statements are not supported without __toplevel");
+            ctx.errors.add("Top-level executable statements are not supported without __toplevel"); return;
         }
 
         gen_stmt(*stmt);
@@ -436,7 +436,7 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
 
     auto it = function_ids.find(qname);
     if (it == function_ids.end()) {
-        crash("Function was not pre-collected: " + qname);
+        ctx.errors.add("Function was not pre-collected: " + qname); return;
     }
 
     // Generic functions cannot be codegened without concrete type args
@@ -520,7 +520,7 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
             emit(IRReturn{ zero });
             current_terminated = true;
         } else {
-            crash("Missing return in non-void function: " + func.name);
+            ctx.errors.add("Missing return in non-void function: " + func.name); return;
         }
     }
 
@@ -573,7 +573,7 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
 
         [&](const ast::VarDecl& node) {
             if (!node.type) {
-                crash("Variable declaration missing type: " + node.name);
+                ctx.errors.add("Variable declaration missing type: " + node.name); return;
             }
 
             const uint32_t local = new_local();
@@ -609,7 +609,7 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
 
         [&](const ast::ReturnStmt& node) {
             if (!current_func) {
-                crash("Return outside function");
+                ctx.errors.add("Return outside function"); return;
             }
 
             if (current_func->sret && node.value) {
@@ -626,7 +626,7 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                         }
                     }
                     if (!found) {
-                        crash("sret pointer not found");
+                        ctx.errors.add("sret pointer not found"); return;
                     }
                 }
                 const uint32_t sret_ptr = new_reg();
@@ -669,7 +669,7 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
 
         [&](const ast::IfStmt& node) {
             if (!node.condition) {
-                crash("If statement missing condition");
+                ctx.errors.add("If statement missing condition"); return;
             }
 
             const uint32_t cond = gen_expr(*node.condition);
@@ -712,7 +712,7 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
 
         [&](const ast::WhileStmt& node) {
             if (!node.condition) {
-                crash("While statement missing condition");
+                ctx.errors.add("While statement missing condition"); return;
             }
 
             const uint32_t cond_label = new_label();
@@ -759,7 +759,7 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                     }
 
                     if (!is_declaration_stmt(*child)) {
-                        crash("Namespace scopes may only contain declarations");
+                        ctx.errors.add("Namespace scopes may only contain declarations"); return;
                     }
 
                     gen_stmt(*child);
@@ -778,14 +778,14 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
         },
 
         [&](const auto&) {
-            crash("Unsupported statement node in IR generation");
+            ctx.errors.add("Unsupported statement node in IR generation"); return;
         }
     }, stmt.kind);
 }
 
 void IRGenerator::gen_region(const ast::RegionStmt& reg) {
     if (!current_func) {
-        crash("Region outside function");
+        ctx.errors.add("Region outside function"); return;
     }
 
     Local data_local = new_local();
@@ -865,7 +865,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             }
         }
 
-        crash("Undefined function: " + qname);
+        ctx.errors.add("Undefined function: " + qname);
         return 0;
     };
 
@@ -923,14 +923,14 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
             auto* sym = ctx.symbols.lookup(node.name);
             if (!sym) {
-                crash("Undefined variable: " + node.name);
+                ctx.errors.add("Undefined variable: " + node.name); return 0;
             }
 
             if (!symbol_type(*sym)) {
-                crash("Symbol is not a value: " + node.name);
+                ctx.errors.add("Symbol is not a value: " + node.name); return 0;
             }
 
-            crash("Global value lowering is not implemented yet: " + node.name);
+            ctx.errors.add("Global value lowering is not implemented yet: " + node.name); return 0;
         },
 
         [&](const ast::BinaryExpr& node) -> uint32_t {
@@ -1064,7 +1064,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
         [&](const ast::AssignExpr& node) -> uint32_t {
             if (!node.target || !node.value) {
-                crash("Assignment target or value is missing");
+                ctx.errors.add("Assignment target or value is missing"); return 0;
             }
 
             const uint32_t value = gen_expr(*node.value);
@@ -1081,14 +1081,14 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
                 auto* sym = ctx.symbols.lookup(var->name);
                 if (!sym) {
-                    crash("Undefined variable: " + var->name);
+                    ctx.errors.add("Undefined variable: " + var->name); return 0;
                 }
 
                 if (!symbol_is_mutable(*sym)) {
-                    crash("Cannot assign to immutable variable: " + var->name);
+                    ctx.errors.add("Cannot assign to immutable variable: " + var->name); return 0;
                 }
 
-                crash("Global assignment lowering is not implemented yet: " + var->name);
+                ctx.errors.add("Global assignment lowering is not implemented yet: " + var->name); return 0;
             }
 
             if (const auto* field = std::get_if<ast::FieldExpr>(&node.target->kind)) {
@@ -1141,7 +1141,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
                 const ast::Type* base_type = index->base->resolved_type;
                 if (!base_type || base_type->kind != ast::TypeKind::Pointer || !base_type->pointed) {
-                    crash("Invalid pointer index in assignment");
+                    ctx.errors.add("Invalid pointer index in assignment"); return 0;
                 }
 
                 uint32_t elem_size = type_size(base_type->pointed);
@@ -1149,7 +1149,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 return value;
             }
 
-            crash("Assignment target must be variable, field access, or index expression");
+            ctx.errors.add("Assignment target must be variable, field access, or index expression"); return 0;
         },
 
         [&](const ast::FieldExpr& node) -> uint32_t {
@@ -1210,11 +1210,11 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                         // alloc(T, count) — typed allocation
                         const auto* type_expr = std::get_if<ast::TypeExpr>(&node.args[0]->kind);
                         if (!type_expr || !type_expr->type) {
-                            crash("First argument to alloc must be a type, e.g. alloc(i32, 10)");
+                            ctx.errors.add("First argument to alloc must be a type, e.g. alloc(i32, 10)"); return 0;
                         }
                         uint32_t elem_size = type_size(type_expr->type);
                         if (elem_size == 0) {
-                            crash("Cannot allocate element of unknown size");
+                            ctx.errors.add("Cannot allocate element of unknown size"); return 0;
                         }
                         const uint32_t count = gen_expr(*node.args[1]);
                         const uint32_t elem_reg = new_reg();
@@ -1229,7 +1229,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                     }
 
                     if (node.args.size() != 1 || !node.args[0]) {
-                        crash("alloc takes 1 argument (bytes) or 2 arguments (type, count)");
+                        ctx.errors.add("alloc takes 1 argument (bytes) or 2 arguments (type, count)"); return 0;
                     }
                     const uint32_t size = gen_expr(*node.args[0]);
                     const uint32_t dst = new_reg();
@@ -1244,13 +1244,13 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
             for (const auto* arg : node.args) {
                 if (!arg) {
-                    crash("Null call argument");
+                    ctx.errors.add("Null call argument"); return 0;
                 }
                 args.push_back(gen_expr(*arg));
             }
 
             if (!node.callee) {
-                crash("Call callee is missing");
+                ctx.errors.add("Call callee is missing"); return 0;
             }
 
             uint32_t func_id = 0;
@@ -1299,7 +1299,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::NamespaceExpr&) -> uint32_t {
-            crash("Namespace expressions are not supported in IR generation yet");
+            ctx.errors.add("Namespace expressions are not supported in IR generation yet"); return 0;
         },
 
         [&](const ast::CastExpr& node) -> uint32_t {
@@ -1322,7 +1322,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::TypeExpr&) -> uint32_t {
-            crash("Type used as value in IR generation");
+            ctx.errors.add("Type used as value in IR generation"); return 0;
         },
 
         [&](const ast::IndexExpr& node) -> uint32_t {
@@ -1332,7 +1332,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
             const ast::Type* base_type = node.base->resolved_type;
             if (!base_type || base_type->kind != ast::TypeKind::Pointer || !base_type->pointed) {
-                crash("Invalid pointer index in IR gen");
+                ctx.errors.add("Invalid pointer index in IR gen"); return 0;
             }
 
             uint32_t elem_size = type_size(base_type->pointed);

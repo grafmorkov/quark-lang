@@ -11,6 +11,7 @@ namespace quark{
         std::string file = "<unknown>";
         int line = 0;
         int column = 0;
+        int length = 0;
     };
 }
 using namespace quark;

@@ -50,7 +50,7 @@ class SemanticAnalyzer {
 
         const ast::Type* analyze_int(const ast::IntExpr&);
         const ast::Type* analyze_string(const ast::StringExpr&);
-        const ast::Type* analyze_var(const ast::VarExpr&);
+        const ast::Type* analyze_var(const ast::VarExpr&, const ast::Expr*);
         const ast::Type* analyze_assign(const ast::AssignExpr&);
         const ast::Type* analyze_binary(const ast::BinaryExpr&);
         const ast::Type* analyze_unary(const ast::UnaryExpr&);

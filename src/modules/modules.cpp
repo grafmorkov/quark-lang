@@ -66,7 +66,8 @@ ModuleManager::ModuleManager(CompilerContext& ctx_)
 Module* ModuleManager::load_entry(const fs::path& path) {
     fs::path abs = fs::absolute(path);
     if (!fs::exists(abs)) {
-        utils::logger::crash("entry file not found: " + abs.string());
+        ctx.errors.add("entry file not found: " + abs.string());
+        return nullptr;
     }
     return load_module(abs);
 }
@@ -80,9 +81,28 @@ Module* ModuleManager::load_module(const fs::path& path) {
         return it->second;
     }
 
-    // Read and parse
+    // Read and split into lines
     std::string source = utils::io::read_file(canon);
-    lx::Lexer lex(source.c_str(), ctx);
+    std::vector<std::string> lines;
+    {
+        size_t pos = 0;
+        while (pos < source.size()) {
+            size_t end = source.find('\n', pos);
+            if (end == std::string::npos) {
+                lines.push_back(source.substr(pos));
+                break;
+            }
+            lines.push_back(source.substr(pos, end - pos));
+            pos = end + 1;
+        }
+    }
+    ctx.srcloc.file = canon.string();
+    ctx.srcloc.line = 1;
+    ctx.srcloc.column = 1;
+
+    ctx.errors.add_source(file_key, SourceFile{lines});
+
+    lx::Lexer lex(std::string(source), ctx);
     ps::Parser parser(lex, ctx);
     auto ast = parser.parse();
     auto imports = collect_imports(ast);
@@ -150,6 +170,8 @@ Module* ModuleManager::load_module(const fs::path& path) {
         modules.emplace(module_name, mod);
     }
 
+    mod->source_files[file_key] = SourceFile{lines};
+
     loaded_files.emplace(file_key, mod);
     return mod;
 }
@@ -166,7 +188,8 @@ void ModuleManager::topo_sort() {
         if (visited.find(mod) != visited.end()) return;
 
         if (stack.find(mod) != stack.end()) {
-            utils::logger::crash("cyclic dependency detected at module: " + mod->name);
+            ctx.errors.add("cyclic dependency detected at module: " + mod->name);
+            return;
         }
 
         stack.insert(mod);
@@ -197,7 +220,8 @@ void ModuleManager::topo_sort() {
 
 void ModuleManager::build_graph(Module* entry) {
     if (!entry) {
-        utils::logger::crash("entry module is null");
+        ctx.errors.add("entry module is null");
+        return;
     }
 
     std::unordered_set<Module*> visited;
@@ -242,7 +266,8 @@ void ModuleManager::build_graph(Module* entry) {
             }
 
             if (!dep) {
-                utils::logger::crash("Unknown imported module: " + imp);
+                ctx.errors.add("Unknown imported module: " + imp);
+                continue;
             }
 
             mod->dependencies.push_back(dep);

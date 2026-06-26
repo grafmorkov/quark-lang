@@ -270,7 +270,7 @@ const ast::Type* resolve_struct_field(
     }
 
     if (base_type->kind != ast::TypeKind::Struct) {
-        crash("Field access on non-struct type");
+        ctx.errors.add("Field access on non-struct type");
         return nullptr;
     }
 
@@ -289,13 +289,13 @@ const ast::Type* resolve_struct_field(
         }
     }
     if (!sym) {
-        crash("Unknown struct: " + base_type->struct_name);
+        ctx.errors.add("Unknown struct: " + base_type->struct_name);
         return nullptr;
     }
 
     auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
     if (!ss) {
-        crash("Invalid struct symbol: " + base_type->struct_name);
+        ctx.errors.add("Invalid struct symbol: " + base_type->struct_name);
         return nullptr;
     }
 
@@ -305,7 +305,7 @@ const ast::Type* resolve_struct_field(
         }
     }
 
-    crash("Unknown field: " + field_name);
+    ctx.errors.add("Unknown field: " + field_name);
     return nullptr;
 }
 
@@ -458,7 +458,8 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                     }
                 } else {
                     if (!ctx.symbols.declare(fn)) {
-                        crash("Function redeclaration: " + fn.name);
+                        ctx.errors.add("Function redeclaration: " + fn.name);
+                        return;
                     }
                 }
             },
@@ -478,7 +479,8 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                     }
                 } else {
                     if (!ctx.symbols.declare(str)) {
-                        crash("Struct redeclaration: " + str.name);
+                        ctx.errors.add("Struct redeclaration: " + str.name);
+                        return;
                     }
                 }
             },
@@ -511,7 +513,8 @@ void SemanticAnalyzer::analyze_stmt(const ast::Stmt* stmt) {
         [&](const ast::LoadStmt&) {},
         [&](const ast::RegionStmt& n) { analyze_region(n); },
         [&](const auto&) {
-            crash("Unsupported statement node in semantic analysis");
+            ctx.errors.add(stmt->loc, "Unsupported statement node in semantic analysis");
+            return;
         }
     }, stmt->kind);
 }
@@ -552,7 +555,7 @@ std::optional<int64_t> SemanticAnalyzer::try_eval_const(const ast::Expr* expr) {
 
 void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
     if (!var.type) {
-        crash("Variable declaration missing type: " + var.name);
+        ctx.errors.add("Variable declaration missing type: " + var.name);
         return;
     }
 
@@ -584,11 +587,11 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
         if (!value_type) return;
 
         if (!is_assignable(resolved_type, value_type)) {
-            crash("Type mismatch in variable initialization: " + var.name);
+            ctx.errors.add(var.value->loc, "Type mismatch in variable initialization: " + var.name);
             return;
         }
     } else if (!var.is_mut && !has_init) {
-        crash("Immutable variable must be initialized: " + var.name);
+        ctx.errors.add("Immutable variable must be initialized: " + var.name);
         return;
     }
 
@@ -598,7 +601,8 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
         symb_t::VarSymbol{resolved_type, var.is_mut, var.value != nullptr},
         var.attributes
     })) {
-        crash("Variable already declared: " + var.name);
+        ctx.errors.add("Variable already declared: " + var.name);
+        return;
     }
 
     if (has_init && !var.value) {
@@ -652,12 +656,12 @@ void SemanticAnalyzer::analyze_struct_decl(const ast::StructDecl& str) {
 
     for (const auto& field : str.fields) {
         if (!seen.insert(field.name).second) {
-            crash("Duplicate field: " + field.name);
+            ctx.errors.add("Duplicate field: " + field.name);
             return;
         }
 
         if (!field.type) {
-            crash("Field missing type: " + field.name);
+            ctx.errors.add("Field missing type: " + field.name);
             return;
         }
 
@@ -670,7 +674,7 @@ void SemanticAnalyzer::analyze_struct_decl(const ast::StructDecl& str) {
             if (!dt) return;
 
             if (!is_assignable(field.type, dt)) {
-                crash("Type mismatch in field default value: " + field.name);
+                ctx.errors.add("Type mismatch in field default value: " + field.name);
                 return;
             }
         }
@@ -697,20 +701,21 @@ void SemanticAnalyzer::analyze_return(const ast::ReturnStmt& ret) {
         : ctx.types.get_builtin(TypeKind::Void);
 
     if (!current_function_return_type) {
-        crash("Return outside function");
+        ctx.errors.add(ret.value ? ret.value->loc : SourceLocation{}, "Return outside function");
         return;
     }
 
     if (!value_type) return;
 
     if (!is_assignable(current_function_return_type, value_type)) {
-        crash("Return type mismatch");
+        ctx.errors.add(ret.value ? ret.value->loc : SourceLocation{}, 0, "Return type mismatch");
+        return;
     }
 }
 
 void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
     if (func.is_extern && func.body) {
-        crash("Extern function cannot have a body: " + func.name);
+        ctx.errors.add("Extern function cannot have a body: " + func.name);
         return;
     }
 
@@ -719,13 +724,13 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
     }
 
     if (!func.return_type) {
-        crash("Function missing return type: " + func.name);
+        ctx.errors.add("Function missing return type: " + func.name);
         return;
     }
 
     for (const auto& arg : func.args) {
         if (!arg.type) {
-            crash("Function argument missing type: " + arg.name);
+            ctx.errors.add("Function argument missing type: " + arg.name);
             return;
         }
     }
@@ -746,7 +751,7 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
 
     for (const auto& arg : func.args) {
         if (!ctx.symbols.declare(arg)) {
-            crash("Duplicate function argument: " + arg.name);
+            ctx.errors.add("Duplicate function argument: " + arg.name);
             current_function_return_type = prev_return_type;
             return;
         }
@@ -761,7 +766,7 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
         out_var.value = nullptr;
         out_var.attributes = {};
         if (!ctx.symbols.declare(out_var)) {
-            crash("Failed to declare implicit 'out' variable");
+            ctx.errors.add("Failed to declare implicit 'out' variable");
             current_function_return_type = prev_return_type;
             return;
         }
@@ -810,7 +815,8 @@ void SemanticAnalyzer::analyze_region(const ast::RegionStmt& reg) {
 
 void SemanticAnalyzer::check_visibility(const symb_t::Symbol& sym, const std::string& context) {
     if (has_attr(sym.attributes, "private") && sym.owning_module != module_namespace) {
-        crash("Cannot access private symbol '" + sym.name + "' from " + context);
+        ctx.errors.add("Cannot access private symbol '" + sym.name + "' from " + context);
+        return;
     }
 }
 
@@ -818,22 +824,26 @@ void SemanticAnalyzer::analyze_attribute(const ast::Attribute& attr, const attrs
 	auto* it = find_attr(attr.name);
 
 	if(it == nullptr){
-		crash("Attribute: '@" + attr.name + "' not found");
+		ctx.errors.add("Attribute: '@" + attr.name + "' not found");
+		return;
 	}
 	if(!has_flag(it->targets, target)){
-		crash("Attribute: '@" + attr.name + "' has incorrect targets: " + attr_target_to_string(target)
+		ctx.errors.add("Attribute: '@" + attr.name + "' has incorrect targets: " + attr_target_to_string(target)
 				+ ". Expected: " + attr_target_to_string(it->targets));
+		return;
 	}
 
 	if(attr.args.size() > it->max_args){
-		crash("Expected '" + std::to_string(it->max_args)
+		ctx.errors.add("Expected '" + std::to_string(it->max_args)
                                   + "' count of args for '@" + attr.name + "' attribute."
                                   + "Got: '" + std::to_string(attr.args.size()) );
+		return;
 	}
 	else if(attr.args.size() < it->min_args){
-		crash("Expected '" + std::to_string(it->min_args)
+		ctx.errors.add("Expected '" + std::to_string(it->min_args)
 				+ "' count of args for '@" + attr.name + "' attribute."
 				+ "Got: '" + std::to_string(attr.args.size()) );
+		return;
 	}
 }
 
@@ -857,7 +867,7 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
             return ctx.types.get_builtin(TypeKind::U8);
         },
         [&](const ast::VarExpr& n) -> const ast::Type* {
-            return analyze_var(n);
+            return analyze_var(n, expr);
         },
         [&](const ast::AssignExpr& n) -> const ast::Type* {
             return analyze_assign(n);
@@ -881,14 +891,14 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
             return analyze_cast(n);
         },
         [&](const ast::TypeExpr&) -> const ast::Type* {
-            crash("Type used as value");
+            ctx.errors.add("Type used as value");
             return nullptr;
         },
         [&](const ast::IndexExpr& n) -> const ast::Type* {
             return analyze_index(n);
         },
         [&](const auto&) -> const ast::Type* {
-            crash("Unsupported expression node in semantic analysis");
+            ctx.errors.add("Unsupported expression node in semantic analysis");
             return nullptr;
         }
     }, expr->kind);
@@ -907,11 +917,11 @@ const ast::Type* SemanticAnalyzer::analyze_string(const ast::StringExpr&) {
     return ctx.types.get_builtin(TypeKind::String);
 }
 
-const ast::Type* SemanticAnalyzer::analyze_var(const ast::VarExpr& var) {
+const ast::Type* SemanticAnalyzer::analyze_var(const ast::VarExpr& var, const ast::Expr* expr) {
     auto* sym = ctx.symbols.lookup(var.name);
 
     if (!sym) {
-        crash("Undefined variable: " + var.name);
+        ctx.errors.add(expr->loc, "Undefined variable: " + var.name);
         return nullptr;
     }
 
@@ -919,12 +929,12 @@ const ast::Type* SemanticAnalyzer::analyze_var(const ast::VarExpr& var) {
 
     const ast::Type* type = symbol_type(*sym);
     if (!type) {
-        crash("Symbol is not a value: " + var.name);
+        ctx.errors.add(expr->loc, "Symbol is not a value: " + var.name);
         return nullptr;
     }
 
     if (!symbol_is_initialized(*sym)) {
-        crash("Use of uninitialized variable: " + var.name);
+        ctx.errors.add(expr->loc, "Use of uninitialized variable: " + var.name);
         return nullptr;
     }
 
@@ -933,7 +943,7 @@ const ast::Type* SemanticAnalyzer::analyze_var(const ast::VarExpr& var) {
 
 const ast::Type* SemanticAnalyzer::resolve_lvalue(const ast::Expr* expr) {
     if (!expr) {
-        crash("Invalid lvalue");
+        ctx.errors.add("Invalid lvalue");
         return nullptr;
     }
 
@@ -950,14 +960,14 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(const ast::Expr* expr) {
                     return field_type;
                 }
             }
-            crash("Undefined variable: " + var->name);
+            ctx.errors.add("Undefined variable: " + var->name);
             return nullptr;
         }
 
         check_visibility(*sym, module_namespace.empty() ? "::" : support::join_namespace(module_namespace));
 
         if (!symbol_is_mutable(*sym)) {
-            crash("Cannot assign to immutable variable: " + var->name);
+            ctx.errors.add("Cannot assign to immutable variable: " + var->name);
             return nullptr;
         }
 
@@ -976,13 +986,13 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(const ast::Expr* expr) {
         if (!base_type) return nullptr;
 
         if (base_type->kind != TypeKind::Pointer) {
-            crash("Cannot index non-pointer type");
+            ctx.errors.add("Cannot index non-pointer type");
             return nullptr;
         }
 
         const ast::Type* elem_type = base_type->pointed;
         if (!elem_type) {
-            crash("Invalid pointer target");
+            ctx.errors.add("Invalid pointer target");
             return nullptr;
         }
 
@@ -990,14 +1000,14 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(const ast::Expr* expr) {
         if (!index_type) return nullptr;
 
         if (index_type->kind == TypeKind::Void) {
-            crash("Index must be an integer");
+            ctx.errors.add("Index must be an integer");
             return nullptr;
         }
 
         return elem_type;
     }
 
-    crash("Invalid lvalue");
+    ctx.errors.add("Invalid lvalue");
     return nullptr;
 }
 
@@ -1006,7 +1016,7 @@ const ast::Type* SemanticAnalyzer::analyze_assign(const ast::AssignExpr& asg) {
     if (!value_type) return nullptr;
 
     if (!asg.target) {
-        crash("Assignment target is missing");
+        ctx.errors.add("Assignment target is missing");
         return nullptr;
     }
 
@@ -1016,7 +1026,7 @@ const ast::Type* SemanticAnalyzer::analyze_assign(const ast::AssignExpr& asg) {
     if (!is_assignable(target_type, value_type)) {
         std::string tname = target_type ? (target_type->kind == TypeKind::Struct ? target_type->struct_name : (target_type->kind == TypeKind::Generic ? "Generic:" + target_type->struct_name : std::to_string((int)target_type->kind))) : "null";
         std::string vname = value_type ? (value_type->kind == TypeKind::Struct ? value_type->struct_name : (value_type->kind == TypeKind::Generic ? "Generic:" + value_type->struct_name : std::to_string((int)value_type->kind))) : "null";
-        crash("Type mismatch in assignment: " + tname + " vs " + vname);
+        ctx.errors.add("Type mismatch in assignment: " + tname + " vs " + vname);
         return nullptr;
     }
 
@@ -1045,7 +1055,8 @@ const ast::Type* SemanticAnalyzer::analyze_field(const ast::FieldExpr& node) {
                         if (fa.name == "guard" && !fa.args.empty()) {
                             auto val = try_eval_const(fa.args[0]);
                             if (val && *val == 0) {
-                                crash("guard failed for field '" + node.field + "'");
+                                ctx.errors.add("guard failed for field '" + node.field + "'");
+                                return nullptr;
                             }
                         }
                     }
@@ -1100,7 +1111,7 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b) {
 
     if (is_builtin_type_kind(l->kind) && is_builtin_type_kind(r->kind)) {
         if (!types_equal(l, r)) {
-            crash("Type mismatch in binary expression");
+            ctx.errors.add("Type mismatch in binary expression");
             return nullptr;
         }
         return l;
@@ -1112,15 +1123,15 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b) {
     if (sym) {
         auto* fn = std::get_if<symb_t::FuncSymbol>(&sym->data);
         if (!fn) {
-            crash("'" + op_name + "' is not a function");
+            ctx.errors.add("'" + op_name + "' is not a function");
             return nullptr;
         }
         if (fn->arg_types.size() != 2) {
-            crash("Operator '" + op_name + "' must take 2 arguments");
+            ctx.errors.add("Operator '" + op_name + "' must take 2 arguments");
             return nullptr;
         }
         if (!is_assignable(fn->arg_types[0], l) || !is_assignable(fn->arg_types[1], r)) {
-            crash("Argument type mismatch for operator '" + op_name + "'");
+            ctx.errors.add("Argument type mismatch for operator '" + op_name + "'");
             return nullptr;
         }
         return fn->return_type;
@@ -1130,7 +1141,7 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b) {
     auto* result = try_generic_operator(op_name, l, r);
     if (result) return result;
 
-    crash("No matching operator '" + op_name + "' for these types");
+    ctx.errors.add("No matching operator '" + op_name + "' for these types");
     return nullptr;
 }
 
@@ -1309,12 +1320,12 @@ const ast::Type* SemanticAnalyzer::analyze_unary(const ast::UnaryExpr& u){
     if (is_builtin_type_kind(operand->kind)) {
         if (u.op == ast::UnaryOp::Not) {
             if (operand->kind != TypeKind::Bool && operand->kind != TypeKind::U32) {
-                crash("Unary '!' not supported for this type");
+                ctx.errors.add("Unary '!' not supported for this type");
                 return nullptr;
             }
         } else {
             if (!(operand->kind >= TypeKind::I8 && operand->kind <= TypeKind::F64)) {
-                crash("Unary '-' not supported for this type");
+                ctx.errors.add("Unary '-' not supported for this type");
                 return nullptr;
             }
         }
@@ -1324,18 +1335,18 @@ const ast::Type* SemanticAnalyzer::analyze_unary(const ast::UnaryExpr& u){
     std::string op_name = unary_op_name(u.op);
     auto* sym = ctx.symbols.lookup(op_name);
     if (!sym) {
-        crash("No matching operator '" + op_name + "' for this type");
+        ctx.errors.add("No matching operator '" + op_name + "' for this type");
         return nullptr;
     }
 
     auto* fn = std::get_if<symb_t::FuncSymbol>(&sym->data);
     if (!fn || fn->arg_types.size() != 1) {
-        crash("'" + op_name + "' must be a function with 1 argument");
+        ctx.errors.add("'" + op_name + "' must be a function with 1 argument");
         return nullptr;
     }
 
     if (!is_assignable(fn->arg_types[0], operand)) {
-        crash("Argument type mismatch for operator '" + op_name + "'");
+        ctx.errors.add("Argument type mismatch for operator '" + op_name + "'");
         return nullptr;
     }
 
@@ -1352,7 +1363,8 @@ void SemanticAnalyzer::check_arg_guard(const ast::Expr* arg, const std::string& 
         if (!vs || !vs->guard_cond) return;
         auto val = try_eval_const(vs->guard_cond);
         if (val && *val == 0) {
-            crash("guard failed for '" + ve->name + "' in call to '" + call_name + "'");
+            ctx.errors.add("guard failed for '" + ve->name + "' in call to '" + call_name + "'");
+            return;
         }
         return;
     }
@@ -1374,7 +1386,8 @@ void SemanticAnalyzer::check_arg_guard(const ast::Expr* arg, const std::string& 
                 if (fa.name == "guard" && !fa.args.empty()) {
                     auto val = try_eval_const(fa.args[0]);
                     if (val && *val == 0) {
-                        crash("guard failed for field '" + fe->field + "' in call to '" + call_name + "'");
+                        ctx.errors.add("guard failed for field '" + fe->field + "' in call to '" + call_name + "'");
+                        return;
                     }
                 }
             }
@@ -1385,7 +1398,7 @@ void SemanticAnalyzer::check_arg_guard(const ast::Expr* arg, const std::string& 
 
 const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
     if (!call.callee) {
-        crash("Call callee is missing");
+        ctx.errors.add("Call callee is missing");
         return nullptr;
     }
 
@@ -1396,12 +1409,12 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
             // alloc(T, count) — typed allocation
             const auto* type_expr = std::get_if<ast::TypeExpr>(&call.args[0]->kind);
             if (!type_expr) {
-                crash("First argument to alloc must be a type, e.g. alloc(i32, 10)");
+                ctx.errors.add("First argument to alloc must be a type, e.g. alloc(i32, 10)");
                 return nullptr;
             }
             const ast::Type* elem_type = type_expr->type;
             if (!elem_type) {
-                crash("Invalid element type in alloc");
+                ctx.errors.add("Invalid element type in alloc");
                 return nullptr;
             }
             call.args[0]->resolved_type = elem_type;
@@ -1409,7 +1422,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
             const ast::Type* count_type = analyze_expr(call.args[1]);
             if (!count_type) return nullptr;
             if (count_type->kind == TypeKind::Void) {
-                crash("alloc count must be an integer");
+                ctx.errors.add("alloc count must be an integer");
                 return nullptr;
             }
 
@@ -1417,14 +1430,14 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
         }
 
         if (call.args.size() != 1) {
-            crash("alloc takes 1 argument (bytes) or 2 arguments (type, count)");
+            ctx.errors.add("alloc takes 1 argument (bytes) or 2 arguments (type, count)");
             return nullptr;
         }
         const ast::Type* size_type = analyze_expr(call.args[0]);
         if (!size_type) return nullptr;
 
         if (size_type->kind == TypeKind::Void || size_type->kind == TypeKind::String) {
-            crash("alloc argument must be an integer (size in bytes)");
+            ctx.errors.add("alloc argument must be an integer (size in bytes)");
             return nullptr;
         }
 
@@ -1440,7 +1453,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
         // Build substitution map: param name -> concrete type
         std::unordered_map<std::string, const Type*> subst;
         if (call.type_args.size() != generic_def->params.size()) {
-            crash("Type argument count mismatch for generic function: " + qualified_func_name);
+            ctx.errors.add("Type argument count mismatch for generic function: " + qualified_func_name);
             return nullptr;
         }
         for (size_t i = 0; i < generic_def->params.size(); ++i) {
@@ -1556,19 +1569,19 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
         }
 
         if (!concrete_sym) {
-            crash("Failed to instantiate generic function: " + func_name);
+            ctx.errors.add("Failed to instantiate generic function: " + func_name);
             return nullptr;
         }
 
         auto* concrete_fn = std::get_if<symb_t::FuncSymbol>(&concrete_sym->data);
         if (!concrete_fn) {
-            crash("Invalid concrete function symbol: " + mangled);
+            ctx.errors.add("Invalid concrete function symbol: " + mangled);
             return nullptr;
         }
 
         // Check argument count and types
         if (concrete_fn->arg_types.size() != call.args.size()) {
-            crash("Argument count mismatch in generic call: " + func_name);
+            ctx.errors.add("Argument count mismatch in generic call: " + func_name);
             return nullptr;
         }
 
@@ -1580,7 +1593,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
             check_arg_guard(arg, mangled);
 
             if (!is_assignable(concrete_fn->arg_types[i], arg_type)) {
-                crash("Argument type mismatch in generic call: " + func_name);
+                ctx.errors.add("Argument type mismatch in generic call: " + func_name);
                 return nullptr;
             }
         }
@@ -1591,7 +1604,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
     // Non-generic function lookup
     auto* sym = resolve_qualified(ctx.symbols, path);
     if (!sym) {
-        crash("Undefined function: " + support::join_namespace(path));
+        ctx.errors.add("Undefined function: " + support::join_namespace(path));
         return nullptr;
     }
 
@@ -1599,12 +1612,12 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
 
     auto* fn = std::get_if<symb_t::FuncSymbol>(&sym->data);
     if (!fn) {
-        crash("Callee is not a function: " + support::join_namespace(path));
+        ctx.errors.add("Callee is not a function: " + support::join_namespace(path));
         return nullptr;
     }
 
     if (fn->arg_types.size() != call.args.size()) {
-        crash("Argument count mismatch in call: " + support::join_namespace(path));
+        ctx.errors.add("Argument count mismatch in call: " + support::join_namespace(path));
         return nullptr;
     }
 
@@ -1616,7 +1629,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
         check_arg_guard(arg, support::join_namespace(path));
 
         if (!is_assignable(fn->arg_types[i], arg_type)) {
-            crash("Argument type mismatch in call: " + support::join_namespace(path));
+            ctx.errors.add("Argument type mismatch in call: " + support::join_namespace(path));
             return nullptr;
         }
     }
@@ -1629,13 +1642,13 @@ const ast::Type* SemanticAnalyzer::analyze_index(const ast::IndexExpr& n) {
     if (!base_type) return nullptr;
 
     if (base_type->kind != TypeKind::Pointer) {
-        crash("Cannot index non-pointer type");
+        ctx.errors.add("Cannot index non-pointer type");
         return nullptr;
     }
 
     const ast::Type* elem_type = base_type->pointed;
     if (!elem_type) {
-        crash("Invalid pointer target");
+        ctx.errors.add("Invalid pointer target");
         return nullptr;
     }
 
@@ -1643,7 +1656,7 @@ const ast::Type* SemanticAnalyzer::analyze_index(const ast::IndexExpr& n) {
     if (!index_type) return nullptr;
 
     if (index_type->kind == TypeKind::Void) {
-        crash("Index must be an integer");
+        ctx.errors.add("Index must be an integer");
         return nullptr;
     }
 
@@ -1670,7 +1683,7 @@ const ast::Type* SemanticAnalyzer::analyze_namespace(const ast::NamespaceExpr& n
     auto* sym = resolve_qualified(ctx.symbols, path);
 
     if (!sym) {
-        crash("Undefined qualified symbol");
+        ctx.errors.add("Undefined qualified symbol");
         return nullptr;
     }
 
@@ -1686,7 +1699,7 @@ const ast::Type* SemanticAnalyzer::analyze_namespace(const ast::NamespaceExpr& n
         return nullptr;
     }
 
-    crash("Qualified path is not a value");
+    ctx.errors.add("Qualified path is not a value");
     return nullptr;
 }
 bool is_numeric(ast::TypeKind kind) {
@@ -1726,25 +1739,25 @@ const ast::Type* SemanticAnalyzer::analyze_cast(const ast::CastExpr& n){
     if(!value_type) return nullptr;
 
     if(!n.target){
-        crash("Cast target type is missing");
+        ctx.errors.add("Cast target type is missing");
         return nullptr;
     }
     switch (n.kind) {
         case ast::CastKind::ValueCast:
             if (n.target->kind == TypeKind::String) {
                 if (!is_numeric(value_type->kind)) {
-                    crash("as: only numeric types can be converted to string");
+                    ctx.errors.add("as: only numeric types can be converted to string");
                     return nullptr;
                 }
             } else if (!is_numeric(value_type->kind) || !is_numeric(n.target->kind)) {
-                crash("as: only numeric type conversions are allowed");
+                ctx.errors.add("as: only numeric type conversions are allowed");
                 return nullptr;
             }
             break;
         case ast::CastKind::Bitcast:
             if (value_type->kind == TypeKind::Pointer || n.target->kind == TypeKind::Pointer) {
             } else if (type_size(value_type) != type_size(n.target)) {
-                crash("as!: types must have the same size");
+                ctx.errors.add("as!: types must have the same size");
                 return nullptr;
             }
             break;
