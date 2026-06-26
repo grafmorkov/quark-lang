@@ -129,8 +129,8 @@ Build and run:
 
 ### Short-term
 
-* improved diagnostics
-* add generic types
+* add more attributes
+* improve stdlib
 
 ### Long-term
 
