@@ -28,11 +28,11 @@ constexpr WORD WHITE   = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
 #else
 // Unix-like ANSI escape codes
 inline void set_color(const char* color_code) {
-    std::cout << "\033[" << color_code << "m";
+    std::cerr << "\033[" << color_code << "m";
 }
 
 inline void reset_color() {
-    std::cout << "\033[0m";
+    std::cerr << "\033[0m";
 }
 
 // Color codes

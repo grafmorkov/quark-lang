@@ -34,7 +34,7 @@ public:
     bool is_mangled_name(const std::string& mangled, std::string& out_base) const;
     bool try_instantiate(const std::string& mangled, const std::vector<const Type*>& type_args);
 
-    void register_struct(const std::string& name, 
+    void register_struct(const std::string& name,
         const std::vector<std::pair<std::string, const Type*>>& fields,
         const std::vector<std::vector<ast::Attribute>>& field_attrs = {});
 
