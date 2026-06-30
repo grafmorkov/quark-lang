@@ -788,19 +788,22 @@ void IRGenerator::gen_region(const ast::RegionStmt& reg) {
         ctx.errors.add("Region outside function"); return;
     }
 
-    Local data_local = new_local();
-    Local offset_local = new_local();
-    Local cap_local = new_local();
+    // Allocate Region struct on stack (3 fields * 8 = 24 bytes)
+    if (current_func) current_func->extra_stack += 24;
+    Local region_local = new_local();
+    Reg struct_ptr = new_reg();
+    emit(IRAlloca{struct_ptr, static_cast<uint32_t>(current_func->extra_stack)});
+    emit(IRStoreLocal{region_local, struct_ptr});
 
-    region_stack.push_back({data_local, offset_local, cap_local});
+    region_stack.push_back({region_local});
 
-    emit(IRRegionBegin{data_local, offset_local, cap_local, 1024 * 1024});
+    emit(IRRegionBegin{region_local, 1024 * 1024});
 
     if (reg.body) {
         gen_block(*reg.body);
     }
 
-    emit(IRRegionEnd{data_local, cap_local});
+    emit(IRRegionEnd{region_local});
 
     region_stack.pop_back();
 }
@@ -1224,7 +1227,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
                         const uint32_t dst = new_reg();
                         const auto& ri = region_stack.back();
-                        emit(IRRegionAlloc{dst, total, ri.data_local, ri.offset_local, ri.cap_local});
+                        emit(IRRegionAlloc{dst, total, ri.region_local});
                         return dst;
                     }
 
@@ -1234,7 +1237,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                     const uint32_t size = gen_expr(*node.args[0]);
                     const uint32_t dst = new_reg();
                     const auto& ri = region_stack.back();
-                    emit(IRRegionAlloc{dst, size, ri.data_local, ri.offset_local, ri.cap_local});
+                    emit(IRRegionAlloc{dst, size, ri.region_local});
                     return dst;
                 }
             }

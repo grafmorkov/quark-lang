@@ -801,6 +801,7 @@ void SemanticAnalyzer::analyze_while(const ast::WhileStmt& stmt) {
     }
 }
 void SemanticAnalyzer::analyze_region(const ast::RegionStmt& reg) {
+    bool prev = is_in_region;
     is_in_region = true;
 
     {
@@ -810,7 +811,7 @@ void SemanticAnalyzer::analyze_region(const ast::RegionStmt& reg) {
         }
     }
 
-    is_in_region = false;
+    is_in_region = prev;
 }
 
 void SemanticAnalyzer::check_visibility(const symb_t::Symbol& sym, const std::string& context) {

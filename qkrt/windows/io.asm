@@ -129,7 +129,14 @@ qk_exit:
 ; Returns: string length (excluding null terminator)
 qk_strlen:
     mov rdi, rcx
-    jmp qk_strlen_impl
+    xor eax, eax
+.loop:
+    cmp byte [rdi + rax], 0
+    je .done
+    inc rax
+    jmp .loop
+.done:
+    ret
 
 
 ; i64 qk_printz(str s)

@@ -564,33 +564,36 @@ namespace {
 
     void FasmCodeGenerator::emit_region_begin(const IRRegionBegin& x, const IRFunction& fn) {
         (void)fn;
-#ifdef _WIN32
+        emit_line("    mov rbx, qword " + local_slot(x.region_local));
+        emit_line("    push rbx");
         emit_line("    sub rsp, 32");
         emit_line("    mov rcx, " + std::to_string(x.region_size));
         emit_line("    call qk_std__arena___create");
         emit_line("    add rsp, 32");
-        emit_line("    mov qword " + local_slot(x.data_local) + ", rax");
-        emit_line("    mov qword " + local_slot(x.offset_local) + ", 0");
-        emit_line("    mov qword " + local_slot(x.cap_local) + ", " + std::to_string(x.region_size));
-#else
-        (void)x;
-#endif
+        emit_line("    pop rbx");
+        emit_line("    mov [rbx + 0], rax");
+        emit_line("    mov qword [rbx + 8], 0");
+        emit_line("    mov rax, " + std::to_string(x.region_size));
+        emit_line("    mov [rbx + 16], rax");
     }
 
     void FasmCodeGenerator::emit_region_alloc(const IRRegionAlloc& x, const IRFunction& fn) {
         const uint32_t ok_label = region_alloc_label();
 
-        emit_line("    mov rax, qword " + local_slot(x.data_local));
-        emit_line("    add rax, qword " + local_slot(x.offset_local));
-        emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
+        emit_line("    mov rax, qword " + local_slot(x.region_local));
+        emit_line("    mov rbx, [rax + 0]");
+        emit_line("    add rbx, [rax + 8]");
+        emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rbx");
 
         emit_line("    mov rax, qword " + temp_slot(x.size, fn));
         emit_line("    add rax, 15");
         emit_line("    and rax, -16");
-        emit_line("    add qword " + local_slot(x.offset_local) + ", rax");
 
-        emit_line("    mov rax, qword " + local_slot(x.offset_local));
-        emit_line("    cmp rax, qword " + local_slot(x.cap_local));
+        emit_line("    mov rbx, qword " + local_slot(x.region_local));
+        emit_line("    add [rbx + 8], rax");
+
+        emit_line("    mov rax, [rbx + 8]");
+        emit_line("    cmp rax, [rbx + 16]");
         emit_line("    jbe .region_ok_" + std::to_string(ok_label));
         emit_line("    mov ecx, 1");
         emit_line("    call qk_exit");
@@ -599,15 +602,12 @@ namespace {
 
     void FasmCodeGenerator::emit_region_end(const IRRegionEnd& x, const IRFunction& fn) {
         (void)fn;
-#ifdef _WIN32
+        emit_line("    mov rax, qword " + local_slot(x.region_local));
+        emit_line("    mov rcx, [rax + 0]");
+        emit_line("    mov rdx, [rax + 16]");
         emit_line("    sub rsp, 32");
-        emit_line("    mov rcx, qword " + local_slot(x.data_local));
-        emit_line("    xor edx, edx");
         emit_line("    call qk_std__arena___destroy");
         emit_line("    add rsp, 32");
-#else
-        (void)x;
-#endif
     }
     std::string FasmCodeGenerator::generate(const IRProgram& program) {
         out.str("");
@@ -617,9 +617,8 @@ namespace {
         emit_line("format PE64 console");
         emit_line("entry start");
         emit_line();
-        emit_line("include 'qkrt\\common\\string.asm'");
-        emit_line("include 'qkrt\\common\\format.asm'");
-        emit_line("include 'qkrt\\common\\arena.asm'");
+        emit_line("include 'qkrt\\windows\\format.asm'");
+        emit_line("include 'qkrt\\windows\\arena.asm'");
         emit_line("include 'qkrt\\windows\\file.asm'");
         emit_line("include 'qkrt\\windows\\io.asm'");
         emit_line();
@@ -637,6 +636,9 @@ namespace {
         emit_line("extrn qk_format_i64");
         emit_line("extrn qk_format_u64");
         emit_line("extrn qk_format_f64");
+        emit_line("extrn qk_exit");
+        emit_line("extrn qk_std__arena___create");
+        emit_line("extrn qk_std__arena___destroy");
         emit_line("public _start");
 #endif
         for (const auto& fn : program.functions) {

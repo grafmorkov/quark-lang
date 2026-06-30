@@ -38,7 +38,7 @@ int main(int argc, char **argv)
             ctx.root_path = utils::io::get_executable_directory();
             // If binary is in build/ subdirectory, use parent (source root)
             auto parent = ctx.root_path.parent_path();
-            if (std::filesystem::exists(parent / "std" / "io.qk")) {
+            if (std::filesystem::exists(parent / "std" / "io" / "io.qk")) {
                 ctx.root_path = parent;
             }
         }
@@ -137,6 +137,7 @@ int main(int argc, char **argv)
                 { root / "qkrt" / "linux" / "io.asm", "qkrt_io.o" },
                 { root / "qkrt" / "linux" / "file.asm", "qkrt_file.o" },
                 { root / "qkrt" / "linux" / "format.asm", "qkrt_format.o" },
+                { root / "qkrt" / "linux" / "arena.asm", "qkrt_arena.o" },
             };
 
             std::string link_objs;

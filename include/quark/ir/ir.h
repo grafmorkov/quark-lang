@@ -101,24 +101,20 @@ struct IRString {
 };
 
 struct IRRegionBegin {
-    Local data_local;
-    Local offset_local;
-    Local cap_local;
+    Local region_local;  // local slot holding pointer to Region struct
     uint32_t region_size;
 };
 
 struct IRRegionAlloc {
     Reg dst;
     Reg size;
-    Local data_local;
-    Local offset_local;
-    Local cap_local;
+    Local region_local;  // local slot holding pointer to Region struct
 };
 
 struct IRRegionEnd {
-    Local data_local;
-    Local cap_local;
+    Local region_local;  // local slot holding pointer to Region struct
 };
+
 
 struct IRAlloca {
     Reg dst;

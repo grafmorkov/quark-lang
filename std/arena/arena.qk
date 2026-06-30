@@ -2,3 +2,9 @@ module "std::arena";
 
 extern func _create(size: u64) *void;
 extern func _destroy(ptr: *void) void;
+
+struct Region {
+    data: *void;
+    offset: u64;
+    capacity: u64;
+}

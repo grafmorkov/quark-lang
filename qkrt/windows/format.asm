@@ -157,11 +157,11 @@ qk_format_f64:
     mov rax, 0x43E0000000000000    ; double 2^63
     movq xmm1, rax
     comisd xmm0, xmm1
-    jae .overflow                  ; xmm0 >= 2^63 → overflow
+    jae .overflow                  ; xmm0 >= 2^63 -> overflow
     mov rax, 0xC3E0000000000000    ; double -2^63
     movq xmm1, rax
     comisd xmm0, xmm1
-    jb .overflow                   ; xmm0 < -2^63 → overflow
+    jb .overflow                   ; xmm0 < -2^63 -> overflow
 
     cvttsd2si rax, xmm0
     mov rbx, rax

@@ -45,9 +45,7 @@ struct IRGenerator {
     std::vector<std::string> namespace_stack;
 
     struct RegionInfo {
-        Local data_local;
-        Local offset_local;
-        Local cap_local;
+        Local region_local;  // local slot holding pointer to Region struct
     };
     std::vector<RegionInfo> region_stack;
 
