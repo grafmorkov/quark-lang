@@ -5,7 +5,7 @@
 
 #include "quark/support/type_context.h"
 #include "quark/semantic/symbol_table.h"
-#include "quark-alloc/memory/alloc.h"
+#include "memory/alloc.h"
 #include "quark/modules/module.h"
 #include "utils/errors.h"
 

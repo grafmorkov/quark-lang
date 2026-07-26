@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(Quark VERSION 1.0 LANGUAGES CXX)
+include(FetchContent)
 
 # C++ standard
 set(CMAKE_CXX_STANDARD 20)
@@ -26,16 +27,23 @@ add_library(libquark
     src/support/type_context.cpp
     src/support/symbol_path.cpp
 )
+FetchContent_Declare(arena-alloc
+    GIT_REPOSITORY https://github.com/grafmorkov/quark-alloc.git
+    GIT_TAG v1.0.0)
+FetchContent_MakeAvailable(arena-alloc)
+
+add_library(quark-alloc INTERFACE)
+target_include_directories(quark-alloc INTERFACE ${arena-alloc_SOURCE_DIR})
 
 target_include_directories(libquark
     PUBLIC
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/include/utils
-        ${PROJECT_SOURCE_DIR}/third_party/
 )
 target_compile_definitions(libquark PUBLIC
     QUARK_ROOT="${PROJECT_SOURCE_DIR}"
 )
+target_link_libraries(libquark PUBLIC quark-alloc)
 
 # Executable file Quark (main.cpp)
 add_executable(quark

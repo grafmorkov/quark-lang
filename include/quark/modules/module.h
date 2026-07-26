@@ -7,7 +7,7 @@
 
 #include "quark/frontend/ast.h"
 #include "quark/semantic/symbol_table.h"
-#include "quark-alloc/memory/alloc.h"
+#include "memory/alloc.h"
 #include "utils/errors.h"
 
 namespace quark {

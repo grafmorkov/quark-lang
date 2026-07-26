@@ -6,7 +6,7 @@
 #include <string>
 
 #include "quark/frontend/ast.h"
-#include "quark-alloc/memory/alloc.h"
+#include "memory/alloc.h"
 
 namespace quark::symb_t {
 
