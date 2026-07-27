@@ -58,6 +58,7 @@ int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
         case ast::TypeKind::I64:
         case ast::TypeKind::U64:  return 8;
         case ast::TypeKind::Pointer: return 8;
+        case ast::TypeKind::Reference: return 8;
         case ast::TypeKind::Struct: {
             if (!ctx) return 0;
             auto* sym = lookup_struct(*ctx, t->struct_name);
@@ -74,7 +75,18 @@ int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
                     }
                 }
             }
-            if (!sym) return 0;
+            if (!sym) {
+                // Fallback: check type context for imported structs
+                const auto* fields = ctx->types.get_struct_fields(t->struct_name);
+                if (fields) {
+                    int total = 0;
+                    for (size_t i = 0; i < fields->size(); ++i) {
+                        total += 8;
+                    }
+                    return total;
+                }
+                return 0;
+            }
             auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
             if (!ss) return 0;
             int total = 0;
@@ -129,6 +141,11 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
 ) {
     if (!base_type) {
         ctx.errors.add("Field access base type is null"); return {};
+    }
+
+    // Auto-deref references
+    if (base_type->kind == ast::TypeKind::Reference && base_type->pointed) {
+        base_type = base_type->pointed;
     }
 
     if (base_type->kind != ast::TypeKind::Struct) {
@@ -601,6 +618,18 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                     emit(IRAlloca{ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0)});
                     emit(IRStoreLocal{local, ptr});
                 }
+                if (node.value) {
+                    const uint32_t value = gen_expr(*node.value);
+                    // Copy struct fields from result into local's allocated space
+                    const uint32_t local_ptr = new_reg();
+                    emit(IRLoadLocal{local_ptr, local});
+                    int field_count = sz / 8;
+                    for (int i = 0; i < field_count; ++i) {
+                        const uint32_t src_val = new_reg();
+                        emit(IRGetField{src_val, value, static_cast<uint32_t>(i * 8)});
+                        emit(IRSetField{local_ptr, src_val, static_cast<uint32_t>(i * 8)});
+                    }
+                }
             } else if (node.value) {
                 const uint32_t value = gen_expr(*node.value);
                 emit(IRStoreLocal{ local, value });
@@ -1026,6 +1055,37 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         [&](const ast::UnaryExpr& node) -> uint32_t {
             const ast::Type* op_type = node.operand ? node.operand->resolved_type : nullptr;
 
+            // Address-of: &expr
+            if (node.op == ast::UnaryOp::AddrOf) {
+                // Handle &var (local variable)
+                if (const auto* var = std::get_if<ast::VarExpr>(&node.operand->kind)) {
+                    const ast::Type* var_type = nullptr;
+                    for (int i = static_cast<int>(type_scopes.size()) - 1; i >= 0; --i) {
+                        auto tit = type_scopes[i].find(var->name);
+                        if (tit != type_scopes[i].end()) {
+                            var_type = tit->second;
+                            break;
+                        }
+                    }
+                    for (int i = static_cast<int>(local_scopes.size()) - 1; i >= 0; --i) {
+                        auto it = local_scopes[i].find(var->name);
+                        if (it != local_scopes[i].end()) {
+                            const uint32_t local = it->second;
+                            const uint32_t dst = new_reg();
+                            // Struct locals store a pointer via IRAlloca — the local IS the pointer
+                            if (var_type && var_type->kind == ast::TypeKind::Struct) {
+                                emit(IRLoadLocal{ dst, local });
+                            } else {
+                                emit(IRAddrOf{ dst, local });
+                            }
+                            return dst;
+                        }
+                    }
+                }
+                ctx.errors.add("Cannot take address of non-local expression");
+                return 0;
+            }
+
             if (op_type && op_type->kind == ast::TypeKind::Struct) {
                 std::string op_name;
                 switch (node.op) {
@@ -1143,6 +1203,10 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 const uint32_t idx = gen_expr(*index->index);
 
                 const ast::Type* base_type = index->base->resolved_type;
+                // Auto-deref references
+                if (base_type && base_type->kind == ast::TypeKind::Reference && base_type->pointed) {
+                    base_type = base_type->pointed;
+                }
                 if (!base_type || base_type->kind != ast::TypeKind::Pointer || !base_type->pointed) {
                     ctx.errors.add("Invalid pointer index in assignment"); return 0;
                 }
@@ -1178,6 +1242,11 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
             const auto [offset, field_type] = resolve_struct_field(ctx, base_type, node.field);
             (void)field_type;
+
+            // Auto-deref references for attribute lookup
+            if (base_type && base_type->kind == ast::TypeKind::Reference && base_type->pointed) {
+                base_type = base_type->pointed;
+            }
 
             // Emit attribute lowering for struct field reads (e.g. @guard)
             if (base_type && base_type->kind == ast::TypeKind::Struct) {
@@ -1334,6 +1403,10 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             const uint32_t dst = new_reg();
 
             const ast::Type* base_type = node.base->resolved_type;
+            // Auto-deref references
+            if (base_type && base_type->kind == ast::TypeKind::Reference && base_type->pointed) {
+                base_type = base_type->pointed;
+            }
             if (!base_type || base_type->kind != ast::TypeKind::Pointer || !base_type->pointed) {
                 ctx.errors.add("Invalid pointer index in IR gen"); return 0;
             }

@@ -1,4 +1,4 @@
-module "std::col";
+module "std::types";
 
 struct pair<A,B> {
     first: A;

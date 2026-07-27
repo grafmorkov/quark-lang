@@ -104,12 +104,38 @@ bool types_equal(const ast::Type* a, const ast::Type* b) {
     if (a->kind == ast::TypeKind::Pointer){
         return types_equal(a->pointed, b->pointed);
     }
+    if (a->kind == ast::TypeKind::Reference){
+        return types_equal(a->pointed, b->pointed);
+    }
 
     return true;
 }
 
 bool is_assignable(const ast::Type* to, const ast::Type* from) {
-    return types_equal(to, from);
+    if (types_equal(to, from)) return true;
+
+    auto is_numeric_type = [](TypeKind k) {
+        return k >= TypeKind::I8 && k <= TypeKind::F64;
+    };
+    auto is_ptr_like = [](TypeKind k) {
+        return k == TypeKind::Pointer || k == TypeKind::Reference;
+    };
+
+    // Implicit numeric promotion
+    if (is_numeric_type(to->kind) && is_numeric_type(from->kind))
+        return true;
+
+    // Pointer<->Reference interop (same pointed type)
+    if (is_ptr_like(to->kind) && is_ptr_like(from->kind))
+        return types_equal(to->pointed, from->pointed);
+
+    // Reference<T> <-> T: auto-ref / auto-deref
+    if (to->kind == TypeKind::Reference && from->kind != TypeKind::Reference)
+        return types_equal(to->pointed, from);
+    if (from->kind == TypeKind::Reference && to->kind != TypeKind::Reference)
+        return types_equal(from->pointed, to);
+
+    return false;
 }
 
 bool infer_generic_params(
@@ -148,6 +174,11 @@ bool infer_generic_params(
     }
 
     if (pattern->kind == ast::TypeKind::Pointer) {
+        return infer_generic_params(pattern->pointed, concrete->pointed, generic_params, subst);
+    }
+
+    if (pattern->kind == ast::TypeKind::Reference) {
+        if (concrete->kind != ast::TypeKind::Reference) return false;
         return infer_generic_params(pattern->pointed, concrete->pointed, generic_params, subst);
     }
 
@@ -267,6 +298,11 @@ const ast::Type* resolve_struct_field(
 ) {
     if (!base_type) {
         return nullptr;
+    }
+
+    // Auto-deref references
+    if (base_type->kind == ast::TypeKind::Reference && base_type->pointed) {
+        base_type = base_type->pointed;
     }
 
     if (base_type->kind != ast::TypeKind::Struct) {
@@ -482,6 +518,16 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                         ctx.errors.add("Struct redeclaration: " + str.name);
                         return;
                     }
+                    // Also register in TypeContext so type_size can find fields cross-module
+                    std::vector<std::pair<std::string, const ast::Type*>> fields;
+                    for (const auto& f : str.fields) {
+                        fields.emplace_back(f.name, f.type);
+                    }
+                    std::vector<std::vector<ast::Attribute>> field_attrs;
+                    for (const auto& f : str.fields) {
+                        field_attrs.push_back(f.attributes);
+                    }
+                    ctx.types.register_struct(str.name, fields, field_attrs);
                 }
             },
             [&](const ast::NamespaceStmt& ns) {
@@ -986,6 +1032,11 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(const ast::Expr* expr) {
         const ast::Type* base_type = analyze_expr(index->base);
         if (!base_type) return nullptr;
 
+        // Auto-deref references
+        if (base_type->kind == TypeKind::Reference && base_type->pointed) {
+            base_type = base_type->pointed;
+        }
+
         if (base_type->kind != TypeKind::Pointer) {
             ctx.errors.add("Cannot index non-pointer type");
             return nullptr;
@@ -1095,6 +1146,7 @@ namespace {
         switch (op) {
             case ast::UnaryOp::Neg: return "operator-";
             case ast::UnaryOp::Not: return "operator!";
+            case ast::UnaryOp::AddrOf: return "operator&";
         }
         return "operator?";
     }
@@ -1318,6 +1370,18 @@ const ast::Type* SemanticAnalyzer::analyze_unary(const ast::UnaryExpr& u){
     const ast::Type* operand = analyze_expr(u.operand);
     if (!operand) return nullptr;
 
+    // Address-of: &expr
+    if (u.op == ast::UnaryOp::AddrOf) {
+        // Operand must be an lvalue (variable, field access, etc.)
+        // For now, check it's not a temporary/builtin literal
+        if (operand->kind == TypeKind::Bool ||
+            (operand->kind >= TypeKind::I8 && operand->kind <= TypeKind::F64)) {
+            ctx.errors.add("Cannot take address of a value type");
+            return nullptr;
+        }
+        return ctx.types.get_reference(operand);
+    }
+
     if (is_builtin_type_kind(operand->kind)) {
         if (u.op == ast::UnaryOp::Not) {
             if (operand->kind != TypeKind::Bool && operand->kind != TypeKind::U32) {
@@ -1407,7 +1471,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
 
     if (is_in_region && path.size() == 1 && path[0] == "alloc") {
         if (call.args.size() == 2) {
-            // alloc(T, count) — typed allocation
+            // alloc(T, count) - typed allocation
             const auto* type_expr = std::get_if<ast::TypeExpr>(&call.args[0]->kind);
             if (!type_expr) {
                 ctx.errors.add("First argument to alloc must be a type, e.g. alloc(i32, 10)");
@@ -1513,7 +1577,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
                 for (const auto* arg : concrete_return->type_args) {
                     concrete_type_args.push_back(ctx.types.substitute_type(arg, subst));
                 }
-                // Extract base struct name (handle mangled names like "option$T" → "option")
+                // Extract base struct name (handle mangled names like "option$T" -> "option")
                 std::string base_name = concrete_return->struct_name;
                 std::string unmangled;
                 if (ctx.types.is_mangled_name(base_name, unmangled)) {
@@ -1642,6 +1706,11 @@ const ast::Type* SemanticAnalyzer::analyze_index(const ast::IndexExpr& n) {
     const ast::Type* base_type = analyze_expr(n.base);
     if (!base_type) return nullptr;
 
+    // Auto-deref references
+    if (base_type->kind == TypeKind::Reference && base_type->pointed) {
+        base_type = base_type->pointed;
+    }
+
     if (base_type->kind != TypeKind::Pointer) {
         ctx.errors.add("Cannot index non-pointer type");
         return nullptr;
@@ -1731,6 +1800,7 @@ int type_size(const ast::Type* t) {
         case ast::TypeKind::I64:
         case ast::TypeKind::U64:  return 8;
         case ast::TypeKind::Pointer: return 8;
+        case ast::TypeKind::Reference: return 8;
         default: return 0;
     }
 }
@@ -1756,7 +1826,8 @@ const ast::Type* SemanticAnalyzer::analyze_cast(const ast::CastExpr& n){
             }
             break;
         case ast::CastKind::Bitcast:
-            if (value_type->kind == TypeKind::Pointer || n.target->kind == TypeKind::Pointer) {
+            if (value_type->kind == TypeKind::Pointer || n.target->kind == TypeKind::Pointer ||
+                value_type->kind == TypeKind::Reference || n.target->kind == TypeKind::Reference) {
             } else if (type_size(value_type) != type_size(n.target)) {
                 ctx.errors.add("as!: types must have the same size");
                 return nullptr;

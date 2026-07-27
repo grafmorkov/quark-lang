@@ -18,6 +18,7 @@
 | f64  | 8    | double             |
 | str  | 8    | string (pointer)   |
 | *T   | 8    | pointer to T       |
+| &T   | 8    | reference to T     |
 
 Integer literals are i32 by default. Float literals are f64 by default. Boolean literals `true` and `false` are `bool`.
 
@@ -76,6 +77,64 @@ if (x < 10) {
 ```
 while (x > 0) {
     x = x - 1;
+}
+```
+
+### References
+
+References (`&T`) are non-owning aliases to existing variables. They have the same size as pointers (8 bytes) but provide compile-time safety.
+
+```
+x: i32 = 42;
+r: &i32 = &x;     // take reference to x
+std::io::print(r as str);
+```
+
+References can be reassigned to point to different variables:
+
+```
+a: i32 = 10;
+b: i32 = 20;
+r: &i32 = &a;
+r = &b;            // reassign reference to point to b
+```
+
+References can be passed to functions that accept reference parameters:
+
+```
+func increment(r: &i32) void {
+    r = r + 1;     // modifies the original variable
+}
+
+func main() i32 {
+    mut x: i32 = 10;
+    increment(&x);
+    return 0;
+}
+```
+
+References are automatically dereferenced when accessing fields or indexing:
+
+```
+struct Point { x: i32; y: i32; }
+
+func main() i32 {
+    p: Point;
+    p.x = 10;
+    p.y = 10;
+    r: &Point = &p;
+    return r.x + r.y;   // field access through reference
+}
+```
+
+References are automatically dereferenced for pointer dereference via index:
+
+```
+region {
+    p: *i32 = alloc(i32, 1);
+    p[0] = 42;
+    r: &*i32 = &p;      // reference to pointer
+    v: i32 = r[0];      // auto-deref, then index
 }
 ```
 
@@ -417,45 +476,86 @@ region r {
     std::io::print_char(10 as i8);
 }
 ```
-```alloc(T, size);``` or ```alloc(size)``` for void; 
-However, you can allocate memory in the more familiar way via the "std/arena.qk" library:
+```alloc(T, count);``` — typed allocation, returns `*T` where count is number of elements.
+```alloc(size);``` — untyped allocation, returns `*void` where size is in bytes.
+
+Nested regions are also supported:
+```
+region outer {
+    a: *i32 = alloc(i32, 1);
+    region inner {
+        b: *i32 = alloc(i32, 1);
+    }
+}
+```
+
+### std::arena
+
+The `std::arena` module provides an explicit arena allocator API with region-based allocation. Unlike the built-in `region` blocks, this allows manual control over region lifetime.
+
 ```
 load "std::arena";
 
 func main() i32 {
-    p: *void = std::arena::_create(4096);
-    std::arena::_destroy(p);
+    // Create a new region
+    mut r: std::arena::Region = std::arena::create_region(4096);
+
+    // Allocate memory from the region
+    p: *void = std::arena::region_malloc(&r, 32);
+
+    // Free all memory in the region
+    std::arena::destroy_region(r);
     return 0;
 }
 ```
----
 
-## Standard Library 
+#### Typed allocation with arena
 
-### std::io
+Since `region_malloc` returns `*void`, use `as!` to get a typed pointer:
 
-| Function         | Description                      |
-|------------------|----------------------------------|
-| print(text)      | print string to stdout           |
-| println(text)    | print string + newline to stdout |
-| eprint(text)     | print string to stderr           |
-| print_char(c)    | print single byte to stdout      |
-| read(buf, len)   | read from stdin into buffer      |
-| read_char()      | read one byte from stdin         |
-| open(path,flags,mode) | open file (returns handle)  |
-| close(fd)        | close file handle                |
-| write(fd,buf,len)| write to file                    |
-| read_fd(fd,buf,len) | read from file               |
-| seek(fd,offset,whence) | seek in file               |
-| flush(fd)        | flush file buffers               |
-| strlen(s)        | get string length                |
-| exit(code)       | exit process                     |
+```
+load "std::arena";
 
-### std::arena
-| Function           | Description                      |
-|--------------------|----------------------------------|
-| _create(size: u64) | create new arena                 |
-| _destroy(ptr: *void) | destroy allocated pointer      |
+func main() i32 {
+    mut r: std::arena::Region = std::arena::create_region(4096);
+
+    raw: *void = std::arena::region_malloc(&r, 40);
+    p: *i32 = raw as! *i32;
+    p[0] = 42;
+    p[1] = 100;
+
+    std::arena::destroy_region(r);
+    return 0;
+}
+```
+
+#### Global region
+
+A global region persists for the entire program lifetime:
+
+```
+load "std::arena";
+
+func main() i32 {
+    std::arena::init_global_region(4096);
+
+    r: *std::arena::Region = std::arena::global_region();
+    p: *i32 = std::arena::region_malloc(r, 16) as! *i32;
+    p[0] = 42;
+    std::io::print(p[0] as str);
+    return 0;
+}
+```
+
+| Function | Description |
+|----------|-------------|
+| create_region(size: u64) Region | Create a new arena region with the given capacity |
+| destroy_region(r: Region) | Free all memory in the region |
+| region_malloc(r: *Region, size: u64) *void | Allocate `size` bytes from the region |
+| global_region() *Region | Get the global region (returns null if not initialized) |
+| init_global_region(size: u64) | Initialize the global region with the given capacity |
+| _create(size: u64) *void | Low-level: create arena via mmap |
+| _destroy(ptr: *void) void | Low-level: destroy arena via munmap |
 ---
 
 ## Comments

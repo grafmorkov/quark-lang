@@ -208,6 +208,12 @@ namespace {
                 return get_pointer(new_pointed);
             return type;
         }
+        if (type->kind == TypeKind::Reference && type->pointed) {
+            const Type* new_pointed = substitute_type(type->pointed, subst);
+            if (new_pointed != type->pointed)
+                return get_reference(new_pointed);
+            return type;
+        }
         if (type->kind == TypeKind::Struct && !type->type_args.empty()) {
             std::vector<const Type*> new_args;
             bool changed = false;
@@ -274,6 +280,19 @@ namespace {
         t.pointed = base;
 
         auto [iter, _] = pointer_cache.emplace(base, std::move(t));
+        return &iter->second;
+    }
+
+    const Type* TypeContext::get_reference(const Type* base) const {
+        auto it = reference_cache.find(base);
+        if (it != reference_cache.end())
+            return &it->second;
+
+        Type t;
+        t.kind = TypeKind::Reference;
+        t.pointed = base;
+
+        auto [iter, _] = reference_cache.emplace(base, std::move(t));
         return &iter->second;
     }
 

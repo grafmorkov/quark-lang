@@ -87,7 +87,8 @@ namespace {
             case ast::TypeKind::F64:
             case ast::TypeKind::I64:
             case ast::TypeKind::U64:
-            case ast::TypeKind::Pointer: return 8;
+            case ast::TypeKind::Pointer:
+            case ast::TypeKind::Reference: return 8;
             default: return 0;
         }
     }
@@ -351,6 +352,11 @@ namespace {
             [&](const IRStoreLocal& x) {
                 emit_line("    mov rax, qword " + temp_slot(x.src, fn));
                 emit_line("    mov qword " + local_slot(x.local) + ", rax");
+            },
+
+            [&](const IRAddrOf& x) {
+                emit_line("    lea rax, qword " + local_slot(x.local));
+                emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
             },
 
             [&](const IRBinary& x) {
@@ -637,8 +643,6 @@ namespace {
         emit_line("extrn qk_format_u64");
         emit_line("extrn qk_format_f64");
         emit_line("extrn qk_exit");
-        emit_line("extrn qk_std__arena___create");
-        emit_line("extrn qk_std__arena___destroy");
         emit_line("public _start");
 #endif
         for (const auto& fn : program.functions) {

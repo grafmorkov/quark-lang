@@ -39,6 +39,7 @@ namespace quark::ast {
 
         Struct,
         Pointer,
+        Reference,
 
         Generic,
 
@@ -100,7 +101,7 @@ namespace quark::ast {
         Expr* rhs;
         BinaryOp op;
     };
-    enum class UnaryOp { Neg, Not };
+    enum class UnaryOp { Neg, Not, AddrOf };
 
     struct UnaryExpr{
         Expr* operand;

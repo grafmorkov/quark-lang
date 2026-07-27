@@ -20,6 +20,7 @@ bool is_type_token(TokenType t) {
         case TOKEN_STR_TYPE:
         case TOKEN_CHAR_TYPE:
         case TOKEN_STAR:
+        case TOKEN_AMP:
             return true;
         default:
             return false;
@@ -707,6 +708,10 @@ ast::Expr* Parser::parse_prefix() {
         auto* operand = parse_expr(10);
         return make_expr(ctx, UnaryExpr{operand, ast::UnaryOp::Neg}, previous.loc);
     }
+    if (match(TOKEN_AMP)){
+        auto* operand = parse_expr(10);
+        return make_expr(ctx, UnaryExpr{operand, ast::UnaryOp::AddrOf}, previous.loc);
+    }
 
     if (match(TOKEN_IDENT)) {
         ast::Expr* expr =
@@ -869,6 +874,12 @@ const ast::Type* Parser::parse_type(bool allow_implicit_void, const std::vector<
         const ast::Type* base = parse_type();
         if (!base) return nullptr;
         return ctx.types.get_pointer(base);
+    }
+
+    if (match(TOKEN_AMP)) {
+        const ast::Type* base = parse_type();
+        if (!base) return nullptr;
+        return ctx.types.get_reference(base);
     }
 
     if (match(TOKEN_VOID))    return ctx.types.get_builtin(TypeKind::Void);

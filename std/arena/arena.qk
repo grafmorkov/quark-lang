@@ -3,8 +3,38 @@ module "std::arena";
 extern func _create(size: u64) *void;
 extern func _destroy(ptr: *void) void;
 
+extern func _region_mmap(size: u64) *void;
+extern func _region_munmap(ptr: *void, size: u64) void;
+extern func _region_bump(reg: *Region, size: u64) *void;
+extern func _global_region() *Region;
+extern func _init_global_region(size: u64) void;
+
 struct Region {
     data: *void;
     offset: u64;
     capacity: u64;
+};
+
+func create_region(size: u64) Region {
+    @init mut r: Region;
+    r.data = _region_mmap(size);
+    r.offset = 0;
+    r.capacity = size;
+    return r;
+}
+
+func destroy_region(r: Region) void {
+    _region_munmap(r.data, r.capacity);
+}
+
+func region_malloc(r: *Region, size: u64) *void {
+    return _region_bump(r, size);
+}
+
+func global_region() *Region {
+    return _global_region();
+}
+
+func init_global_region(size: u64) void {
+    _init_global_region(size);
 }

@@ -44,6 +44,11 @@ struct IRStoreLocal {
     Reg src;
 };
 
+struct IRAddrOf {
+    Reg dst;
+    Local local;
+};
+
 struct IRBinary {
     IRBinaryOp op;
     Reg dst;
@@ -140,6 +145,7 @@ using IRInst = std::variant<
     IRLoadFloatConst,
     IRLoadLocal,
     IRStoreLocal,
+    IRAddrOf,
     IRBinary,
     IRCall,
     IRReturn,
