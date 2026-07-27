@@ -31,7 +31,6 @@ namespace quark{
         TOKEN_LOAD,
         TOKEN_MODULE,
         TOKEN_EXTERN,
-        TOKEN_OPERATOR,
         TOKEN_AS,
         TOKEN_REGION,
         TOKEN_TRUE,

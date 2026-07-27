@@ -183,48 +183,6 @@ Each desugars to `x = x op y` at parse time.
 *   /
 ```
 
-### Operator Overloading
-
-Struct types can overload binary operators by defining a free function:
-
-```
-func operator +(a: Point, b: Point) Point {
-    @init mut r: Point;
-    r.x = a.x + b.x;
-    r.y = a.y + b.y;
-    return r;
-}
-```
-Generic types:
-```
-func operator +<T>(a: opt<T>, b: opt<T>) opt {
-    @init mut r: opt<T>;
-    r.value = a.value + b.value;
-    return r;
-}
-```
-
-Supported overloadable operators:
-
-| Token | Function name |
-|-------|---------------|
-| `+`   | `operator+`   |
-| `-`   | `operator-`   |
-| `*`   | `operator*`   |
-| `/`   | `operator/`   |
-| `==`  | `operator==`  |
-| `!=`  | `operator!=`  |
-| `<`   | `operator<`   |
-| `<=`  | `operator<=`  |
-| `>`   | `operator>`   |
-| `>=`  | `operator>=`  |
-| `&`   | `operator&`   |
-| `\|`  | `operator\|`  |
-| `&&`  | `operator&&`  |
-| `\|\|` | `operator\|\|` |
-
-Unary operators (`-`, `!`) can also be overloaded for struct types via `operator-` and `operator!`.
-
 ---
 
 ## Casts

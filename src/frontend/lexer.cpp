@@ -190,7 +190,6 @@ namespace quark::lx {
             case str_hash("load"): return make_token(TOKEN_LOAD);
             case str_hash("module"): return make_token(TOKEN_MODULE);
             case str_hash("extern"): return make_token(TOKEN_EXTERN);
-            case str_hash("operator"): return make_token(TOKEN_OPERATOR);
 
             // Types
             case str_hash("void"): return make_token(TOKEN_VOID);

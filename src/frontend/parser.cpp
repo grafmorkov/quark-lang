@@ -254,11 +254,6 @@ ast::Stmt Parser::parse_statement() {
     }
 
     if (match(TOKEN_FUNC)) {
-        if (match(TOKEN_OPERATOR)) {
-            auto func = parser_operator_func();
-            func.attributes = std::move(attrs);
-            return ast::Stmt{ std::move(func) };
-        }
         auto func = parse_func(false);
         func.attributes = std::move(attrs);
         return ast::Stmt{ std::move(func) };
@@ -466,68 +461,6 @@ ast::FuncStmt Parser::parse_func(bool is_extern) {
         ret.has_body = true;
     } else {
         expect(TOKEN_SEMICOLON, "Expected ';' after function declaration");
-    }
-
-    current_type_params = saved_type_params;
-
-    return ret;
-}
-
-ast::FuncStmt Parser::parser_operator_func() {
-    ast::FuncStmt ret;
-
-    Token op_token = advance();
-    std::string op_text;
-    switch (op_token.type) {
-        case TOKEN_PLUS:  op_text = "operator+"; break;
-        case TOKEN_MINUS: op_text = "operator-"; break;
-        case TOKEN_STAR:  op_text = "operator*"; break;
-        case TOKEN_SLASH: op_text = "operator/"; break;
-        case TOKEN_EQEQ:  op_text = "operator=="; break;
-        case TOKEN_NEQ:   op_text = "operator!="; break;
-        case TOKEN_LT:    op_text = "operator<";  break;
-        case TOKEN_LTE:   op_text = "operator<="; break;
-        case TOKEN_GT:    op_text = "operator>";  break;
-        case TOKEN_GTE:   op_text = "operator>="; break;
-        case TOKEN_NOT:   op_text = "operator!";  break;
-        case TOKEN_AMP:    op_text = "operator&";  break;
-        case TOKEN_PIPE:   op_text = "operator|";  break;
-        case TOKEN_AMP_AMP:  op_text = "operator&&"; break;
-        case TOKEN_PIPE_PIPE: op_text = "operator||"; break;
-        default:
-            ctx.errors.add(op_token.loc, op_token.text.length(), "Expected operator token after 'operator' keyword");
-            ret.name = "operator_";
-            return ret;
-    }
-    ret.name = op_text;
-    ret.is_extern = false;
-    ret.has_body = false;
-    ret.body = nullptr;
-
-    const auto* saved_type_params = current_type_params;
-    current_type_params = nullptr;
-
-    if(match(TOKEN_LT)){
-        do{
-            Token param = expect(TOKEN_IDENT, "Expected type parameter name");
-            ret.type_params.push_back(std::string(param.text));
-        } while(match(TOKEN_COMMA));
-        expect(TOKEN_GT, "Expected '>' after type parameters");
-    }
-
-    current_type_params = ret.type_params.empty() ? nullptr : &ret.type_params;
-
-    expect(TOKEN_LPAREN, "Expected '(' after operator");
-    ret.args = parse_func_args(current_type_params);
-    expect(TOKEN_RPAREN, "Expected ')'");
-
-    ret.return_type = parse_type(true, current_type_params);
-
-    if (check(TOKEN_LBRACE)) {
-        ret.body = parse_block();
-        ret.has_body = true;
-    } else {
-        expect(TOKEN_SEMICOLON, "Expected ';' after operator declaration");
     }
 
     current_type_params = saved_type_params;

@@ -6,10 +6,3 @@ struct opt<T> {
     @init @guard(has_value)
     value: T;
 };
-
-func operator +<T>(a: opt<T>, b: opt<T>) opt<T> {
-    @init mut r: opt<T>;
-    r.value = a.value + b.value;
-    r.has_value = true;
-    return r;
-}

@@ -966,72 +966,6 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::BinaryExpr& node) -> uint32_t {
-            const ast::Type* lhs_type = node.lhs ? node.lhs->resolved_type : nullptr;
-
-            if (lhs_type && lhs_type->kind == ast::TypeKind::Struct) {
-                std::string op_name;
-                switch (node.op) {
-                    case ast::BinaryOp::Add: op_name = "operator+"; break;
-                    case ast::BinaryOp::Sub: op_name = "operator-"; break;
-                    case ast::BinaryOp::Mul: op_name = "operator*"; break;
-                    case ast::BinaryOp::Div: op_name = "operator/"; break;
-                    case ast::BinaryOp::Eq:  op_name = "operator=="; break;
-                    case ast::BinaryOp::Neq: op_name = "operator!="; break;
-                    case ast::BinaryOp::Lt:  op_name = "operator<"; break;
-                    case ast::BinaryOp::Lte: op_name = "operator<="; break;
-                    case ast::BinaryOp::Gt:  op_name = "operator>"; break;
-                    case ast::BinaryOp::Gte: op_name = "operator>="; break;
-                    case ast::BinaryOp::BitAnd:   op_name = "operator&"; break;
-                    case ast::BinaryOp::BitOr:    op_name = "operator|"; break;
-                    case ast::BinaryOp::LogicAnd: op_name = "operator&&"; break;
-                    case ast::BinaryOp::LogicOr:  op_name = "operator||"; break;
-                }
-
-                const uint32_t lhs = gen_expr(*node.lhs);
-                const uint32_t rhs = gen_expr(*node.rhs);
-
-                // Allocate temp buffer for the struct result (sret)
-                int sz = type_size(lhs_type, &ctx);
-                if (current_func) current_func->extra_stack += sz;
-                const uint32_t sret_ptr = new_reg();
-                emit(IRAlloca{ sret_ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0) });
-
-                const uint32_t dst = new_reg();
-                // Build mangled function name from struct type info
-                std::string mangled = ctx.types.mangle_func_name(op_name, lhs_type->type_args);
-                // Also try qualified name: extract namespace from struct name
-                std::string struct_base = lhs_type->struct_name;
-                {
-                    auto dollar = struct_base.find('$');
-                    if (dollar != std::string::npos)
-                        struct_base = struct_base.substr(0, dollar);
-                }
-                // First try the simple mangled name
-                uint32_t func_id;
-                auto it = function_ids.find(mangled);
-                if (it != function_ids.end()) {
-                    func_id = it->second;
-                } else {
-                    // Try qualified: extract namespace from struct name
-                    std::string ns_op = struct_base;
-                    auto colon = struct_base.rfind("::");
-                    if (colon != std::string::npos) {
-                        ns_op = struct_base.substr(0, colon) + "::" + op_name;
-                    } else {
-                        ns_op = op_name;
-                    }
-                    std::string qualified_mangled = ctx.types.mangle_func_name(ns_op, lhs_type->type_args);
-                    auto it2 = function_ids.find(qualified_mangled);
-                    if (it2 != function_ids.end()) {
-                        func_id = it2->second;
-                    } else {
-                        func_id = resolve_function_id({op_name});
-                    }
-                }
-                emit(IRCall{ dst, func_id, {sret_ptr, lhs, rhs}, true });
-                return sret_ptr;
-            }
-
             const uint32_t lhs = gen_expr(*node.lhs);
             const uint32_t rhs = gen_expr(*node.rhs);
             const uint32_t dst = new_reg();
@@ -1084,26 +1018,6 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 }
                 ctx.errors.add("Cannot take address of non-local expression");
                 return 0;
-            }
-
-            if (op_type && op_type->kind == ast::TypeKind::Struct) {
-                std::string op_name;
-                switch (node.op) {
-                    case ast::UnaryOp::Neg: op_name = "operator-"; break;
-                    case ast::UnaryOp::Not: op_name = "operator!"; break;
-                }
-
-                const uint32_t operand = gen_expr(*node.operand);
-
-                int sz = type_size(op_type, &ctx);
-                if (current_func) current_func->extra_stack += sz;
-                const uint32_t sret_ptr = new_reg();
-                emit(IRAlloca{ sret_ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0) });
-
-                const uint32_t dst = new_reg();
-                uint32_t func_id = resolve_function_id({op_name});
-                emit(IRCall{ dst, func_id, {sret_ptr, operand}, true });
-                return sret_ptr;
             }
 
             const uint32_t operand = gen_expr(*node.operand);
