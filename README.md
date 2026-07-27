@@ -65,25 +65,16 @@ Load modules -> AST -> semantic analysis -> IR -> fasm -> native binary
 ### Requirements
 
 * CMake 3.20+
-* Fasm compiler(copy the fasm.exe/fasm into the fasm/ folder)
-
-Clone the repository with submodules:
-
-```bash
-git clone --recursive https://github.com/grafmorkov/quark-lang.git
-```
+* Fasm compiler(copy and paste the fasm.exe/fasm in the fasm/ folder)
 
 Build the compiler:
 
 ```bash
-git clone --recursive https://github.com/grafmorkov/quark-lang.git
+git clone https://github.com/grafmorkov/quark-lang.git
 cd quark-lang
 
-mkdir build
-cd build
-
-cmake ..
-cmake --build .
+cmake -B build
+cmake --build build
 ```
 
 ---
