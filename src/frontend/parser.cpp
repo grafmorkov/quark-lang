@@ -649,6 +649,12 @@ ast::Expr* Parser::parse_prefix() {
     if (match(TOKEN_FALSE)) {
         return make_expr(ctx, ast::BoolExpr{ false }, previous.loc);
     }
+    if (match(TOKEN_SIZEOF)) {
+        expect(TOKEN_LPAREN, "Expected '(' after sizeof");
+        const ast::Type* type = parse_type(false, current_type_params);
+        expect(TOKEN_RPAREN, "Expected ')' after sizeof type");
+        return make_expr(ctx, ast::SizeofExpr{ type }, previous.loc);
+    }
     if (match(TOKEN_NOT)){
         auto* operand = parse_expr(10);
         return make_expr(ctx, UnaryExpr{operand, ast::UnaryOp::Not}, previous.loc);
@@ -816,7 +822,7 @@ ast::Expr* Parser::parse_postfix(ast::Expr* left) {
                 kind = ast::CastKind::Bitcast;
             }
 
-            const ast::Type* target = parse_type();
+            const ast::Type* target = parse_type(false, current_type_params);
 
             if (!target) {
                 ctx.errors.add(current.loc, current.text.length(), "Expected type after cast");
@@ -857,13 +863,13 @@ ast::Expr* Parser::make_cast(ast::Expr* value, const ast::Type* target, ast::Cas
 const ast::Type* Parser::parse_type(bool allow_implicit_void, const std::vector<std::string>* type_params) {
 
     if (match(TOKEN_STAR)) {
-        const ast::Type* base = parse_type();
+        const ast::Type* base = parse_type(allow_implicit_void, type_params);
         if (!base) return nullptr;
         return ctx.types.get_pointer(base);
     }
 
     if (match(TOKEN_AMP)) {
-        const ast::Type* base = parse_type();
+        const ast::Type* base = parse_type(allow_implicit_void, type_params);
         if (!base) return nullptr;
         return ctx.types.get_reference(base);
     }

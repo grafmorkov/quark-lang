@@ -942,6 +942,17 @@ void SemanticAnalyzer::analyze_using(const ast::UsingStmt& us) {
     for (const auto& [name, sym] : ns->symbols) {
         ctx.symbols.declare_symbol(name, *sym, true);
     }
+
+    // Copy generic function definitions from the imported namespace
+    std::string ns_prefix = support::join_namespace(us.path) + "::";
+    for (const auto& [key, def] : ctx.types.get_all_generic_funcs()) {
+        if (key.starts_with(ns_prefix) && key.size() > ns_prefix.size()) {
+            std::string short_name = key.substr(ns_prefix.size());
+            if (!ctx.types.get_generic_func(short_name)) {
+                ctx.types.register_generic_func(short_name, def);
+            }
+        }
+    }
 }
 
 void SemanticAnalyzer::check_visibility(const symb_t::Symbol& sym, const std::string& context) {
@@ -1030,6 +1041,9 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
         },
         [&](const ast::StructInitExpr& n) -> const ast::Type* {
             return analyze_struct_init(n);
+        },
+        [&](const ast::SizeofExpr& n) -> const ast::Type* {
+            return analyze_sizeof(n);
         },
         [&](const auto&) -> const ast::Type* {
             ctx.errors.add("Unsupported expression node in semantic analysis");
@@ -1743,32 +1757,56 @@ const ast::Type* SemanticAnalyzer::analyze_cast(const ast::CastExpr& n){
     const ast::Type* value_type = analyze_expr(n.value);
     if(!value_type) return nullptr;
 
-    if(!n.target){
+    const ast::Type* target = n.target;
+    if (!target) {
         ctx.errors.add("Cast target type is missing");
         return nullptr;
     }
+    // Substitute generic type params when inside a concrete instantiation
+    if (current_type_subst && !current_type_subst->empty()) {
+        target = ctx.types.substitute_type(target, *current_type_subst);
+    }
     switch (n.kind) {
         case ast::CastKind::ValueCast:
-            if (n.target->kind == TypeKind::String) {
+            if (target->kind == TypeKind::String) {
                 if (!is_numeric(value_type->kind)) {
                     ctx.errors.add("as: only numeric types can be converted to string");
                     return nullptr;
                 }
-            } else if (!is_numeric(value_type->kind) || !is_numeric(n.target->kind)) {
+            } else if (!is_numeric(value_type->kind) || !is_numeric(target->kind)) {
                 ctx.errors.add("as: only numeric type conversions are allowed");
                 return nullptr;
             }
             break;
         case ast::CastKind::Bitcast:
-            if (value_type->kind == TypeKind::Pointer || n.target->kind == TypeKind::Pointer ||
-                value_type->kind == TypeKind::Reference || n.target->kind == TypeKind::Reference) {
-            } else if (type_size(value_type) != type_size(n.target)) {
+            if (value_type->kind == TypeKind::Pointer || target->kind == TypeKind::Pointer ||
+                value_type->kind == TypeKind::Reference || target->kind == TypeKind::Reference) {
+            } else if (type_size(value_type) != type_size(target)) {
                 ctx.errors.add("as!: types must have the same size");
                 return nullptr;
             }
             break;
     }
-    return n.target;
+    return target;
+}
+
+const ast::Type* SemanticAnalyzer::analyze_sizeof(const ast::SizeofExpr& n) {
+    const ast::Type* type = n.type;
+    if (!type) {
+        ctx.errors.add("sizeof: missing type");
+        return nullptr;
+    }
+    if (current_type_subst && !current_type_subst->empty()) {
+        type = ctx.types.substitute_type(type, *current_type_subst);
+    }
+    int sz = ctx.types.type_size(type);
+    if (sz <= 0) {
+        ctx.errors.add("sizeof: unsupported type or zero size");
+        return nullptr;
+    }
+    // Update the AST node with the resolved type so IR gen uses the concrete type
+    const_cast<ast::SizeofExpr&>(n).type = type;
+    return ctx.types.get_builtin(TypeKind::U64);
 }
 
 } // namespace quark::sm

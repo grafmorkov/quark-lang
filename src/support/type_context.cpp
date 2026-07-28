@@ -97,13 +97,7 @@ namespace {
         std::vector<std::pair<std::string, const Type*>> concrete_fields;
         std::vector<std::vector<ast::Attribute>> concrete_field_attrs;
         for (const auto& f : def_it->second.fields) {
-            const Type* field_type = f.type;
-            if (field_type && field_type->kind == TypeKind::Generic) {
-                auto sub_it = subst.find(field_type->struct_name);
-                if (sub_it != subst.end()) {
-                    field_type = sub_it->second;
-                }
-            }
+            const Type* field_type = substitute_type(f.type, subst);
             concrete_fields.emplace_back(f.name, field_type);
             concrete_field_attrs.push_back(f.attributes);
         }
@@ -268,6 +262,37 @@ namespace {
                 return type;
         }
         return nullptr;
+    }
+
+    int TypeContext::type_size(const Type* t) const {
+        if (!t) return 0;
+        switch (t->kind) {
+            case TypeKind::Bool:
+            case TypeKind::I8:
+            case TypeKind::U8:   return 1;
+            case TypeKind::I16:
+            case TypeKind::U16:  return 2;
+            case TypeKind::F32:
+            case TypeKind::I32:
+            case TypeKind::U32:  return 4;
+            case TypeKind::F64:
+            case TypeKind::I64:
+            case TypeKind::U64:  return 8;
+            case TypeKind::Pointer:
+            case TypeKind::Reference: return 8;
+            case TypeKind::Struct: {
+                auto it = structs.find(t->struct_name);
+                if (it != structs.end()) {
+                    int total = 0;
+                    for (size_t i = 0; i < it->second.size(); ++i) {
+                        total += 8;
+                    }
+                    return total;
+                }
+                return 0;
+            }
+            default: return 0;
+        }
     }
 
     const ast::Expr* TypeContext::get_field_default_value(const std::string& struct_name, const std::string& field_name) const {

@@ -153,6 +153,10 @@ namespace quark::ast {
         std::vector<Expr*> args;                 // Positional field values
     };
 
+    struct SizeofExpr {
+        const Type* type;
+    };
+
     using ExprKind = std::variant<
         IntExpr,
         BoolExpr,
@@ -169,7 +173,8 @@ namespace quark::ast {
         CastExpr,
         TypeExpr,
         IndexExpr,
-        StructInitExpr
+        StructInitExpr,
+        SizeofExpr
     >;
 
     struct Expr {

@@ -478,6 +478,33 @@ region outer {
 
 ---
 
+## `sizeof`
+
+Compile-time type size query:
+
+```
+sz: u64 = sizeof(i32);   // 4
+sz: u64 = sizeof(i64);   // 8
+sz: u64 = sizeof(u8);    // 1
+sz: u64 = sizeof(*T);    // 8  (pointer)
+sz: u64 = sizeof(&T);    // 8  (reference)
+```
+
+In generic functions, `sizeof(T)` substitutes the concrete type at compile time:
+
+```
+func foo<T>() void {
+   x: u64 = sizeof(T);
+}
+
+func main() {
+    foo<i64>();    // x = 8
+    foo<i32>();    // x = 4
+}
+```
+
+---
+
 ## How to Build and Run
 
 ```

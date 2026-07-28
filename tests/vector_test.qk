@@ -1,0 +1,30 @@
+load "std::io";
+load "std::vector";
+
+using std::vector;
+
+func main() {
+    @init mut v: Vec<i32>;
+
+    vec_push<i32>(&v, 10);
+    vec_push<i32>(&v, 20);
+    vec_push<i32>(&v, 30);
+
+    std::io::print("len: ");
+    std::io::print(vec_len<i32>(&v) as str);
+    std::io::print("\n");
+
+    std::io::print("get[0]: ");
+    std::io::print(vec_get<i32>(&v, 0) as str);
+    std::io::print("\n");
+
+    std::io::print("get[1]: ");
+    std::io::print(vec_get<i32>(&v, 1) as str);
+    std::io::print("\n");
+
+    std::io::print("get[2]: ");
+    std::io::print(vec_get<i32>(&v, 2) as str);
+    std::io::print("\n");
+
+    vec_free<i32>(&v);
+}

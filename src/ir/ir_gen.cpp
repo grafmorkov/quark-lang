@@ -1350,6 +1350,16 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             return ptr;
         },
 
+        [&](const ast::SizeofExpr& node) -> uint32_t {
+            int sz = ctx.types.type_size(node.type);
+            if (sz <= 0) {
+                ctx.errors.add("sizeof: zero or unknown size"); return 0;
+            }
+            const uint32_t dst = new_reg();
+            emit(IRLoadConst{ dst, static_cast<int64_t>(sz) });
+            return dst;
+        },
+
         [&](const ast::TypeExpr&) -> uint32_t {
             ctx.errors.add("Type used as value in IR generation"); return 0;
         },

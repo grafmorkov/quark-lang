@@ -61,6 +61,7 @@ class SemanticAnalyzer {
         const ast::Type* analyze_cast(const ast::CastExpr&);
         const ast::Type* analyze_index(const ast::IndexExpr&);
         const ast::Type* analyze_struct_init(const ast::StructInitExpr&);
+        const ast::Type* analyze_sizeof(const ast::SizeofExpr&);
         std::optional<int64_t> try_eval_const(const ast::Expr* expr);
         std::optional<int64_t> eval_guard_cond(const ast::Expr* expr, const std::string& struct_name);
     };

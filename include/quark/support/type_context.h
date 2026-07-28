@@ -43,6 +43,7 @@ public:
 
     void register_generic_func(const std::string& name, const GenericFuncDef& def);
     const GenericFuncDef* get_generic_func(const std::string& name) const;
+    const std::unordered_map<std::string, GenericFuncDef>& get_all_generic_funcs() const { return generic_func_defs; }
 
     const Type* substitute_type(const Type* type, const std::unordered_map<std::string, const Type*>& subst) const;
     ast::FuncArg substitute_func_arg(const ast::FuncArg& arg, const std::unordered_map<std::string, const Type*>& subst) const;
@@ -57,6 +58,8 @@ public:
     const Type* get_field_type(const std::string& struct_name, const std::string& field) const;
 
     const ast::Expr* get_field_default_value(const std::string& struct_name, const std::string& field_name) const;
+
+    int type_size(const Type* t) const;
 
     TypeContext();
 

@@ -1,0 +1,62 @@
+// std::vector
+//
+// Generic growable array backed by heap allocation.
+//
+// Usage:
+//   load "std::vector";
+//   using std::vector;
+//
+//   func main() {
+//       @init mut v: Vec<i32>;
+//       vec_push<i32>(&v, 10);
+//       vec_push<i32>(&v, 20);
+//       vec_push<i32>(&v, 30);
+//       print(vec_get<i32>(&v, 1) as str);  // 20
+//       vec_free<i32>(&v);
+//   }
+//
+// Notes:
+//   - vec_free must be called to release memory.
+//   - vec_get bounds are not checked.
+//   - Generic calls require explicit type args (e.g. vec_push<i32>).
+
+module "std::vector";
+
+load "std::heap";
+
+struct Vec<T> {
+    mut data: *T;
+    mut size: i32;
+    mut capacity: i32;
+};
+
+func vec_push<T>(mut v: &Vec<T>, val: T) void {
+    elem_size: i32 = sizeof(T);
+    if (v.capacity == 0) {
+        v.data = std::heap::heap_malloc(elem_size) as! *T;
+        v.capacity = 1;
+    } else {
+        if (v.size >= v.capacity) {
+            v.capacity = v.capacity * 2;
+            v.data = std::heap::heap_realloc(v.data as! *void, v.capacity * elem_size) as! *T;
+        }
+    }
+    v.data[v.size] = val;
+    v.size = v.size + 1;
+}
+
+func vec_get<T>(v: &Vec<T>, index: i32) T {
+    return v.data[index];
+}
+
+func vec_len<T>(v: &Vec<T>) u64 {
+    return v.size;
+}
+
+func vec_free<T>(mut v: &Vec<T>) void {
+    if (v.capacity > 0) {
+        std::heap::heap_free(v.data as! *void);
+        v.data = 0 as! *T;
+        v.capacity = 0;
+    }
+}
