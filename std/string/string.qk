@@ -22,7 +22,7 @@
 //       return 0;
 //   }
 
-module "std::string";
+@link("string") module "std::string";
 
 extern func str_len(s: str) i64; // str_len - length of string (without \0).
 extern func str_eq(a: str, b: str) bool; // str_eq - check if two strings are equal.

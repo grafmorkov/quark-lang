@@ -29,6 +29,7 @@ struct Module {
     std::vector<std::string> namespace_path;
     std::vector<Module*> dependencies;           // resolved dependencies
     symb_t::Namespace* ns = nullptr;
+    std::vector<std::string> linked; // runtime asm names from @link("name") attributes
 
     std::unordered_map<std::string, SourceFile> source_files;
 

@@ -128,18 +128,20 @@ int main(int argc, char **argv)
             auto obj_path = root / "out.o";
             auto exe_path = root / "out";
 
-            // Assemble runtime files
+            // Assemble runtime files — only those whose modules have @link("name")
             struct RuntimeAsm {
                 std::filesystem::path src;
                 std::string obj_name;
             };
-            RuntimeAsm runtime_files[] = {
-                { root / "qkrt" / "linux" / "io.asm", "qkrt_io.o" },
-                { root / "qkrt" / "linux" / "file.asm", "qkrt_file.o" },
-                { root / "qkrt" / "linux" / "format.asm", "qkrt_format.o" },
-                { root / "qkrt" / "linux" / "arena.asm", "qkrt_arena.o" },
-                { root / "qkrt" / "linux" / "string.asm", "qkrt_string.o" },
-            };
+            std::vector<RuntimeAsm> runtime_files;
+            for (auto* mod : mm.ordered_modules()) {
+                for (const auto& name : mod->linked) {
+                    runtime_files.push_back({
+                        root / "qkrt" / "linux" / (name + ".asm"),
+                        "qkrt_" + name + ".o"
+                    });
+                }
+            }
 
             std::string link_objs;
             for (const auto& r : runtime_files) {

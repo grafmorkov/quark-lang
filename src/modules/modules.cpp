@@ -111,6 +111,7 @@ Module* ModuleManager::load_module(const fs::path& path) {
     std::string module_name;
     std::vector<std::string> namespace_path;
     std::vector<ast::Attribute> mod_attrs;
+    std::vector<std::string> linked_names;
 
     auto* mod_decl = [&]() -> ast::ModuleDecl* {
         for (auto* stmt : ast) {
@@ -137,6 +138,15 @@ Module* ModuleManager::load_module(const fs::path& path) {
             namespace_path.push_back(module_name.substr(start, sep - start));
             start = sep + 2;
         }
+
+        // Extract @link("name") attributes into linked_names
+        for (const auto& attr : mod_attrs) {
+            if (attr.name == "link" && !attr.args.empty()) {
+                if (auto* se = std::get_if<ast::StringExpr>(&attr.args[0]->kind)) {
+                    linked_names.push_back(se->value);
+                }
+            }
+        }
     } else {
         namespace_path = module_namespace_from_path(canon, ctx.root_path);
         module_name = support::join_namespace(namespace_path);
@@ -157,6 +167,9 @@ Module* ModuleManager::load_module(const fs::path& path) {
                 mod->imports.push_back(imp);
             }
         }
+        if (!linked_names.empty() && mod->linked.empty()) {
+            mod->linked = std::move(linked_names);
+        }
     } else {
         mod = memory::make_default<Module>(ctx.module_arena);
         mod->name = module_name;
@@ -166,6 +179,7 @@ Module* ModuleManager::load_module(const fs::path& path) {
         mod->ast = std::move(ast);
         mod->imports = std::move(imports);
         mod->attributes = std::move(mod_attrs);
+        mod->linked = std::move(linked_names);
         mod->ns = ctx.symbols.create_namespace_path(namespace_path);
         modules.emplace(module_name, mod);
     }

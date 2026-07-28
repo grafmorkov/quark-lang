@@ -18,7 +18,7 @@
 //       return 0;
 //   }
 
-module "std::io";
+@link("io") @link("file") @link("format") module "std::io";
 
 // print - print string to stdout.
 extern func print(text: str) void;

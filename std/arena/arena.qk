@@ -25,7 +25,7 @@
 //   p: *i32 = region_malloc(r, 16) as! *i32;
 //   p[0] = 42;
 
-module "std::arena";
+@link("arena") module "std::arena";
 
 extern func _create(size: u64) *void;
 extern func _destroy(ptr: *void) void;

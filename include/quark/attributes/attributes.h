@@ -42,6 +42,7 @@ namespace quark::attrs{
                         | AttributeTarget::Field | AttributeTarget::Struct, 0, 0}},
 		{ "private", { "private", std::string(), {}, AttributeTarget::Function | AttributeTarget::Variable
                          | AttributeTarget::Field | AttributeTarget::Struct, 0, 0}},
-		{ "hide", {"hide", std::string(),{}, AttributeTarget::Module, 0, 0}}
+		{ "hide", {"hide", std::string(),{}, AttributeTarget::Module, 0, 0}},
+		{ "link", {"link", std::string(),{}, AttributeTarget::Module, 1, 1}}
 	};
 }
