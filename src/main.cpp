@@ -24,7 +24,7 @@ int main(int argc, char **argv)
         using namespace std::chrono;
 
         auto opts = utils::options::parse_args(argc, argv);
-        
+
         if (opts.input_file.empty()) {
             utils::logger::error("No input file provided");
             return 1;
@@ -126,7 +126,7 @@ int main(int argc, char **argv)
         #else
             auto fasm_path = root / "fasm" / "fasm";
             auto obj_path = root / "out.o";
-            auto exe_path = root / "out.exe";
+            auto exe_path = root / "out";
 
             // Assemble runtime files
             struct RuntimeAsm {
@@ -178,7 +178,11 @@ int main(int argc, char **argv)
 
         // Run
         if (opts.run) {
-            auto run_path = root / "out.exe";
+            #ifdef _WIN32
+                auto run_path = root / "out.exe";
+            #else
+                auto run_path = root / "out";
+            #endif
             std::system(run_path.string().c_str());
         }
 
