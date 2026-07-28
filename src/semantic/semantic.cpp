@@ -557,6 +557,7 @@ void SemanticAnalyzer::analyze_stmt(const ast::Stmt* stmt) {
         [&](const ast::WhileStmt& n) { analyze_while(n); },
         [&](const ast::ModuleDecl&) {},
         [&](const ast::LoadStmt&) {},
+        [&](const ast::UsingStmt& n) { analyze_using(n); },
         [&](const ast::RegionStmt& n) { analyze_region(n); },
         [&](const auto&) {
             ctx.errors.add(stmt->loc, "Unsupported statement node in semantic analysis");
@@ -929,6 +930,18 @@ void SemanticAnalyzer::analyze_region(const ast::RegionStmt& reg) {
     }
 
     is_in_region = prev;
+}
+
+void SemanticAnalyzer::analyze_using(const ast::UsingStmt& us) {
+    auto* ns = ctx.symbols.resolve_namespace(us.path);
+    if (!ns) {
+        ctx.errors.add("Namespace not found: " + support::join_namespace(us.path));
+        return;
+    }
+
+    for (const auto& [name, sym] : ns->symbols) {
+        ctx.symbols.declare_symbol(name, *sym, true);
+    }
 }
 
 void SemanticAnalyzer::check_visibility(const symb_t::Symbol& sym, const std::string& context) {

@@ -309,6 +309,22 @@ std::io::exit(0);
 ```
 extern func print(text: str) void;
 ```
+
+### `using`
+
+Imports all symbols from a namespace into the current scope:
+
+```
+load "std::io";
+using std::io;
+
+func main() {
+    print("hello\n");   // instead of std::io::print
+}
+```
+
+Symbols are imported by value (copied) - visibility (`@public`/`@private`) is still enforced at the use-site based on the original module
+
 ---
 
 ## Attributes

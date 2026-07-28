@@ -87,7 +87,7 @@ namespace quark::symb_t {
             const std::vector<std::vector<ast::Attribute>>& field_attrs = {});
         bool declare(const ast::RegionStmt& reg);
 
-        bool declare_symbol(const std::string& name, Symbol symbol);
+        bool declare_symbol(const std::string& name, Symbol symbol, bool preserve_owning_module = false);
 
         Symbol* lookup(const std::string& name);
         Symbol* lookup_qualified(const std::vector<std::string>& path);

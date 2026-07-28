@@ -256,6 +256,9 @@ namespace quark::ast {
     struct LoadStmt {
         std::string module;
     };
+    struct UsingStmt {
+        std::vector<std::string> path;
+    };
     struct RegionStmt{
         std::string name;
         Block* body;
@@ -272,7 +275,8 @@ namespace quark::ast {
         NamespaceStmt,
         RegionStmt,
         ModuleDecl,
-        LoadStmt
+        LoadStmt,
+        UsingStmt
     >;
 
     struct Stmt {

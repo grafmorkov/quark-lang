@@ -77,8 +77,10 @@ namespace quark::symb_t {
         return current_module_ns;
     }
 
-    bool SymbolTable::declare_symbol(const std::string& name, Symbol symbol) {
-        symbol.owning_module = current_module_ns;
+    bool SymbolTable::declare_symbol(const std::string& name, Symbol symbol, bool preserve_owning_module) {
+        if (!preserve_owning_module) {
+            symbol.owning_module = current_module_ns;
+        }
 
         if (!scopes.empty()) {
             auto& current = scopes.back();

@@ -1,6 +1,7 @@
 #include "quark/frontend/parser.h"
 #include "quark/frontend/ast.h"
 #include "quark/frontend/token.h"
+#include "quark/support/symbol_path.h"
 #include "utils/logger.h"
 
 #include <utility>
@@ -186,7 +187,7 @@ void Parser::sync() {
         switch (current.type) {
             case TOKEN_FUNC: case TOKEN_STRUCT: case TOKEN_IF:
             case TOKEN_WHILE: case TOKEN_RETURN: case TOKEN_NAMESPACE:
-            case TOKEN_MODULE: case TOKEN_LOAD: case TOKEN_AT:
+            case TOKEN_MODULE: case TOKEN_LOAD: case TOKEN_USING: case TOKEN_AT:
             case TOKEN_EXTERN: case TOKEN_REGION:
                 if (nesting == 0) return;
             default: break;
@@ -277,6 +278,10 @@ ast::Stmt Parser::parse_statement() {
 
     if (match(TOKEN_LOAD)) {
         return ast::Stmt{ ast::LoadStmt{ parse_load() } };
+    }
+
+    if (match(TOKEN_USING)) {
+        return ast::Stmt{ ast::UsingStmt{ parse_using() } };
     }
 
     if (match(TOKEN_REGION)){
@@ -552,6 +557,17 @@ ast::LoadStmt Parser::parse_load() {
     ret.module = raw;
 
     expect(TOKEN_SEMICOLON, "Expected ';' after load");
+    return ret;
+}
+
+ast::UsingStmt Parser::parse_using() {
+    ast::UsingStmt ret;
+
+    ast::Expr* expr = parse_expr(0);
+    auto path = support::flatten_path(expr);
+    ret.path = std::move(path);
+
+    expect(TOKEN_SEMICOLON, "Expected ';' after using");
     return ret;
 }
 // Expressions

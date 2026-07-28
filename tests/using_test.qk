@@ -1,0 +1,6 @@
+load "std::io";
+using std::io;
+
+func main() {
+    print("hello from using!\n");
+}

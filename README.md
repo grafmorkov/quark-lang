@@ -13,6 +13,7 @@ The compiler currently targets fasm as a backend.
 
 ```qk
 load "std::io";
+using std::io;
 
 @entry func main() {
     value: i32 = 10;
@@ -24,7 +25,7 @@ load "std::io";
         result = 1;
     }
     msg: str = result as str; // casting
-    std::io::print(msg);
+    println(msg);
     return 0;
 }
 ```

@@ -45,6 +45,7 @@ namespace quark::ps {
             ast::NamespaceStmt parse_namespace_stmt();
             ast::ModuleDecl parse_module_decl();
             ast::LoadStmt parse_load();
+            ast::UsingStmt parse_using();
             ast::IfStmt parse_if();
             std::vector<ast::Attribute> parse_attributes();
             ast::WhileStmt parse_while();

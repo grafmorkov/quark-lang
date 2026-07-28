@@ -111,7 +111,8 @@ overloaded(Ts...) -> overloaded<Ts...>;
 bool is_declaration_stmt(const ast::Stmt& stmt) {
     return std::holds_alternative<ast::FuncStmt>(stmt.kind) ||
            std::holds_alternative<ast::NamespaceStmt>(stmt.kind) ||
-           std::holds_alternative<ast::StructDecl>(stmt.kind);
+           std::holds_alternative<ast::StructDecl>(stmt.kind) ||
+           std::holds_alternative<ast::UsingStmt>(stmt.kind);
 }
 
 const ast::Type* symbol_type(const quark::symb_t::Symbol& sym) {
@@ -428,7 +429,8 @@ void IRGenerator::gen_module(const quark::modules::Module& mod) {
         if (!stmt) continue;
 
         if (std::holds_alternative<ast::LoadStmt>(stmt->kind) ||
-            std::holds_alternative<ast::ModuleDecl>(stmt->kind)) {
+            std::holds_alternative<ast::ModuleDecl>(stmt->kind) ||
+            std::holds_alternative<ast::UsingStmt>(stmt->kind)) {
             continue;
         }
 
@@ -801,6 +803,9 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
         [&](const ast::LoadStmt&) {
             // compile-time only
         },
+        [&](const ast::UsingStmt&) {
+            // compile-time only
+        },
 
         [&](const ast::RegionStmt& node) {
             gen_region(node);
@@ -893,6 +898,19 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 auto it2 = function_ids.find(qualified);
                 if (it2 != function_ids.end()) {
                     return it2->second;
+                }
+            }
+        }
+
+        // Last resort: check if the symbol was imported via `using`
+        if (auto* sym = resolve_qualified(ctx, path)) {
+            if (std::get_if<quark::symb_t::FuncSymbol>(&sym->data)) {
+                std::vector<std::string> full = sym->owning_module;
+                full.insert(full.end(), path.begin(), path.end());
+                const std::string qualified = support::join_namespace(full);
+                auto it3 = function_ids.find(qualified);
+                if (it3 != function_ids.end()) {
+                    return it3->second;
                 }
             }
         }
