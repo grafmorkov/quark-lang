@@ -2,7 +2,7 @@
 //
 // Result of an operation that can fail.
 // Either ok with a value or err with an error.
-// "is_ok" starts as false. @guard blocks reading "ok_value" when is_ok
+// `is_ok` starts as false. @guard blocks reading `ok_value` when is_ok
 // is false, and `err_value` when is_ok is true.
 //
 // Usage:
