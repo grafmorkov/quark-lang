@@ -1,0 +1,69 @@
+// std::math
+//
+// Math functions. Most are generic and work with any numeric type
+// (i32, i64, u32, u64, f64).
+//
+// Usage:
+//   load "std::math";
+//
+//   func main() i32 {
+//       a: i32 = min<i32>(3, 7);       // 3
+//       b: i32 = max<i32>(3, 7);       // 7
+//       c: i32 = clamp<i32>(15, 0, 10); // 10
+//       d: i32 = abs_i32(-42);         // 42
+//       return 0;
+//   }
+
+module "std::math";
+
+// min<T> - return the smaller of two values.
+func min<T>(a: T, b: T) T {
+    if (a < b) { return a; } else { return b; }
+}
+
+// max<T> - return the larger of two values.
+func max<T>(a: T, b: T) T {
+    if (a > b) { return a; } else { return b; }
+}
+
+// abs_i32 - absolute value for i32.
+func abs_i32(x: i32) i32 {
+    if (x < 0) { return -x; } else { return x; }
+}
+
+// abs_i64 - absolute value for i64.
+func abs_i64(x: i64) i64 {
+    if (x < 0) { return -x; } else { return x; }
+}
+
+// abs_f64 - absolute value for f64.
+func abs_f64(x: f64) f64 {
+    if (x < 0.0) { return -x; } else { return x; }
+}
+
+// clamp<T> - limit value to range [lo, hi].
+func clamp<T>(x: T, lo: T, hi: T) T {
+    if (x < lo) { return lo; }
+    if (x > hi) { return hi; }
+    return x;
+}
+
+// sum<T> - add two values.
+func sum<T>(a: T, b: T) T {
+    return a + b;
+}
+
+// diff<T> - subtract b from a.
+func diff<T>(a: T, b: T) T {
+    return a - b;
+}
+
+// prod<T> - multiply two values.
+func prod<T>(a: T, b: T) T {
+    return a * b;
+}
+
+// div<T> - divide a by b.
+func div<T>(a: T, b: T) T {
+    return a / b;
+}

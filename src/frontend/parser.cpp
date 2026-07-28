@@ -689,6 +689,17 @@ ast::Expr* Parser::parse_prefix() {
         }
     }
 
+    if (match(TOKEN_LBRACE)) {
+        std::vector<ast::Expr*> init_args;
+        if (!check(TOKEN_RBRACE)) {
+            do {
+                init_args.push_back(parse_expr(0));
+            } while (match(TOKEN_COMMA));
+        }
+        expect(TOKEN_RBRACE, "Expected '}' after struct init");
+        return make_expr(ctx, ast::StructInitExpr{ nullptr, {}, init_args }, previous.loc);
+    }
+
     ctx.errors.add(current.loc, current.text.length(), "Unexpected token");
     if (!check(TOKEN_EOF)) {
         advance();
@@ -709,6 +720,20 @@ ast::Expr* Parser::parse_postfix(ast::Expr* left) {
                         type_args.push_back(parse_type(false, current_type_params));
                     } while (match(TOKEN_COMMA));
                     expect(TOKEN_GT, "Expected '>' after generic type arguments");
+
+                    if (check(TOKEN_LBRACE)) {
+                        advance(); // consume {
+                        std::vector<ast::Expr*> init_args;
+                        if (!check(TOKEN_RBRACE)) {
+                            do {
+                                init_args.push_back(parse_expr(0));
+                            } while (match(TOKEN_COMMA));
+                        }
+                        expect(TOKEN_RBRACE, "Expected '}' after struct init");
+                        left = make_expr(ctx, ast::StructInitExpr{ left, type_args, init_args }, left->loc);
+                        continue;
+                    }
+
                     expect(TOKEN_LPAREN, "Expected '(' after generic function name");
                     std::vector<ast::Expr*> args;
                     if (!check(TOKEN_RPAREN)) {
@@ -735,6 +760,18 @@ ast::Expr* Parser::parse_postfix(ast::Expr* left) {
             expect(TOKEN_RPAREN, "Expected ')'");
 
             left = make_expr(ctx, ast::CallExpr{ left, args }, left ? left->loc : SourceLocation{});
+            continue;
+        }
+
+        if (match(TOKEN_LBRACE)) {
+            std::vector<ast::Expr*> init_args;
+            if (!check(TOKEN_RBRACE)) {
+                do {
+                    init_args.push_back(parse_expr(0));
+                } while (match(TOKEN_COMMA));
+            }
+            expect(TOKEN_RBRACE, "Expected '}' after struct init");
+            left = make_expr(ctx, ast::StructInitExpr{ left, {}, init_args }, left ? left->loc : SourceLocation{});
             continue;
         }
 

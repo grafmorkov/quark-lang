@@ -147,6 +147,12 @@ namespace quark::ast {
         Expr* index;
     };
 
+    struct StructInitExpr {
+        Expr* type_ref;                          // VarExpr, NamespaceExpr, TypeExpr, or nullptr
+        std::vector<const Type*> type_args;      // Generic type arguments (empty if non-generic)
+        std::vector<Expr*> args;                 // Positional field values
+    };
+
     using ExprKind = std::variant<
         IntExpr,
         BoolExpr,
@@ -162,7 +168,8 @@ namespace quark::ast {
         NamespaceExpr,
         CastExpr,
         TypeExpr,
-        IndexExpr
+        IndexExpr,
+        StructInitExpr
     >;
 
     struct Expr {

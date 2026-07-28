@@ -1,3 +1,16 @@
+// std::types - pair<A, B>
+//
+// A simple pair of two values.
+//
+// Usage:
+//   load "std::types";
+//
+//   func main() i32 {
+//       p: pair<i32, str> = pair<i32, str>{ first: 42, second: "hello" };
+//       std::io::print(p.first as str);
+//       return 0;
+//   }
+
 module "std::types";
 
 struct pair<A,B> {

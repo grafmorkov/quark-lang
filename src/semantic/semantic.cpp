@@ -582,6 +582,13 @@ std::optional<int64_t> SemanticAnalyzer::try_eval_const(const ast::Expr* expr) {
             return std::get<symb_t::VarSymbol>(sym->data).const_value;
         }
     }
+    if (const auto* ue = std::get_if<ast::UnaryExpr>(&expr->kind)) {
+        if (ue->op == ast::UnaryOp::Not) {
+            auto val = try_eval_const(ue->operand);
+            if (val) return *val == 0 ? 1 : 0;
+        }
+        return std::nullopt;
+    }
     if (const auto* be = std::get_if<ast::BinaryExpr>(&expr->kind)) {
         auto lhs = try_eval_const(be->lhs);
         auto rhs = try_eval_const(be->rhs);
@@ -596,6 +603,63 @@ std::optional<int64_t> SemanticAnalyzer::try_eval_const(const ast::Expr* expr) {
             default: return std::nullopt;
         }
     }
+    return std::nullopt;
+}
+
+std::optional<int64_t> SemanticAnalyzer::eval_guard_cond(const ast::Expr* expr, const std::string& struct_name) {
+    if (!expr) return std::nullopt;
+
+    if (const auto* ie = std::get_if<ast::IntExpr>(&expr->kind)) {
+        return ie->value;
+    }
+    if (const auto* be = std::get_if<ast::BoolExpr>(&expr->kind)) {
+        return be->value ? 1 : 0;
+    }
+    if (const auto* ce = std::get_if<ast::CharExpr>(&expr->kind)) {
+        return ce->value;
+    }
+
+    // Resolve field references to their default values in the struct definition
+    if (const auto* fe = std::get_if<ast::FieldExpr>(&expr->kind)) {
+        const ast::Expr* def_val = ctx.types.get_field_default_value(struct_name, fe->field);
+        if (def_val) return eval_guard_cond(def_val, struct_name);
+        return std::nullopt;
+    }
+
+    // Also resolve bare VarExpr that reference struct fields (e.g. @guard(has_value))
+    if (const auto* ve = std::get_if<ast::VarExpr>(&expr->kind)) {
+        // First try to resolve as a struct field
+        const ast::Expr* def_val = ctx.types.get_field_default_value(struct_name, ve->name);
+        if (def_val) return eval_guard_cond(def_val, struct_name);
+        // Fallback to regular variable lookup
+        return try_eval_const(expr);
+    }
+
+    // Unary NOT
+    if (const auto* ue = std::get_if<ast::UnaryExpr>(&expr->kind)) {
+        if (ue->op == ast::UnaryOp::Not) {
+            auto val = eval_guard_cond(ue->operand, struct_name);
+            if (val) return *val == 0 ? 1 : 0;
+        }
+        return std::nullopt;
+    }
+
+    // Binary comparisons
+    if (const auto* be = std::get_if<ast::BinaryExpr>(&expr->kind)) {
+        auto lhs = eval_guard_cond(be->lhs, struct_name);
+        auto rhs = eval_guard_cond(be->rhs, struct_name);
+        if (!lhs || !rhs) return std::nullopt;
+        switch (be->op) {
+            case ast::BinaryOp::Eq:  return *lhs == *rhs ? 1 : 0;
+            case ast::BinaryOp::Neq: return *lhs != *rhs ? 1 : 0;
+            case ast::BinaryOp::Lt:  return *lhs <  *rhs ? 1 : 0;
+            case ast::BinaryOp::Lte: return *lhs <= *rhs ? 1 : 0;
+            case ast::BinaryOp::Gt:  return *lhs >  *rhs ? 1 : 0;
+            case ast::BinaryOp::Gte: return *lhs >= *rhs ? 1 : 0;
+            default: return std::nullopt;
+        }
+    }
+
     return std::nullopt;
 }
 
@@ -629,6 +693,13 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
     }
 
     if (var.value) {
+        // For standalone struct init (type_ref == nullptr), pass the variable's declared type
+        if (auto* si = std::get_if<ast::StructInitExpr>(&var.value->kind)) {
+            if (!si->type_ref) {
+                // Create a TypeExpr node from the variable's declared type
+                si->type_ref = memory::make<ast::Expr>(ctx.ast_arena, ast::TypeExpr{ resolved_type }, var.value->loc);
+            }
+        }
         const ast::Type* value_type = analyze_expr(var.value);
         if (!value_type) return;
 
@@ -944,6 +1015,9 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
         [&](const ast::IndexExpr& n) -> const ast::Type* {
             return analyze_index(n);
         },
+        [&](const ast::StructInitExpr& n) -> const ast::Type* {
+            return analyze_struct_init(n);
+        },
         [&](const auto&) -> const ast::Type* {
             ctx.errors.add("Unsupported expression node in semantic analysis");
             return nullptr;
@@ -1105,7 +1179,7 @@ const ast::Type* SemanticAnalyzer::analyze_field(const ast::FieldExpr& node) {
                     if (ss->field_names[i] != node.field) continue;
                     for (const auto& fa : ss->field_attributes[i]) {
                         if (fa.name == "guard" && !fa.args.empty()) {
-                            auto val = try_eval_const(fa.args[0]);
+                            auto val = eval_guard_cond(fa.args[0], base->struct_name);
                             if (val && *val == 0) {
                                 ctx.errors.add("guard failed for field '" + node.field + "'");
                                 return nullptr;
@@ -1208,7 +1282,7 @@ void SemanticAnalyzer::check_arg_guard(const ast::Expr* arg, const std::string& 
             if (ss->field_names[i] != fe->field) continue;
             for (const auto& fa : ss->field_attributes[i]) {
                 if (fa.name == "guard" && !fa.args.empty()) {
-                    auto val = try_eval_const(fa.args[0]);
+                    auto val = eval_guard_cond(fa.args[0], base_type->struct_name);
                     if (val && *val == 0) {
                         ctx.errors.add("guard failed for field '" + fe->field + "' in call to '" + call_name + "'");
                         return;
@@ -1490,6 +1564,94 @@ const ast::Type* SemanticAnalyzer::analyze_index(const ast::IndexExpr& n) {
     }
 
     return elem_type;
+}
+
+const ast::Type* SemanticAnalyzer::analyze_struct_init(const ast::StructInitExpr& node) {
+    const ast::Type* struct_type = nullptr;
+
+    if (node.type_ref) {
+        if (auto* var = std::get_if<ast::VarExpr>(&node.type_ref->kind)) {
+            if (!node.type_args.empty()) {
+                struct_type = ctx.types.get_generic_instantiation(var->name, node.type_args);
+            }
+            if (!struct_type) {
+                struct_type = ctx.types.get_struct(var->name);
+            }
+        } else if (auto* ns = std::get_if<ast::NamespaceExpr>(&node.type_ref->kind)) {
+            auto expr = ast::Expr{*ns};
+            auto path = support::flatten_path(&expr);
+            std::string full_name = support::join_namespace(path);
+            struct_type = ctx.types.get_struct(full_name);
+        } else if (auto* te = std::get_if<ast::TypeExpr>(&node.type_ref->kind)) {
+            struct_type = te->type;
+        } else {
+            ctx.errors.add(node.type_ref->loc, "Invalid type in struct initialization");
+            return nullptr;
+        }
+    } else {
+        ctx.errors.add("Cannot infer struct type from context. Use Type{...} syntax.");
+        return nullptr;
+    }
+
+    if (!struct_type) {
+        ctx.errors.add(node.type_ref->loc, "Unknown struct type");
+        return nullptr;
+    }
+
+    if (struct_type->kind != TypeKind::Struct) {
+        ctx.errors.add(node.type_ref->loc, "Type is not a struct");
+        return nullptr;
+    }
+
+    // Resolve generic struct if needed
+    if (!struct_type->type_args.empty()) {
+        if (ctx.types.try_instantiate(struct_type->struct_name, struct_type->type_args)) {
+            const auto* fields = ctx.types.get_struct_fields(struct_type->struct_name);
+            if (fields) {
+                const auto* field_attrs = ctx.types.get_struct_field_attrs(struct_type->struct_name);
+                ctx.symbols.declare_struct_global(
+                    struct_type->struct_name, *fields, {},
+                    field_attrs ? *field_attrs : std::vector<std::vector<ast::Attribute>>{}
+                );
+            }
+        }
+    }
+
+    // Look up struct symbol
+    auto* sym = lookup_struct(ctx, struct_type->struct_name);
+    if (!sym) {
+        ctx.errors.add(node.type_ref->loc, "Unknown struct: " + struct_type->struct_name);
+        return nullptr;
+    }
+
+    auto* ss = std::get_if<symb_t::StructSymbol>(&sym->data);
+    if (!ss) {
+        ctx.errors.add(node.type_ref->loc, "Invalid struct symbol: " + struct_type->struct_name);
+        return nullptr;
+    }
+
+    // Validate argument count
+    if (node.args.size() != ss->field_names.size()) {
+        ctx.errors.add(node.type_ref->loc,
+            "Struct init argument count mismatch for " + struct_type->struct_name +
+            ": expected " + std::to_string(ss->field_names.size()) +
+            ", got " + std::to_string(node.args.size()));
+        return nullptr;
+    }
+
+    // Validate argument types
+    for (size_t i = 0; i < node.args.size(); ++i) {
+        const ast::Type* arg_type = analyze_expr(node.args[i]);
+        if (!arg_type) return nullptr;
+
+        if (!is_assignable(ss->field_types[i], arg_type)) {
+            ctx.errors.add(node.args[i]->loc,
+                "Type mismatch in struct init field '" + ss->field_names[i] + "'");
+            return nullptr;
+        }
+    }
+
+    return struct_type;
 }
 
 const ast::Type* SemanticAnalyzer::analyze_block(const ast::Block* block) {

@@ -627,6 +627,7 @@ namespace {
         emit_line("include 'qkrt\\windows\\arena.asm'");
         emit_line("include 'qkrt\\windows\\file.asm'");
         emit_line("include 'qkrt\\windows\\io.asm'");
+        emit_line("include 'qkrt\\windows\\string.asm'");
         emit_line();
         emit_line("section '.text' code readable executable");
 #else

@@ -170,7 +170,7 @@ region {
 ```
 Each desugars to `x = x op y` at parse time.
 
-### Precedence (lowest → highest)
+### Precedence (lowest -> highest)
 ```
 =   +=   -=   *=   /=   &=   |=
 ||
@@ -415,6 +415,7 @@ Applied to a module (place `@hide` on any top-level declaration). Makes all symb
 ```
 
 ---
+
 ## Regions & Pointers. Arrays
 Quark has region memory system. Pointers can only be declared in ```region{}```. If a region dies, all pointers are destroyed.
 ```
@@ -447,73 +448,6 @@ region outer {
 }
 ```
 
-### std::arena
-
-The `std::arena` module provides an explicit arena allocator API with region-based allocation. Unlike the built-in `region` blocks, this allows manual control over region lifetime.
-
-```
-load "std::arena";
-
-func main() i32 {
-    // Create a new region
-    mut r: std::arena::Region = std::arena::create_region(4096);
-
-    // Allocate memory from the region
-    p: *void = std::arena::region_malloc(&r, 32);
-
-    // Free all memory in the region
-    std::arena::destroy_region(r);
-    return 0;
-}
-```
-
-#### Typed allocation with arena
-
-Since `region_malloc` returns `*void`, use `as!` to get a typed pointer:
-
-```
-load "std::arena";
-
-func main() i32 {
-    mut r: std::arena::Region = std::arena::create_region(4096);
-
-    raw: *void = std::arena::region_malloc(&r, 40);
-    p: *i32 = raw as! *i32;
-    p[0] = 42;
-    p[1] = 100;
-
-    std::arena::destroy_region(r);
-    return 0;
-}
-```
-
-#### Global region
-
-A global region persists for the entire program lifetime:
-
-```
-load "std::arena";
-
-func main() i32 {
-    std::arena::init_global_region(4096);
-
-    r: *std::arena::Region = std::arena::global_region();
-    p: *i32 = std::arena::region_malloc(r, 16) as! *i32;
-    p[0] = 42;
-    std::io::print(p[0] as str);
-    return 0;
-}
-```
-
-| Function | Description |
-|----------|-------------|
-| create_region(size: u64) Region | Create a new arena region with the given capacity |
-| destroy_region(r: Region) | Free all memory in the region |
-| region_malloc(r: *Region, size: u64) *void | Allocate `size` bytes from the region |
-| global_region() *Region | Get the global region (returns null if not initialized) |
-| init_global_region(size: u64) | Initialize the global region with the given capacity |
-| _create(size: u64) *void | Low-level: create arena via mmap |
-| _destroy(ptr: *void) void | Low-level: destroy arena via munmap |
 ---
 
 ## Comments

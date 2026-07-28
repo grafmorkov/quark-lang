@@ -1307,6 +1307,31 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             return dst;
         },
 
+        [&](const ast::StructInitExpr& node) -> uint32_t {
+            const ast::Type* struct_type = expr.resolved_type;
+            if (!struct_type || struct_type->kind != ast::TypeKind::Struct) {
+                ctx.errors.add("StructInitExpr: invalid or missing struct type"); return 0;
+            }
+
+            int sz = type_size(struct_type, &ctx);
+            if (sz <= 0) {
+                ctx.errors.add("StructInitExpr: zero-size struct"); return 0;
+            }
+
+            // Allocate stack space for the struct
+            if (current_func) current_func->extra_stack += sz;
+            const uint32_t ptr = new_reg();
+            emit(IRAlloca{ ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0) });
+
+            // Initialize each field by position
+            for (size_t i = 0; i < node.args.size(); ++i) {
+                const uint32_t val = gen_expr(*node.args[i]);
+                emit(IRSetField{ ptr, val, static_cast<uint32_t>(i * 8) });
+            }
+
+            return ptr;
+        },
+
         [&](const ast::TypeExpr&) -> uint32_t {
             ctx.errors.add("Type used as value in IR generation"); return 0;
         },

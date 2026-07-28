@@ -1,3 +1,30 @@
+// std::arena
+//
+// Region-based memory allocator.
+// Allocate memory in bulk, free all at once.
+//
+// Usage:
+//   load "std::arena";
+//
+//   func main() i32 {
+//       mut r: Region = create_region(4096);
+//       p: *void = region_malloc(&r, 32);
+//       // use p...
+//       destroy_region(r);
+//       return 0;
+//   }
+//
+// Typed allocation:
+//   raw: *void = region_malloc(&r, 40);
+//   p: *i32 = raw as! *i32;
+//   p[0] = 42;
+//
+// Global region:
+//   init_global_region(4096);
+//   r: *Region = global_region();
+//   p: *i32 = region_malloc(r, 16) as! *i32;
+//   p[0] = 42;
+
 module "std::arena";
 
 extern func _create(size: u64) *void;
@@ -9,12 +36,15 @@ extern func _region_bump(reg: *Region, size: u64) *void;
 extern func _global_region() *Region;
 extern func _init_global_region(size: u64) void;
 
+// A region is a chunk of memory. You allocate from it by bumping
+// an offset. When you destroy the region, all memory is freed at once.
 struct Region {
     data: *void;
     offset: u64;
     capacity: u64;
 };
 
+// create_region - create a new region of the given size in bytes.
 func create_region(size: u64) Region {
     @init mut r: Region;
     r.data = _region_mmap(size);
@@ -23,18 +53,22 @@ func create_region(size: u64) Region {
     return r;
 }
 
+// destroy_region - free all memory in the region.
 func destroy_region(r: Region) void {
     _region_munmap(r.data, r.capacity);
 }
 
+// region_malloc - allocate `size` bytes from the region.
 func region_malloc(r: *Region, size: u64) *void {
     return _region_bump(r, size);
 }
 
+// global_region - get the global region (lives for the whole program).
 func global_region() *Region {
     return _global_region();
 }
 
+// init_global_region - initialize the global region with the given size.
 func init_global_region(size: u64) void {
     _init_global_region(size);
 }

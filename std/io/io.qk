@@ -1,16 +1,51 @@
+// std::io
+//
+// Input/output functions. All implemented in qkrt (runtime assembly).
+//
+// Usage:
+//   load "std::io";
+//
+//   func main() i32 {
+//       print("hello ");
+//       println("world");
+//       print_char(65 as i8);  // prints 'A'
+//
+//       fd: i64 = open("test.txt", 65, 438);
+//       write(fd, "hello", 5);
+//       close(fd);
+//
+//       exit(0);
+//       return 0;
+//   }
+
 module "std::io";
 
+// print - print string to stdout.
 extern func print(text: str) void;
+// println - print string + newline to stdout.
 extern func println(text: str) void;
+// eprint - print string to stderr.
 extern func eprint(text: str) void;
+// print_char - print one byte to stdout.
 extern func print_char(c: i8) void;
+// exit - exit program with the given code.
 extern func exit(code: i32) void;
+// strlen - get string length (without \0).
 extern func strlen(s: str) i64;
+
+// open - open file, returns fd. flags: 65 = O_RDWR|O_CREAT, mode: 438 = 0666.
 extern func open(path: str, flags: i32, mode: i32) i64;
+// close - close file descriptor.
 extern func close(fd: i64) i64;
+// seek - seek in file.
 extern func seek(fd: i64, offset: i64, whence: i32) i64;
+// flush - flush file.
 extern func flush(fd: i64) i64;
+// write - write bytes to fd.
 extern func write(fd: i64, buf: str, len: i64) i64;
+// read_fd - read bytes from fd.
 extern func read_fd(fd: i64, buf: str, len: i64) i64;
+// read - read from stdin.
 extern func read(buf: str, len: i64) i64;
+// read_char - read one byte from stdin.
 extern func read_char() i64;

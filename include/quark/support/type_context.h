@@ -56,6 +56,8 @@ public:
 
     const Type* get_field_type(const std::string& struct_name, const std::string& field) const;
 
+    const ast::Expr* get_field_default_value(const std::string& struct_name, const std::string& field_name) const;
+
     TypeContext();
 
 private:

@@ -270,6 +270,22 @@ namespace {
         return nullptr;
     }
 
+    const ast::Expr* TypeContext::get_field_default_value(const std::string& struct_name, const std::string& field_name) const {
+        // Check generic struct definitions (they store the original AST with default values)
+        for (const auto& [name, def] : generic_defs) {
+            if (name == struct_name) {
+                for (const auto& f : def.fields) {
+                    if (f.name == field_name) {
+                        return f.default_value;
+                    }
+                }
+                return nullptr;
+            }
+        }
+        // Non-generic structs: default values aren't stored in TypeContext
+        return nullptr;
+    }
+
     const Type* TypeContext::get_pointer(const Type* base) const {
         auto it = pointer_cache.find(base);
         if (it != pointer_cache.end())

@@ -138,6 +138,7 @@ int main(int argc, char **argv)
                 { root / "qkrt" / "linux" / "file.asm", "qkrt_file.o" },
                 { root / "qkrt" / "linux" / "format.asm", "qkrt_format.o" },
                 { root / "qkrt" / "linux" / "arena.asm", "qkrt_arena.o" },
+                { root / "qkrt" / "linux" / "string.asm", "qkrt_string.o" },
             };
 
             std::string link_objs;
