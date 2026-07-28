@@ -625,6 +625,7 @@ namespace {
         emit_line();
         emit_line("include 'qkrt\\windows\\format.asm'");
         emit_line("include 'qkrt\\windows\\arena.asm'");
+        emit_line("include 'qkrt\\windows\\heap.asm'");
         emit_line("include 'qkrt\\windows\\file.asm'");
         emit_line("include 'qkrt\\windows\\io.asm'");
         emit_line("include 'qkrt\\windows\\string.asm'");

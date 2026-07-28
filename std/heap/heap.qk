@@ -1,0 +1,46 @@
+// std::heap
+//
+// Heap memory allocator - explicit malloc/free/realloc for
+// cases where region-based allocation isn't suitable.
+//
+// This is NOT a garbage collector. You must free every
+// allocation manually. If you don't need individual object
+// lifetimes, prefer region allocation (std::arena) instead.
+//
+// Every allocation comes from a global heap that
+// requests memory from the OS (mmap). Freed blocks
+// are reused by subsequent malloc calls.
+//
+// Usage:
+//   load "std::heap";
+//
+//   func main() i32 {
+//       p: *i32 = std::heap::heap_malloc(8) as! *i32;
+//       p[0] = 42;
+//       std::heap::heap_free(p as! *void);
+//       return 0;
+//   }
+//
+// Typed helpers (wrapping the raw functions):
+//   p: *i32 = heap_malloc(8) as! *i32;
+//   p = heap_realloc(p as! *void, 16) as! *i32;
+//   heap_free(p as! *void);
+//
+// Notes:
+//   - All pointers are 16-byte aligned.
+//   - heap_free(NULL) is safe (no-op).
+//   - heap_realloc(NULL, size) behaves like heap_malloc(size).
+//   - heap_realloc(ptr, 0) behaves like heap_free(ptr).
+//   - There is no per-object constructor/destructor.
+//     You want RAII? Call init/cleanup yourself. Explicitly.
+
+@link("heap") module "std::heap";
+
+// Allocate `size` bytes. Returns pointer or NULL on OOM.
+extern func heap_malloc(size: u64) *void;
+
+// Free a pointer previously returned by heap_malloc or heap_realloc.
+extern func heap_free(ptr: *void) void;
+
+// Resize an allocation. May move the data. Returns new pointer or NULL.
+extern func heap_realloc(ptr: *void, new_size: u64) *void;
