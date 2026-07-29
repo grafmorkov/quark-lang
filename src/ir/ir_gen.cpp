@@ -36,6 +36,14 @@ symb_t::Symbol* resolve_qualified(CompilerContext& ctx, const std::vector<std::s
         }
         ns = ns->parent;
     }
+
+    if (path.size() >= 2) {
+        auto* first_sym = ctx.symbols.lookup(path[0]);
+        if (first_sym && std::holds_alternative<quark::symb_t::EnumSymbol>(first_sym->data)) {
+            return ctx.symbols.lookup(path.back());
+        }
+    }
+
     return ctx.symbols.lookup(support::join_namespace(path));
 };
 
@@ -112,6 +120,7 @@ bool is_declaration_stmt(const ast::Stmt& stmt) {
     return std::holds_alternative<ast::FuncStmt>(stmt.kind) ||
            std::holds_alternative<ast::NamespaceStmt>(stmt.kind) ||
            std::holds_alternative<ast::StructDecl>(stmt.kind) ||
+           std::holds_alternative<ast::EnumDecl>(stmt.kind) ||
            std::holds_alternative<ast::UsingStmt>(stmt.kind);
 }
 
@@ -774,6 +783,10 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
             // Compile-time only.
         },
 
+        [&](const ast::EnumDecl&) {
+            // Compile-time only.
+        },
+
         [&](const ast::FuncStmt& fn) {
             gen_function(fn);
         },
@@ -978,6 +991,14 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
             if (!symbol_type(*sym)) {
                 ctx.errors.add("Symbol is not a value: " + node.name); return 0;
+            }
+
+            if (auto* vs = std::get_if<symb_t::VarSymbol>(&sym->data)) {
+                if (vs->const_value.has_value()) {
+                    const uint32_t dst = new_reg();
+                    emit(IRLoadConst{ dst, static_cast<int32_t>(*vs->const_value) });
+                    return dst;
+                }
             }
 
             ctx.errors.add("Global value lowering is not implemented yet: " + node.name); return 0;
@@ -1302,7 +1323,19 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             return dst;
         },
 
-        [&](const ast::NamespaceExpr&) -> uint32_t {
+        [&](const ast::NamespaceExpr& node) -> uint32_t {
+            auto tmp = ast::Expr{ node };
+            auto path = support::flatten_path(&tmp);
+            auto* sym = resolve_qualified(ctx, path);
+            if (sym) {
+                if (auto* vs = std::get_if<symb_t::VarSymbol>(&sym->data)) {
+                    if (vs->const_value.has_value()) {
+                        const uint32_t dst = new_reg();
+                        emit(IRLoadConst{ dst, static_cast<int32_t>(*vs->const_value) });
+                        return dst;
+                    }
+                }
+            }
             ctx.errors.add("Namespace expressions are not supported in IR generation yet"); return 0;
         },
 

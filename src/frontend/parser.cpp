@@ -188,7 +188,7 @@ void Parser::sync() {
             case TOKEN_FUNC: case TOKEN_STRUCT: case TOKEN_IF:
             case TOKEN_WHILE: case TOKEN_RETURN: case TOKEN_NAMESPACE:
             case TOKEN_MODULE: case TOKEN_LOAD: case TOKEN_USING: case TOKEN_AT:
-            case TOKEN_EXTERN: case TOKEN_REGION:
+            case TOKEN_EXTERN: case TOKEN_REGION: case TOKEN_ENUM:
                 if (nesting == 0) return;
             default: break;
         }
@@ -286,6 +286,12 @@ ast::Stmt Parser::parse_statement() {
 
     if (match(TOKEN_REGION)){
         return ast::Stmt{ast::RegionStmt{ parse_region() } };
+    }
+
+    if (match(TOKEN_ENUM)) {
+        auto decl = parse_enum_decl();
+        decl.attributes = std::move(attrs);
+        return ast::Stmt{ std::move(decl) };
     }
 
     if (is_var_decl()) {
@@ -478,6 +484,27 @@ ast::RegionStmt Parser::parse_region(){
 
     ret.name = expect(TOKEN_IDENT, "Expected region name").text;
     ret.body = parse_block();
+
+    return ret;
+}
+ast::EnumDecl Parser::parse_enum_decl() {
+    ast::EnumDecl ret;
+
+    ret.name = std::string(expect(TOKEN_IDENT, "Expected enum name").text);
+
+    expect(TOKEN_LBRACE, "Expected '{' after enum name");
+
+    while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
+        Token name = expect(TOKEN_IDENT, "Expected variant name");
+        ret.variants.push_back(std::string(name.text));
+
+        if (!check(TOKEN_RBRACE)) {
+            expect(TOKEN_COMMA, "Expected ',' after variant");
+        }
+    }
+
+    expect(TOKEN_RBRACE, "Expected '}' after enum body");
+    expect(TOKEN_SEMICOLON, "Expected ';' after enum body");
 
     return ret;
 }

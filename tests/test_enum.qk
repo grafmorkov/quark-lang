@@ -1,0 +1,21 @@
+load "std::io";
+
+@public
+enum Status {
+    Ok,
+    Error,
+    Unknown,
+};
+
+func main() {
+    s1: i32 = Status::Ok;
+    s2: i32 = Status::Error;
+    s3: i32 = Unknown;
+
+    std::io::print(s1 as str);
+    std::io::print(" ");
+    std::io::print(s2 as str);
+    std::io::print(" ");
+    std::io::print(s3 as str);
+    std::io::print("\n");
+}

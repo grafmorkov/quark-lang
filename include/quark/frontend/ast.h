@@ -269,6 +269,12 @@ namespace quark::ast {
         Block* body;
     };
 
+    struct EnumDecl {
+        std::string name;
+        std::vector<std::string> variants;
+        std::vector<Attribute> attributes;
+    };
+
     using StmtKind = std::variant<
         ExprStmt,
         ReturnStmt,
@@ -279,6 +285,7 @@ namespace quark::ast {
         FuncStmt,
         NamespaceStmt,
         RegionStmt,
+        EnumDecl,
         ModuleDecl,
         LoadStmt,
         UsingStmt

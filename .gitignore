@@ -64,3 +64,4 @@ coverage/
 *.swo
 *~
 /fasm/*
+quark-self-hosted/

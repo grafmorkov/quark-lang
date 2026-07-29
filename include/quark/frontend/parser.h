@@ -52,6 +52,7 @@ namespace quark::ps {
             ast::ReturnStmt parse_return();
             ast::FuncStmt parse_func(bool is_extern);
             ast::RegionStmt parse_region();
+            ast::EnumDecl parse_enum_decl();
             std::vector<ast::FuncArg> parse_func_args(const std::vector<std::string>* type_params = nullptr);
 
             // expressions(Pratt)

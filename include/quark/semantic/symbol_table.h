@@ -35,11 +35,15 @@ namespace quark::symb_t {
         std::vector<const ast::Type*> field_types;
         std::vector<std::vector<ast::Attribute>> field_attributes;
     };
+    struct EnumSymbol {
+        std::vector<std::string> variant_names;
+    };
     using SymbolData = std::variant<
         VarSymbol,
         FuncArgSymbol,
         FuncSymbol,
-        StructSymbol
+        StructSymbol,
+        EnumSymbol
     >;
 
     struct Symbol {

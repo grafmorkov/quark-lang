@@ -40,6 +40,14 @@ symb_t::Symbol* resolve_qualified(
         }
         ns = ns->parent;
     }
+
+    if (path.size() >= 2) {
+        auto* first_sym = symbols.lookup(path[0]);
+        if (first_sym && std::holds_alternative<quark::symb_t::EnumSymbol>(first_sym->data)) {
+            return symbols.lookup(path.back());
+        }
+    }
+
     return symbols.lookup(quark::support::join_namespace(path));
 }
 
@@ -259,6 +267,13 @@ const ast::Type* symbol_type(const quark::symb_t::Symbol& sym) {
     return nullptr;
 }
 
+bool symbol_is_enum_value(const quark::symb_t::Symbol& sym) {
+    if (const auto* v = std::get_if<quark::symb_t::VarSymbol>(&sym.data)) {
+        return v->const_value.has_value() && !v->is_mut;
+    }
+    return false;
+}
+
 bool symbol_is_mutable(const quark::symb_t::Symbol& sym) {
     if (const auto* v = std::get_if<quark::symb_t::VarSymbol>(&sym.data)) {
         return v->is_mut;
@@ -277,6 +292,9 @@ bool symbol_is_initialized(const quark::symb_t::Symbol& sym) {
         return true;
     }
     if (std::get_if<quark::symb_t::StructSymbol>(&sym.data)) {
+        return true;
+    }
+    if (std::get_if<quark::symb_t::EnumSymbol>(&sym.data)) {
         return true;
     }
     if (std::get_if<quark::symb_t::FuncSymbol>(&sym.data)) {
@@ -411,6 +429,16 @@ void SemanticAnalyzer::analyze(const std::vector<ast::Stmt*>& stmts, modules::Mo
                         }
                     }
                 },
+                [&](ast::EnumDecl& enm) {
+                    for (auto it = enm.attributes.begin(); it != enm.attributes.end(); ) {
+                        if (it->name == "hide") {
+                            current_module->attributes.push_back(std::move(*it));
+                            it = enm.attributes.erase(it);
+                        } else {
+                            ++it;
+                        }
+                    }
+                },
                 [&](ast::ModuleDecl& mod_decl) {
                     // Module-level attributes (@hide etc.) now live on the decl itself
                     for (auto it = mod_decl.attributes.begin(); it != mod_decl.attributes.end(); ) {
@@ -454,6 +482,12 @@ void SemanticAnalyzer::analyze(const std::vector<ast::Stmt*>& stmts, modules::Mo
                 [&](const ast::VarDecl& var) {
                     if (!has_attr(var.attributes, "public")) {
                         auto* sym = ctx.symbols.lookup(var.name);
+                        if (sym) sym->attributes.push_back({"private", {}});
+                    }
+                },
+                [&](const ast::EnumDecl& enm) {
+                    if (!has_attr(enm.attributes, "public")) {
+                        auto* sym = ctx.symbols.lookup(enm.name);
                         if (sym) sym->attributes.push_back({"private", {}});
                     }
                 },
@@ -537,6 +571,26 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                     collect_declarations(ns.body->stmts);
                 }
             },
+            [&](const ast::EnumDecl& enm) {
+                if (!ctx.symbols.declare_symbol(enm.name, symb_t::Symbol{
+                    enm.name,
+                    symb_t::EnumSymbol{ enm.variants },
+                    enm.attributes
+                })) {
+                    ctx.errors.add("Enum redeclaration: " + enm.name);
+                    return;
+                }
+                for (size_t i = 0; i < enm.variants.size(); ++i) {
+                    ctx.symbols.declare_symbol(enm.variants[i], symb_t::Symbol{
+                        enm.variants[i],
+                        symb_t::VarSymbol{
+                            ctx.types.get_builtin(TypeKind::I32),
+                            false, true, static_cast<int64_t>(i)
+                        },
+                        {}
+                    });
+                }
+            },
             [&](const ast::ModuleDecl&) {},
             [&](const auto&) {}
         }, stmt->kind);
@@ -549,6 +603,7 @@ void SemanticAnalyzer::analyze_stmt(const ast::Stmt* stmt) {
     std::visit(overloaded{
         [&](const ast::VarDecl& n) { analyze_var_decl(n); },
         [&](const ast::StructDecl& n) { analyze_struct_decl(n); },
+        [&](const ast::EnumDecl& n) { analyze_enum_decl(n); },
         [&](const ast::NamespaceStmt& n) { analyze_namespace_stmt(n); },
         [&](const ast::ExprStmt& n) { analyze_expr_stmt(n); },
         [&](const ast::ReturnStmt& n) { analyze_return(n); },
@@ -796,6 +851,15 @@ void SemanticAnalyzer::analyze_struct_decl(const ast::StructDecl& str) {
                 return;
             }
         }
+    }
+}
+
+void SemanticAnalyzer::analyze_enum_decl(const ast::EnumDecl& enm) {
+    // Enum variants are already declared as VarSymbols in collect_declarations.
+    // Here we just validate: variants must be valid identifiers.
+    if (enm.variants.empty()) {
+        ctx.errors.add("Enum must have at least one variant: " + enm.name);
+        return;
     }
 }
 

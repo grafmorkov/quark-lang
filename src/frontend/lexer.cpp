@@ -210,6 +210,7 @@ namespace quark::lx {
             case str_hash("as"): return make_token(TOKEN_AS);
             case str_hash("sizeof"): return make_token(TOKEN_SIZEOF);
             case str_hash("region"): return make_token(TOKEN_REGION);
+            case str_hash("enum"): return make_token(TOKEN_ENUM);
             case str_hash("true"): return make_token(TOKEN_TRUE);
             case str_hash("false"): return make_token(TOKEN_FALSE);
         }

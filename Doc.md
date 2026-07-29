@@ -233,6 +233,35 @@ struct Counter {
 
 ---
 
+## Enums
+
+C-style enums with automatically assigned `i32` values starting from 0.
+```
+enum Color {
+    Red,    // 0
+    Green,  // 1
+    Blue,   // 2
+};
+```
+
+Variants can be accessed directly by name or qualified:
+
+```
+x: i32 = Red;          // 0
+y: i32 = Color::Green; // 1
+```
+
+Enums support attributes like `@public` and `@private`:
+
+```
+@public enum Status {
+    Ok,
+    Error,
+};
+```
+
+---
+
 ## Generics
 
 Structs can have type parameters with `<>`:
