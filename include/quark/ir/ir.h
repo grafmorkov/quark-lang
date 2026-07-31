@@ -203,6 +203,8 @@ struct IRFunction {
     bool sret = false;   // returns struct via hidden pointer arg
     int64_t syscall_number = -1;   // >= 0 for extern functions lowered to a raw syscall
     std::string export_name;       // overrides the asm symbol name (@export)
+    std::string import_dll;        // non-empty: extern function is imported from this DLL (@import)
+    std::string import_name;       // imported symbol name (defaults to the function name)
 };
 
 struct IRProgram {

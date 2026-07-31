@@ -125,7 +125,8 @@ x86::Mem ISel::temp_slot(Reg r, const IRFunction& fn) {
 }
 
 uint32_t ISel::ensure_symbol(const std::string& name, mc::SymBind bind, mc::SymType type,
-                             bool undefined, uint32_t section, uint64_t value, uint64_t size) {
+                             bool undefined, uint32_t section, uint64_t value, uint64_t size,
+                             const std::string& import_dll, const std::string& import_name) {
     auto it = symbol_index.find(name);
     if (it != symbol_index.end()) {
         if (!undefined) {
@@ -147,6 +148,10 @@ uint32_t ISel::ensure_symbol(const std::string& name, mc::SymBind bind, mc::SymT
     s.section = section;
     s.value = value;
     s.size = size;
+    if (!import_dll.empty()) {
+        s.import_dll = import_dll;
+        s.import_name = import_name.empty() ? name : import_name;
+    }
     obj.symbols.push_back(s);
     symbol_index[name] = static_cast<uint32_t>(obj.symbols.size() - 1);
     return static_cast<uint32_t>(obj.symbols.size() - 1);
@@ -156,8 +161,17 @@ uint32_t ISel::add_runtime_symbol(const std::string& name) {
     return ensure_symbol(name, mc::SymBind::Global, mc::SymType::Func, true, 0, 0, 0);
 }
 
+uint32_t ISel::add_import_symbol(const std::string& dll, const std::string& name) {
+    return ensure_symbol(name, mc::SymBind::Global, mc::SymType::Func, true, 0, 0, 0, dll, name);
+}
+
 uint32_t ISel::add_func_symbol(const IRFunction& fn) {
     if (fn.is_extern) {
+        if (!fn.import_dll.empty()) {
+            return ensure_symbol(abi_name(fn), mc::SymBind::Global, mc::SymType::Func,
+                                 true, 0, 0, 0, fn.import_dll,
+                                 fn.import_name.empty() ? fn.name : fn.import_name);
+        }
         return ensure_symbol(abi_name(fn), mc::SymBind::Global, mc::SymType::Func, true, 0, 0, 0);
     }
     return ensure_symbol(function_name(fn), mc::SymBind::Global, mc::SymType::Func,
@@ -309,32 +323,64 @@ void ISel::emit_call(const IRProgram& program, const IRFunction& fn, const IRCal
     const auto& callee = program.functions[x.func_id];
     const std::size_t n = x.args.size();
 
+#ifdef _WIN32
+    constexpr std::size_t max_reg = 4;
+    constexpr std::size_t shadow = 32;
+#else
     constexpr std::size_t max_reg = 6;
     constexpr std::size_t shadow = 0;
+#endif
     const std::size_t stack_count = (n > max_reg) ? (n - max_reg) : 0;
-    const std::size_t frame = shadow + stack_count * 8;
+    std::size_t frame = shadow + stack_count * 8;
+#ifdef _WIN32
+    // Keep RSP 16-byte aligned right before the call: inside a compiled
+    // function RSP % 16 == 0, so the frame must be a multiple of 16.
+    if (frame % 16 != 0) frame += 8;
+#endif
 
     if (frame > 0) {
         text.sub_rsp_imm32(static_cast<uint32_t>(frame));
     }
 
+    // Stack args: on Windows the first stack arg (5th) sits at [rsp+0x20]
+    // relative to RSP at the call (above the 0x20 shadow space), on SysV the
+    // 7th sits at [rsp+0]. The 16-byte alignment padding must not shift it.
+    const std::size_t arg_base = shadow;
     for (std::size_t i = n; i > max_reg; --i) {
         const std::size_t idx = i - 1;
         const std::size_t slot = idx - max_reg;
         text.mov_r64_mem(x86::RAX, temp_slot(x.args[idx], fn));
-        text.mov_mem_r64(x86::mem_base(x86::RSP, static_cast<int64_t>(shadow + slot * 8)), x86::RAX);
+        text.mov_mem_r64(x86::mem_base(x86::RSP, static_cast<int64_t>(arg_base + slot * 8)), x86::RAX);
     }
 
+    const std::string callee_name = abi_name(callee);
+    if (symbol_index.count(callee_name) == 0) {
+        if (callee.is_extern) {
+            add_func_symbol(callee);
+        } else {
+            add_runtime_symbol(callee_name);
+        }
+    }
+
+    // register args
+#ifdef _WIN32
+    static const x86::R64 win_regs[] = {x86::RCX, x86::RDX, x86::R8, x86::R9};
+    for (std::size_t i = 0; i < n && i < max_reg; ++i) {
+        text.mov_r64_mem(win_regs[i], temp_slot(x.args[i], fn));
+    }
+#else
     static const x86::R64 linux_regs[] = {x86::RDI, x86::RSI, x86::RDX, x86::RCX, x86::R8, x86::R9};
     for (std::size_t i = 0; i < n && i < max_reg; ++i) {
         text.mov_r64_mem(linux_regs[i], temp_slot(x.args[i], fn));
     }
+#endif
 
-    const uint32_t callee_sym = symbol_index.count(abi_name(callee))
-        ? symbol_index[abi_name(callee)]
-        : add_runtime_symbol(abi_name(callee));
-    (void)callee_sym;
-    text.call_rel32(abi_name(callee));
+    if (callee.is_extern && !callee.import_dll.empty()) {
+        // Imported function: call through its IAT slot (indirect).
+        text.call_mem_rip(callee_name);
+    } else {
+        text.call_rel32(callee_name);
+    }
 
     if (frame > 0) {
         text.add_rsp_imm32(static_cast<uint32_t>(frame));
@@ -348,6 +394,16 @@ void ISel::emit_call(const IRProgram& program, const IRFunction& fn, const IRCal
 void ISel::emit_region_begin(const IRRegionBegin& x) {
     // Region layout: [data:8] [offset:8] [capacity:8]
     text.mov_r64_mem(x86::RBX, local_slot(x.region_local));
+#ifdef _WIN32
+    // VirtualAlloc(0, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE)
+    text.mov_r64_imm(x86::RCX, 0);
+    text.mov_r64_imm(x86::RDX, x.region_size);
+    text.mov_r64_imm(x86::R8, 0x3000);
+    text.mov_r64_imm(x86::R9, 0x04);
+    text.sub_rsp_imm32(32);
+    text.call_mem_rip("VirtualAlloc");
+    text.add_rsp_imm32(32);
+#else
     // mmap(0, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)
     text.mov_r64_imm(x86::RDI, 0);
     text.mov_r64_imm(x86::RSI, x.region_size);
@@ -357,6 +413,7 @@ void ISel::emit_region_begin(const IRRegionBegin& x) {
     text.mov_r64_imm(x86::R9, 0);
     text.mov_r64_imm(x86::RAX, 9);
     text.syscall();
+#endif
     text.mov_mem_r64(x86::mem_base(x86::RBX, 0), x86::RAX);
     text.mov_r64_imm(x86::RAX, 0);
     text.mov_mem_r64(x86::mem_base(x86::RBX, 8), x86::RAX);
@@ -383,10 +440,18 @@ void ISel::emit_region_alloc(const IRRegionAlloc& x, const IRFunction& fn) {
     text.cmp_r64_mem(x86::RAX, x86::mem_base(x86::RBX, 16));
     text.jcc_rel32(x86::COND_BE);
     fixups.push_back({text.code.size() - 4, ok_label, true});
+#ifdef _WIN32
+    // ExitProcess(1) - region overflow
+    add_import_symbol("kernel32.dll", "ExitProcess");
+    text.mov_r64_imm(x86::RCX, 1);
+    text.sub_rsp_imm32(32);
+    text.call_mem_rip("ExitProcess");
+#else
     // exit(1) inline - no qk_exit dependency
     text.mov_r64_imm(x86::RDI, 1);
     text.mov_r64_imm(x86::RAX, 60);
     text.syscall();
+#endif
     region_label_pos[ok_label] = text.code.size();
 }
 
@@ -394,9 +459,19 @@ void ISel::emit_region_end(const IRRegionEnd& x) {
     text.mov_r64_mem(x86::RAX, local_slot(x.region_local));
     text.mov_r64_mem(x86::RDI, x86::mem_base(x86::RAX, 0));
     text.mov_r64_mem(x86::RSI, x86::mem_base(x86::RAX, 16));
+#ifdef _WIN32
+    // VirtualFree(ptr, 0, MEM_RELEASE)
+    text.mov_r64_mem(x86::RCX, x86::mem_base(x86::RAX, 0));
+    text.mov_r64_imm(x86::RDX, 0);
+    text.mov_r64_imm(x86::R8, 0x8000);
+    text.sub_rsp_imm32(32);
+    text.call_mem_rip("VirtualFree");
+    text.add_rsp_imm32(32);
+#else
     // munmap(ptr, size)
     text.mov_r64_imm(x86::RAX, 11);
     text.syscall();
+#endif
 }
 
 void ISel::emit_inst(const IRProgram& program, const IRFunction& fn, const IRInst& inst) {
@@ -513,18 +588,23 @@ void ISel::emit_inst(const IRProgram& program, const IRFunction& fn, const IRIns
             const bool dst_flt = is_float(x.target_kind);
 
             if (x.target_kind == ast::TypeKind::String) {
+#ifdef _WIN32
+                const x86::R64 int_arg_reg = x86::RCX;
+#else
+                const x86::R64 int_arg_reg = x86::RDI;
+#endif
                 if (is_integer(x.src_kind)) {
                     const int src_sz = cast_type_size(x.src_kind);
                     if (is_signed_int(x.src_kind)) {
-                        if (src_sz == 4)      text.movsxd_r64_mem32(x86::RDI, src);
-                        else if (src_sz == 2) text.movsx_r64_mem16(x86::RDI, src);
-                        else if (src_sz == 1) text.movsx_r64_mem8(x86::RDI, src);
-                        else                  text.mov_r64_mem(x86::RDI, src);
+                        if (src_sz == 4)      text.movsxd_r64_mem32(int_arg_reg, src);
+                        else if (src_sz == 2) text.movsx_r64_mem16(int_arg_reg, src);
+                        else if (src_sz == 1) text.movsx_r64_mem8(int_arg_reg, src);
+                        else                  text.mov_r64_mem(int_arg_reg, src);
                     } else {
-                        if (src_sz == 4)      text.mov_r32_mem(x86::RDI, src);
-                        else if (src_sz == 2) text.movzx_r32_mem16(x86::RDI, src);
-                        else if (src_sz == 1) text.movzx_r32_mem8(x86::RDI, src);
-                        else                  text.mov_r64_mem(x86::RDI, src);
+                        if (src_sz == 4)      text.mov_r32_mem(int_arg_reg, src);
+                        else if (src_sz == 2) text.movzx_r32_mem16(int_arg_reg, src);
+                        else if (src_sz == 1) text.movzx_r32_mem8(int_arg_reg, src);
+                        else                  text.mov_r64_mem(int_arg_reg, src);
                     }
                     if (is_signed_int(x.src_kind)) {
                         text.call_rel32("qk_format_i64");
@@ -535,10 +615,10 @@ void ISel::emit_inst(const IRProgram& program, const IRFunction& fn, const IRIns
                     text.movss_r64_mem(0, src);
                     text.cvt_ss_to_sd_rr(0, 0);
                     text.movsd_mem_r64(dst, 0);
-                    text.mov_r64_mem(x86::RDI, dst);
+                    text.mov_r64_mem(int_arg_reg, dst);
                     text.call_rel32("qk_format_f64");
                 } else {
-                    text.mov_r64_mem(x86::RDI, src);
+                    text.mov_r64_mem(int_arg_reg, src);
                     text.call_rel32("qk_format_f64");
                 }
                 text.mov_mem_r64(dst, x86::RAX);
@@ -672,6 +752,18 @@ void ISel::emit_prologue(const IRFunction& fn) {
         text.sub_rsp_imm32(static_cast<uint32_t>(stack_size));
     }
 
+#ifdef _WIN32
+    static const x86::R64 regs[] = {x86::RCX, x86::RDX, x86::R8, x86::R9};
+    for (uint32_t i = 0; i < fn.arg_count; ++i) {
+        if (i < 4) {
+            text.mov_mem_r64(local_slot(i), regs[i]);
+        } else {
+            // 5th arg arrives at [entry_rsp + 0x28] == [rbp + 0x30]
+            text.mov_r64_mem(x86::RAX, x86::mem_base(x86::RBP, static_cast<int64_t>(48u + (i - 4u) * 8u)));
+            text.mov_mem_r64(local_slot(i), x86::RAX);
+        }
+    }
+#else
     static const x86::R64 regs[] = {x86::RDI, x86::RSI, x86::RDX, x86::RCX, x86::R8, x86::R9};
     for (uint32_t i = 0; i < fn.arg_count; ++i) {
         if (i < 6) {
@@ -681,6 +773,7 @@ void ISel::emit_prologue(const IRFunction& fn) {
             text.mov_mem_r64(local_slot(i), x86::RAX);
         }
     }
+#endif
 }
 
 void ISel::emit_func(const IRProgram& program, const IRFunction& fn) {
@@ -709,10 +802,25 @@ void ISel::emit_start(const IRProgram& program) {
     if (!entry) {
         utils::logger::crash("No entry point found");
     }
+#ifdef _WIN32
+    // The loader calls the entry point with rsp ≡ 8 (mod 16); the Win64 ABI
+    // requires rsp ≡ 0 (mod 16) at every call site. Align before calling.
+    text.sub_rsp_imm32(8);
+    // Optional runtime init (defined by the Windows stdlib via @export).
+    if (symbol_index.count("qk_io_init") != 0) {
+        text.call_rel32("qk_io_init");
+    }
+    text.call_rel32(function_name(*entry));
+    // Restore the loader's stack so `ret` returns into the loader.
+    text.add_rsp_imm32(8);
+    // Return into the loader; it terminates the process with rax as the exit code.
+    text.ret();
+#else
     text.call_rel32(function_name(*entry));
     text.mov_r64_r64(x86::RDI, x86::RAX);
     text.mov_r64_imm(x86::RAX, 60);
     text.syscall();
+#endif
 }
 
 void ISel::emit_strings(const IRProgram& program) {
@@ -764,15 +872,26 @@ void ISel::generate(const IRProgram& program) {
 
     for (const auto& fn : program.functions) {
         if (fn.is_extern) {
+#ifdef _WIN32
+            // Raw syscalls are not available on Windows: externs become imports
+            // (or plain undefined symbols). @syscall is unsupported there.
+            add_func_symbol(fn);
+#else
             if (fn.syscall_number >= 0) {
                 emit_syscall_stub(fn);
             } else {
                 add_func_symbol(fn);
             }
+#endif
             continue;
         }
         emit_func(program, fn);
     }
+
+#ifdef _WIN32
+    add_import_symbol("kernel32.dll", "VirtualAlloc");
+    add_import_symbol("kernel32.dll", "VirtualFree");
+#endif
 
     emit_start(program);
     emit_strings(program);

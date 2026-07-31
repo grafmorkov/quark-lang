@@ -506,6 +506,46 @@ void SemanticAnalyzer::analyze(const std::vector<ast::Stmt*>& stmts, modules::Mo
     }
 }
 
+const ast::Type* SemanticAnalyzer::canonicalize_struct_type(const ast::Type* type) {
+    if (!type) return type;
+
+    if (type->kind == TypeKind::Pointer && type->pointed) {
+        const ast::Type* new_pointed = canonicalize_struct_type(type->pointed);
+        if (new_pointed != type->pointed) return ctx.types.get_pointer(new_pointed);
+        return type;
+    }
+    if (type->kind == TypeKind::Reference && type->pointed) {
+        const ast::Type* new_pointed = canonicalize_struct_type(type->pointed);
+        if (new_pointed != type->pointed) return ctx.types.get_reference(new_pointed);
+        return type;
+    }
+    if (type->kind != TypeKind::Struct) return type;
+
+    std::string base = type->struct_name;
+    std::string unmangled;
+    if (ctx.types.is_mangled_name(base, unmangled)) {
+        base = unmangled;
+    } else {
+        auto dollar = base.find('$');
+        if (dollar != std::string::npos) base = base.substr(0, dollar);
+    }
+
+    if (base.find("::") != std::string::npos) return type;
+
+    auto* sym = lookup_struct(ctx, base);
+    if (!sym || sym->owning_module.empty()) {
+        return type;
+    }
+
+    std::string canonical = support::join_namespace(sym->owning_module) + "::" + base;
+    if (canonical == type->struct_name) return type;
+
+    if (!type->type_args.empty()) {
+        return ctx.types.get_deferred_generic(canonical, type->type_args);
+    }
+    return ctx.types.get_struct(canonical);
+}
+
 void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts) {
     for (auto* stmt : stmts) {
         if (!stmt) {
@@ -514,6 +554,11 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
 
         std::visit(overloaded{
             [&](const ast::FuncStmt& fn) {
+                auto& f = const_cast<ast::FuncStmt&>(fn);
+                f.return_type = canonicalize_struct_type(f.return_type);
+                for (auto& arg : f.args) {
+                    arg.type = canonicalize_struct_type(arg.type);
+                }
                 if (!fn.type_params.empty()) {
                     types::GenericFuncDef def;
                     def.params = fn.type_params;
@@ -521,6 +566,9 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                     def.return_type = fn.return_type;
                     def.body = fn.body;
                     def.attributes = fn.attributes;
+                    def.module_namespace = module_namespace;
+                    def.module_namespace.insert(
+                        def.module_namespace.end(), namespace_path.begin(), namespace_path.end());
                     std::string qualified = generic_key(namespace_path, fn.name);
                     ctx.types.register_generic_func(qualified, def);
                     std::string full_q = full_qualified(module_namespace, namespace_path, fn.name);
@@ -563,6 +611,14 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                         field_attrs.push_back(f.attributes);
                     }
                     ctx.types.register_struct(str.name, fields, field_attrs);
+                    std::string qualified = generic_key(namespace_path, str.name);
+                    if (qualified != str.name) {
+                        ctx.types.register_struct(qualified, fields, field_attrs);
+                    }
+                    std::string full_q = full_qualified(module_namespace, namespace_path, str.name);
+                    if (full_q != qualified && full_q != str.name) {
+                        ctx.types.register_struct(full_q, fields, field_attrs);
+                    }
                 }
             },
             [&](const ast::NamespaceStmt& ns) {
@@ -731,6 +787,7 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
     if (current_type_subst && !current_type_subst->empty()) {
         resolved_type = ctx.types.substitute_type(var.type, *current_type_subst);
     }
+    resolved_type = canonicalize_struct_type(resolved_type);
 
     for (const auto& attr : var.attributes) {
         analyze_attribute(attr, attrs::AttributeTarget::Variable);
@@ -916,6 +973,18 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
             if (!num) {
                 ctx.errors.add("@syscall argument must be an integer literal: " + func.name);
                 return;
+            }
+        }
+        if (attr.name == "import") {
+            if (!func.is_extern) {
+                ctx.errors.add("@import can only be used on extern functions: " + func.name);
+                return;
+            }
+            for (const auto* arg : attr.args) {
+                if (!std::get_if<ast::StringExpr>(&arg->kind)) {
+                    ctx.errors.add("@import arguments must be string literals: " + func.name);
+                    return;
+                }
             }
         }
     }
@@ -1321,7 +1390,17 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b, cons
             ctx.errors.add(expr->loc, "Type mismatch in binary expression");
             return nullptr;
         }
-        return l;
+        switch (b.op) {
+            case ast::BinaryOp::Eq:
+            case ast::BinaryOp::Neq:
+            case ast::BinaryOp::Lt:
+            case ast::BinaryOp::Lte:
+            case ast::BinaryOp::Gt:
+            case ast::BinaryOp::Gte:
+                return ctx.types.get_builtin(TypeKind::Bool);
+            default:
+                return l;
+        }
     }
 
     ctx.errors.add("Operator overloading is not supported for these types");
@@ -1485,7 +1564,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
             }
 
             auto qualify_struct = [&](const Type* type) -> const Type* {
-                if (type && type->kind == TypeKind::Struct && !type->type_args.empty()) {
+                if (type && type->kind == TypeKind::Struct) {
                     std::vector<const Type*> concrete_type_args;
                     for (const auto* arg : type->type_args) {
                         concrete_type_args.push_back(ctx.types.substitute_type(arg, subst));
@@ -1495,8 +1574,11 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
                     if (ctx.types.is_mangled_name(base_name, unmangled)) {
                         base_name = unmangled;
                     }
+                    // Qualify the struct name with the generic function's module
+                    // namespace so types defined in the module (e.g. cmp::ordering)
+                    // match the caller's qualified references.
                     std::string qualified_base = base_name;
-                    if (!func_ns.empty()) {
+                    if (!func_ns.empty() && base_name.find("::") == std::string::npos) {
                         qualified_base = full_qualified(func_ns, {}, base_name);
                     }
                     return ctx.types.get_deferred_generic(qualified_base, concrete_type_args);
@@ -1513,27 +1595,6 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
             }
             const Type* concrete_return = qualify_struct(generic_def->return_type);
 
-            // Substitute type args in struct return types
-            if (concrete_return && concrete_return->kind == TypeKind::Struct && !concrete_return->type_args.empty()) {
-                std::vector<const Type*> concrete_type_args;
-                for (const auto* arg : concrete_return->type_args) {
-                    concrete_type_args.push_back(ctx.types.substitute_type(arg, subst));
-                }
-                // Extract base struct name (handle mangled names like "option$T" -> "option")
-                std::string base_name = concrete_return->struct_name;
-                std::string unmangled;
-                if (ctx.types.is_mangled_name(base_name, unmangled)) {
-                    base_name = unmangled;
-                }
-                // Qualify the struct name with the function's module namespace for cross-module consistency
-                std::string qualified_base = base_name;
-                if (path.size() > 1) {
-                    std::vector<std::string> func_ns(path.begin(), path.end() - 1);
-                    qualified_base = full_qualified(func_ns, {}, base_name);
-                }
-                concrete_return = ctx.types.get_deferred_generic(qualified_base, concrete_type_args);
-            }
-
             // Create and register the concrete function symbol
             symb_t::FuncSymbol concrete_fn_sym;
             concrete_fn_sym.arg_types = concrete_arg_types;
@@ -1547,6 +1608,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
                 concrete_fn_sym,
                 {}
             });
+            ctx.generic_return_types[mangled] = concrete_return;
 
             // Create a concrete FuncStmt for body analysis and IR gen
             ast::FuncStmt concrete_fn_stmt;
@@ -1561,16 +1623,35 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
             concrete_fn_stmt.body = const_cast<ast::Block*>(generic_def->body);
             concrete_fn_stmt.attributes = generic_def->attributes;
 
+            // The generic body must be analyzed in its defining module's
+            // namespace so unqualified references to sibling module
+            // declarations (funcs, structs, globals) resolve correctly.
+            // Walk from the global namespace (not from the caller's
+            // current namespace, which may nest the same names differently).
+            // Prefer the generic definition's module namespace (the
+            // caller's written path may be unqualified, e.g. a same-file
+            // generic), falling back to the call path minus the name.
+            std::vector<std::string> func_module_ns = generic_def->module_namespace;
+            if (func_module_ns.empty()) {
+                func_module_ns.assign(path.begin(), path.end() - 1);
+            }
+
             // Analyze the concrete function body (type-check with concrete types)
             if (concrete_fn_stmt.body) {
                 auto* prev_subst = current_type_subst;
                 current_type_subst = &subst;
+                auto* saved_ns = ctx.symbols.get_current_namespace();
+                ctx.symbols.set_current_namespace(ctx.symbols.create_namespace_path(func_module_ns));
                 analyze_func(concrete_fn_stmt);
+                ctx.symbols.set_current_namespace(saved_ns);
                 current_type_subst = prev_subst;
             }
 
             // Store for IR generation
-            ctx.generic_instantiations.push_back(std::move(concrete_fn_stmt));
+            ctx.generic_instantiations.push_back(decltype(ctx.generic_instantiations)::value_type{
+                std::move(concrete_fn_stmt),
+                func_module_ns
+            });
 
             concrete_sym = ctx.symbols.lookup(mangled);
         }

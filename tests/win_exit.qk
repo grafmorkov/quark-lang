@@ -1,0 +1,7 @@
+load "std::io";
+
+func main() i32 {
+    std::io::print("before exit\n");
+    std::io::exit(42);
+    return 0;
+}

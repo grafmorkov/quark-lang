@@ -44,6 +44,7 @@ namespace quark::attrs{
                          | AttributeTarget::Field | AttributeTarget::Struct, 0, 0}},
 	{ "hide", {"hide", std::string(),{}, AttributeTarget::Module, 0, 0}},
 	{ "syscall", {"syscall", std::string(),{}, AttributeTarget::Function, 1, 1}},
-		{ "export", {"export", std::string(),{}, AttributeTarget::Function, 1, 1}}
+		{ "export", {"export", std::string(),{}, AttributeTarget::Function, 1, 1}},
+	{ "import", {"import", std::string(),{}, AttributeTarget::Function, 1, 2}}
 	};
 }

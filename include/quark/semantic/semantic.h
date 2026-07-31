@@ -35,6 +35,11 @@ class SemanticAnalyzer {
         const ast::Type* resolve_lvalue(const ast::Expr* expr);
         void collect_declarations(const std::vector<ast::Stmt*>& stmts);
 
+        // Canonicalize unqualified struct type names to their module-qualified
+        // form so cross-module references (qualified or via `using`) match the
+        // types used inside the defining module (e.g. cmp::ordering).
+        const ast::Type* canonicalize_struct_type(const ast::Type* type);
+
         void analyze_var_decl(const ast::VarDecl& var);
         void analyze_struct_decl(const ast::StructDecl& str);
         void analyze_enum_decl(const ast::EnumDecl& enm);

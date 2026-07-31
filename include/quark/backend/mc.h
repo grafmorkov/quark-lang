@@ -38,6 +38,8 @@ struct Symbol {
     uint32_t section = 0;   // 0 = .text, 1 = .data (internal ids)
     uint64_t value = 0;     // offset within the section
     uint64_t size = 0;
+    std::string import_dll;   // non-empty: imported from a PE DLL (undefined symbol)
+    std::string import_name;  // imported symbol name (defaults to `name`)
 };
 
 struct Object {

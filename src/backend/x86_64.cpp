@@ -255,6 +255,12 @@ void Emitter::call_rel32(const std::string& sym) {
     reloc(sym, mc::RelType::X86_64_PLT32, -4);
     u32(0);
 }
+void Emitter::call_mem_rip(const std::string& sym) {
+    u8(0xFF);
+    u8(0x15);
+    reloc(sym, mc::RelType::X86_64_PC32, -4);
+    u32(0);
+}
 
 // sse
 

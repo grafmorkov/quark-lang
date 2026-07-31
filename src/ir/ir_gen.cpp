@@ -326,8 +326,8 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
     }
 
     // Register concrete generic function instantiations
-    for (const auto& fn : ctx.generic_instantiations) {
-        register_function(fn.name);
+    for (const auto& inst : ctx.generic_instantiations) {
+        register_function(inst.stmt.name);
     }
 
     auto register_global = [&](const std::string& qname, const ast::Type* type) -> uint32_t {
@@ -404,7 +404,8 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
     }
 
     // Generate IR for concrete generic instantiations
-    for (const auto& fn : ctx.generic_instantiations) {
+    for (const auto& inst : ctx.generic_instantiations) {
+        const auto& fn = inst.stmt;
         auto it = function_ids.find(fn.name);
         if (it == function_ids.end()) {
             ctx.errors.add("Generic instantiation not registered: " + fn.name); return;
@@ -416,6 +417,7 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
         bool saved_terminated = current_terminated;
         auto saved_locals = local_scopes;
         auto saved_types = type_scopes;
+        auto saved_generic_ns = generic_module_ns;
 
         current_func = &program.functions[it->second];
         current_func->body.clear();
@@ -465,7 +467,16 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
         }
 
         if (fn.body) {
+            // Resolve unqualified names in the generic body from its defining
+            // module's namespace, not the instantiation call site's module.
+            generic_module_ns = inst.module_namespace;
+            auto* saved_sym_ns = ctx.symbols.get_current_namespace();
+            if (!inst.module_namespace.empty()) {
+                ctx.symbols.set_current_namespace(ctx.symbols.create_namespace_path(inst.module_namespace));
+            }
             gen_block(*fn.body);
+            ctx.symbols.set_current_namespace(saved_sym_ns);
+            generic_module_ns = saved_generic_ns;
         }
 
         if (!current_terminated) {
@@ -558,6 +569,8 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
 
     current_func->is_entry = false;
     current_func->syscall_number = -1;
+    current_func->import_dll.clear();
+    current_func->import_name.clear();
     for (const auto& attr : func.attributes) {
         if (attr.name == "entry") {
             current_func->is_entry = true;
@@ -568,6 +581,15 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
         } else if (attr.name == "export" && !attr.args.empty()) {
             if (const auto* se = std::get_if<ast::StringExpr>(&attr.args[0]->kind)) {
                 current_func->export_name = se->value;
+            }
+        } else if (attr.name == "import" && !attr.args.empty()) {
+            if (const auto* se = std::get_if<ast::StringExpr>(&attr.args[0]->kind)) {
+                current_func->import_dll = se->value;
+                if (attr.args.size() > 1) {
+                    if (const auto* se2 = std::get_if<ast::StringExpr>(&attr.args[1]->kind)) {
+                        current_func->import_name = se2->value;
+                    }
+                }
             }
         }
     }
@@ -957,10 +979,12 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         }
 
 
-        if (current_module) {
+        if (current_module || !generic_module_ns.empty()) {
+            const std::vector<std::string>& mod_path = generic_module_ns.empty()
+                ? current_module->namespace_path : generic_module_ns;
             {
                 const std::string qualified = support::qualify_name(
-                    current_module->namespace_path,
+                    mod_path,
                     namespace_stack,
                     support::join_namespace(path)
                 );
@@ -970,9 +994,9 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 }
             }
             {
-                std::vector<std::string> mod_path = current_module->namespace_path;
-                mod_path.insert(mod_path.end(), path.begin(), path.end());
-                const std::string qualified = support::join_namespace(mod_path);
+                std::vector<std::string> full = mod_path;
+                full.insert(full.end(), path.begin(), path.end());
+                const std::string qualified = support::join_namespace(full);
                 auto it2 = function_ids.find(qualified);
                 if (it2 != function_ids.end()) {
                     return it2->second;
@@ -980,7 +1004,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             }
             if (path.size() == 1) {
                 const std::string qualified = support::qualify_name(
-                    current_module->namespace_path,
+                    mod_path,
                     namespace_stack,
                     path[0]
                 );
@@ -1399,31 +1423,39 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
             const auto callee_path = support::flatten_path(node.callee);
 
-            // Handle generic function calls: use mangled name
+            // Handle generic function calls: use mangled name. The mangling
+            // must include the full module path to match the semantic pass's
+            // instantiation name (e.g. "gm::g<i32>" -> "gm::g$4").
+            std::string mangled;
             if (!node.type_args.empty()) {
-                std::string mangled = ctx.types.mangle_func_name(callee_path.back(), node.type_args);
+                mangled = ctx.types.mangle_func_name(support::join_namespace(callee_path), node.type_args);
                 func_id = resolve_function_id({mangled});
             } else {
                 func_id = resolve_function_id(callee_path);
             }
 
-            // Check if callee returns a struct (needs sret)
+            // Check if callee returns a struct (needs sret). Generic calls
+            // have no symbol under the un-mangled name; use the concrete
+            // (mangled) instantiation return type recorded by the semantic pass.
             bool is_sret_call = false;
             uint32_t sret_ptr = 0;
             {
-                auto* fn_sym = resolve_qualified(ctx, callee_path);
-                if (fn_sym) {
+                const ast::Type* ret_type = nullptr;
+                if (!node.type_args.empty()) {
+                    auto it = ctx.generic_return_types.find(mangled);
+                    if (it != ctx.generic_return_types.end()) ret_type = it->second;
+                } else if (auto* fn_sym = resolve_qualified(ctx, callee_path)) {
                     auto* fs = std::get_if<quark::symb_t::FuncSymbol>(&fn_sym->data);
-                    if (fs && fs->return_type &&
-                        fs->return_type->kind == ast::TypeKind::Struct) {
+                    if (fs) ret_type = fs->return_type;
+                }
+                if (ret_type && ret_type->kind == ast::TypeKind::Struct) {
                         is_sret_call = true;
-                        int sz = type_size(fs->return_type, &ctx);
+                        int sz = type_size(ret_type, &ctx);
                         if (current_func) current_func->extra_stack += sz;
                         sret_ptr = new_reg();
                         emit(IRAlloca{ sret_ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0) });
                         args.insert(args.begin(), sret_ptr);
                     }
-                }
             }
 
             const uint32_t dst = new_reg();

@@ -120,6 +120,8 @@ public:
     void jcc_rel32(Cond c);
     void jmp_rel32();
     void call_rel32(const std::string& sym);
+    // call qword [rip + sym] — indirect call through an import IAT slot
+    void call_mem_rip(const std::string& sym);
 
     // sse (register operands are xmm indices 0-15, not R64)
     void movsd_r64_mem(uint8_t xmm, const Mem& m);

@@ -102,16 +102,9 @@ int main(int argc, char **argv)
             return 0;
         }
         // Codegen
-        std::string asm_code;
-#ifdef _WIN32
-        {
-            quark::codegen::FasmCodeGenerator fasmCodegen;
-            asm_code = fasmCodegen.generate(irgen.program);
-        }
-#endif
         if (opts.emit_asm) {
             quark::codegen::FasmCodeGenerator fasmCodegen;
-            asm_code = fasmCodegen.generate(irgen.program);
+            std::string asm_code = fasmCodegen.generate(irgen.program);
             utils::logger::info("asm:");
             utils::logger::info(asm_code);
         }
@@ -121,21 +114,17 @@ int main(int argc, char **argv)
         // Build
         if (opts.build || opts.run) {
         #ifdef _WIN32
-            auto asm_path = root / "out.S";
             auto exe_path = root / "out.exe";
+
+            // Native backend: IR -> instruction selection -> machine code -> PE executable
             {
-                std::ofstream file(asm_path);
-                file << asm_code;
+                quark::codegen::NativeBackend nativeBackend;
+                auto pe_bytes = nativeBackend.generate(irgen.program);
+                std::ofstream file(exe_path, std::ios::binary);
+                file.write(
+                    reinterpret_cast<const char*>(pe_bytes.data()),
+                    static_cast<std::streamsize>(pe_bytes.size()));
             }
-
-            auto fasm_path = root / "fasm" / "fasm.exe";
-            std::string build_cmd = fasm_path.string() + " " + asm_path.string() + " " + exe_path.string();
-
-            if (std::system(build_cmd.c_str()) != 0) {
-                utils::logger::error("build failed\n");
-                return 1;
-            }
-            std::filesystem::remove(asm_path);
         #else
             auto obj_path = root / "out.o";
             auto exe_path = root / "out";

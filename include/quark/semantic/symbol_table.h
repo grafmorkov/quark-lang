@@ -97,6 +97,7 @@ namespace quark::symb_t {
         Symbol* lookup_qualified(const std::vector<std::string>& path);
         Symbol* lookup_current_namespace(const std::string& name);
         Namespace* get_current_namespace() const { return current_namespace; }
+        void set_current_namespace(Namespace* ns) { current_namespace = ns; }
 
         void mark_initialized(const std::string& name);
         Namespace* create_namespace_path(const std::vector<std::string>& path);

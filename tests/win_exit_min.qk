@@ -1,0 +1,6 @@
+load "std::io";
+
+func main() i32 {
+    std::io::exit(42);
+    return 0;
+}

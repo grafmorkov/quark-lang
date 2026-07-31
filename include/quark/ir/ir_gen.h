@@ -47,6 +47,9 @@ struct IRGenerator {
     // namespace nesting
     std::vector<std::string> namespace_stack;
 
+    // module namespace of the generic instantiation being generated (if any)
+    std::vector<std::string> generic_module_ns;
+
     struct RegionInfo {
         Local region_local;  // local slot holding pointer to Region struct
     };

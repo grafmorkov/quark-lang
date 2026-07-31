@@ -234,6 +234,30 @@ void ModuleManager::build_graph(Module* entry) {
         for (const auto& imp : mod->imports) {
             Module* dep = nullptr;
 
+#ifdef _WIN32
+            // Windows native backend: std modules are implemented with @import
+            // and live in <root>/std/win/ (e.g. "std::io" -> std/win/io/io.qk).
+            if (imp.rfind("std::", 0) == 0) {
+                fs::path rest = module_name_to_path(imp.substr(5)); // "io.qk"
+                fs::path win_root = ctx.root_path / "std" / "win";
+                fs::path primary = win_root / rest;
+                fs::path dir = win_root / rest.parent_path() / rest.stem();
+
+                if (fs::exists(primary)) {
+                    dep = load_module(primary);
+                } else if (fs::exists(dir) && fs::is_directory(dir)) {
+                    for (const auto& dirent : fs::directory_iterator(dir)) {
+                        if (dirent.path().extension() != ".qk") continue;
+                        auto* m = load_module(dirent.path());
+                        if (m->name == imp) dep = m;
+                    }
+                }
+            }
+            // Pure-Quark std modules without a Windows override (e.g. std::string,
+            // std::vector) fall back to the shared std/ tree.
+            if (dep == nullptr)
+#endif
+            {
             // Try loading as module name (e.g. "std::io")
             fs::path mod_rel = module_name_to_path(imp);     // e.g. "std/io.qk"
             fs::path mod_dir_rel = mod_rel.parent_path() / mod_rel.stem(); // e.g. "std/io"
@@ -263,6 +287,7 @@ void ModuleManager::build_graph(Module* entry) {
                 }
 
                 if (dep) break;
+            }
             }
 
             if (!dep) {

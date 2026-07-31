@@ -39,9 +39,12 @@ private:
     x86::Mem temp_slot(Reg r, const IRFunction& fn);
 
     uint32_t ensure_symbol(const std::string& name, mc::SymBind bind, mc::SymType type,
-                           bool undefined, uint32_t section, uint64_t value, uint64_t size);
+                           bool undefined, uint32_t section, uint64_t value, uint64_t size,
+                           const std::string& import_dll = {},
+                           const std::string& import_name = {});
     uint32_t add_runtime_symbol(const std::string& name);
     uint32_t add_func_symbol(const IRFunction& fn);
+    uint32_t add_import_symbol(const std::string& dll, const std::string& name);
 
     void emit_func(const IRProgram& program, const IRFunction& fn);
     void emit_syscall_stub(const IRFunction& fn);

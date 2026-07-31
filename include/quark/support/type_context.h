@@ -21,6 +21,7 @@ struct GenericFuncDef {
     const ast::Type* return_type;
     const ast::Block* body = nullptr;
     std::vector<ast::Attribute> attributes;
+    std::vector<std::string> module_namespace;
 };
 
 class TypeContext {
