@@ -1,0 +1,167 @@
+// std::format
+//
+// Number-to-string formatting, used by `as str` casts.
+// Pure Quark implementation using global scratch buffers.
+
+module "std::format";
+
+struct Buf32 {
+    f0: u64;
+    f1: u64;
+    f2: u64;
+    f3: u64;
+};
+
+struct Buf64 {
+    f0: u64;
+    f1: u64;
+    f2: u64;
+    f3: u64;
+    f4: u64;
+    f5: u64;
+    f6: u64;
+    f7: u64;
+};
+
+@init mut g_buf32: Buf32;
+@init mut g_buf64: Buf64;
+
+// Write the decimal digits of `v` into `p` backwards, ending at index 30.
+// Returns the index just before the first digit.
+func digits_u64(v: u64, p: *i8) i32 {
+    mut val: u64 = v;
+    mut i: i32 = 30;
+    if (val == (0 as u64)) {
+        p[i] = (48 as i8);
+        i = i - 1;
+    } else {
+        while (val != (0 as u64)) {
+            q: u64 = val / (10 as u64);
+            r: u64 = val - q * (10 as u64);
+            p[i] = (48 as u64 + r) as i8;
+            val = q;
+            i = i - 1;
+        }
+    }
+    return i;
+}
+
+// Copy the digits [first+1..30] to the front of the buffer (offset by `neg`)
+// and NUL-terminate. Returns the buffer as a string.
+func finish(p: *i8, first: i32, neg: i32) str {
+    mut src: i32 = first + 1;
+    mut dst: i32 = neg;
+    while (src <= (30 as i32)) {
+        p[dst] = p[src];
+        src = src + 1;
+        dst = dst + 1;
+    }
+    if (neg != (0 as i32)) {
+        p[0] = (45 as i8);
+    }
+    p[dst] = 0 as i8;
+    return p as! str;
+}
+
+@export("qk_format_i64")
+func format_i64(v: i64) str {
+    p: *i8 = (&g_buf32) as! *i8;
+    mut neg: i32 = 0;
+    mut val: u64 = 0;
+    if (v < (0 as i64)) {
+        neg = 1;
+        val = (0 as i64 - v) as u64;
+    } else {
+        val = v as u64;
+    }
+    i: i32 = digits_u64(val, p);
+    return finish(p, i, neg);
+}
+
+@export("qk_format_u64")
+func format_u64(v: u64) str {
+    p: *i8 = (&g_buf32) as! *i8;
+    i: i32 = digits_u64(v, p);
+    return finish(p, i, 0);
+}
+
+@export("qk_format_f64")
+func format_f64(v: f64) str {
+    if (v != v) {
+        return "nan";
+    }
+    if (v > (1.7976931348623157e308 as f64)) {
+        return "inf";
+    }
+    if (v < (-1.7976931348623157e308 as f64)) {
+        return "-inf";
+    }
+    p: *i8 = (&g_buf64) as! *i8;
+    mut neg: i32 = 0;
+    mut x: f64 = v;
+    if (v < (0.0 as f64)) {
+        neg = 1;
+        x = (0.0 as f64) - v;
+    }
+    mut e: i32 = 0;
+    if (x >= (9.2233720368547758e18 as f64)) {
+        while (x >= (10.0 as f64)) {
+            x = x / (10.0 as f64);
+            e = e + 1;
+        }
+    }
+    ipart: i64 = x as i64;
+    i: i32 = digits_u64(ipart as u64, p);
+    mut src: i32 = i + 1;
+    mut dst: i32 = neg;
+    while (src <= (30 as i32)) {
+        p[dst] = p[src];
+        src = src + 1;
+        dst = dst + 1;
+    }
+    if (neg != (0 as i32)) {
+        p[0] = (45 as i8);
+    }
+    mut frac: f64 = x - (ipart as f64);
+    mut nd: i32 = 0;
+    if (frac != (0.0 as f64)) {
+        p[dst] = (46 as i8);
+        dst = dst + 1;
+        mut done: i32 = 0;
+        while ((nd < (6 as i32)) && (done == (0 as i32))) {
+            frac = frac * (10.0 as f64);
+            d: i64 = frac as i64;
+            if ((d < (0 as i64)) || (d > (9 as i64))) {
+                done = 1;
+            } else {
+                p[dst] = (48 as i64 + d) as i8;
+                dst = dst + 1;
+                nd = nd + 1;
+                frac = frac - (d as f64);
+                if (frac == (0.0 as f64)) {
+                    done = 1;
+                }
+            }
+        }
+        while ((nd > (0 as i32)) && ((p[dst - 1] as i32) == (48 as i32))) {
+            dst = dst - 1;
+            nd = nd - 1;
+        }
+        if (nd == (0 as i32)) {
+            dst = dst - 1;
+        }
+    }
+    if (e != (0 as i32)) {
+        p[dst] = (101 as i8);
+        dst = dst + 1;
+        je: i32 = digits_u64(e as u64, p);
+        mut src2: i32 = je + 1;
+        while (src2 <= (30 as i32)) {
+            p[dst] = p[src2];
+            src2 = src2 + 1;
+            dst = dst + 1;
+        }
+    }
+    p[dst] = 0 as i8;
+    return p as! str;
+}

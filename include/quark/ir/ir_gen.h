@@ -32,6 +32,9 @@ struct IRGenerator {
     // function name -> id
     std::unordered_map<std::string, uint32_t> function_ids;
 
+    // global variable name -> id
+    std::unordered_map<std::string, uint32_t> global_ids;
+
     // variable scopes
     std::vector<std::unordered_map<std::string, Local>> local_scopes;
 

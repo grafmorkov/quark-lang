@@ -658,7 +658,7 @@ ast::Expr* Parser::parse_prefix() {
         if (is_float) {
             return make_expr(ctx, ast::FloatExpr{ previous.number }, previous.loc);
         }
-        return make_expr(ctx, ast::IntExpr{ static_cast<int>(previous.number) }, previous.loc);
+        return make_expr(ctx, ast::IntExpr{ static_cast<int64_t>(previous.inum) }, previous.loc);
     }
 
     if (match(TOKEN_STRING)) {

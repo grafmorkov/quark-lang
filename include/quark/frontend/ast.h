@@ -56,7 +56,7 @@ namespace quark::ast {
     // Expressions
 
     struct IntExpr {
-        int value;
+        int64_t value;
     };
 
     struct BoolExpr {

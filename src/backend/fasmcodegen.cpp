@@ -33,6 +33,9 @@ namespace {
     }
 
     std::string function_name(const IRFunction& fn) {
+        if (!fn.export_name.empty()) {
+            return fn.export_name;
+        }
         return "fn_" + std::to_string(fn.id) + "__" + asm_mangle(fn.name);
     }
     std::string abi_name(const IRFunction& fn) {
@@ -60,6 +63,10 @@ namespace {
     }
       std::string string_label(uint32_t id) {
         return "str_" + std::to_string(id);
+    }
+
+    std::string global_label(uint32_t id) {
+        return "gbl_" + std::to_string(id);
     }
 
     std::string db_bytes(const std::string& s) {
@@ -230,8 +237,13 @@ namespace {
                 emit_line("    imul rax, rbx");
                 break;
             case IRBinaryOp::Div:
-                emit_line("    cqo");
-                emit_line("    idiv rbx");
+                if (is_signed_int(x.type_kind)) {
+                    emit_line("    cqo");
+                    emit_line("    idiv rbx");
+                } else {
+                    emit_line("    xor rdx, rdx");
+                    emit_line("    div rbx");
+                }
                 break;
             case IRBinaryOp::BitAnd:
                 emit_line("    and rax, rbx");
@@ -453,7 +465,19 @@ namespace {
 
                 if (x.target_kind == ast::TypeKind::String) {
                     if (is_integer(x.src_kind)) {
-                        emit_line("    mov rax, qword " + src);
+                        const int src_sz = cast_type_size(x.src_kind);
+                        const std::string ms = (src_sz == 4) ? "dword" : (src_sz == 2) ? "word" : "byte";
+                        if (is_signed_int(x.src_kind)) {
+                            if (src_sz == 4)      emit_line("    movsxd rdi, dword " + src);
+                            else if (src_sz == 2) emit_line("    movsx rdi, word " + src);
+                            else if (src_sz == 1) emit_line("    movsx rdi, byte " + src);
+                            else                  emit_line("    mov rdi, qword " + src);
+                        } else {
+                            if (src_sz == 4)      emit_line("    mov rdi, " + ms + " " + src);
+                            else if (src_sz == 2) emit_line("    movzx rdi, word " + src);
+                            else if (src_sz == 1) emit_line("    movzx rdi, byte " + src);
+                            else                  emit_line("    mov rdi, qword " + src);
+                        }
                         if (is_signed_int(x.src_kind)) {
                             emit_line("    call qk_format_i64");
                         } else {
@@ -462,9 +486,11 @@ namespace {
                     } else if (x.src_kind == ast::TypeKind::F32) {
                         emit_line("    movss xmm0, dword " + src);
                         emit_line("    cvtss2sd xmm0, xmm0");
+                        emit_line("    movsd qword " + dst + ", xmm0");
+                        emit_line("    mov rdi, qword " + dst);
                         emit_line("    call qk_format_f64");
                     } else {
-                        emit_line("    movsd xmm0, qword " + src);
+                        emit_line("    mov rdi, qword " + src);
                         emit_line("    call qk_format_f64");
                     }
                     emit_line("    mov qword " + dst + ", rax");
@@ -565,18 +591,33 @@ namespace {
                 emit_line("    lea rax, [rbp - " + std::to_string(offset) + "]");
                 emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
             },
+            [&](const IRLoadGlobal& x) {
+                emit_line("    mov rax, qword [" + global_label(x.global_id) + "]");
+                emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
+            },
+            [&](const IRStoreGlobal& x) {
+                emit_line("    mov rax, qword " + temp_slot(x.src, fn));
+                emit_line("    mov qword [" + global_label(x.global_id) + "], rax");
+            },
+            [&](const IRLoadGlobalAddr& x) {
+                emit_line("    lea rax, [" + global_label(x.global_id) + "]");
+                emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
+            },
         }, inst);
     }
 
     void FasmCodeGenerator::emit_region_begin(const IRRegionBegin& x, const IRFunction& fn) {
         (void)fn;
         emit_line("    mov rbx, qword " + local_slot(x.region_local));
-        emit_line("    push rbx");
-        emit_line("    sub rsp, 32");
-        emit_line("    mov rcx, " + std::to_string(x.region_size));
-        emit_line("    call qk_std__arena___create");
-        emit_line("    add rsp, 32");
-        emit_line("    pop rbx");
+        // mmap(0, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)
+        emit_line("    mov rdi, 0");
+        emit_line("    mov rsi, " + std::to_string(x.region_size));
+        emit_line("    mov rdx, 3");
+        emit_line("    mov r10, 0x22");
+        emit_line("    mov r8, -1");
+        emit_line("    mov r9, 0");
+        emit_line("    mov rax, 9");
+        emit_line("    syscall");
         emit_line("    mov [rbx + 0], rax");
         emit_line("    mov qword [rbx + 8], 0");
         emit_line("    mov rax, " + std::to_string(x.region_size));
@@ -601,19 +642,20 @@ namespace {
         emit_line("    mov rax, [rbx + 8]");
         emit_line("    cmp rax, [rbx + 16]");
         emit_line("    jbe .region_ok_" + std::to_string(ok_label));
-        emit_line("    mov ecx, 1");
-        emit_line("    call qk_exit");
+        emit_line("    mov rdi, 1");
+        emit_line("    mov rax, 60");
+        emit_line("    syscall");
         emit_line(".region_ok_" + std::to_string(ok_label) + ":");
     }
 
     void FasmCodeGenerator::emit_region_end(const IRRegionEnd& x, const IRFunction& fn) {
         (void)fn;
         emit_line("    mov rax, qword " + local_slot(x.region_local));
-        emit_line("    mov rcx, [rax + 0]");
-        emit_line("    mov rdx, [rax + 16]");
-        emit_line("    sub rsp, 32");
-        emit_line("    call qk_std__arena___destroy");
-        emit_line("    add rsp, 32");
+        emit_line("    mov rdi, [rax + 0]");
+        emit_line("    mov rsi, [rax + 16]");
+        // munmap(ptr, size)
+        emit_line("    mov rax, 11");
+        emit_line("    syscall");
     }
     std::string FasmCodeGenerator::generate(const IRProgram& program) {
         out.str("");
@@ -637,18 +679,22 @@ namespace {
 #endif
 #ifndef _WIN32
         for (const auto& fn : program.functions) {
-            if (fn.is_extern) {
+            if (fn.is_extern && fn.syscall_number < 0) {
                 emit_line("extrn " + abi_name(fn));
             }
         }
-        emit_line("extrn qk_format_i64");
-        emit_line("extrn qk_format_u64");
-        emit_line("extrn qk_format_f64");
-        emit_line("extrn qk_exit");
         emit_line("public _start");
 #endif
         for (const auto& fn : program.functions) {
             if (fn.is_extern) {
+                if (fn.syscall_number >= 0) {
+                    emit_line(abi_name(fn) + ":");
+                    emit_line("    mov r10, rcx");
+                    emit_line("    mov rax, " + std::to_string(fn.syscall_number));
+                    emit_line("    syscall");
+                    emit_line("    ret");
+                    emit_line();
+                }
                 continue;
             }
             const std::size_t stack_size =
@@ -766,11 +812,11 @@ namespace {
         emit_line("    syscall");
 #endif
 #ifdef _WIN32
-        if (!program.strings.empty()) {
+        if (!program.strings.empty() || !program.globals.empty()) {
             emit_line("section '.data' data readable writeable");
         }
 #else
-        if (!program.strings.empty()) {
+        if (!program.strings.empty() || !program.globals.empty()) {
             emit_line("section '.data' writeable");
         }
 #endif
@@ -778,6 +824,11 @@ namespace {
         for (const auto& s : program.strings) {
             emit_line(string_label(s.id) + ":");
             emit_line(db_bytes(s.value));
+        }
+        for (uint32_t i = 0; i < program.globals.size(); ++i) {
+            const auto& g = program.globals[i];
+            emit_line(global_label(i) + ":");
+            emit_line("    rb " + std::to_string(g.size));
         }
         return out.str();
     }

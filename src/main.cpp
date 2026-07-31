@@ -14,6 +14,7 @@
 
 #include "quark/ir/ir_gen.h"
 #include "quark/backend/fasmcodegen.h"
+#include "quark/backend/native_backend.h"
 
 #include "quark/modules/module.h"
 #include "quark/linker/linker.h"
@@ -61,6 +62,14 @@ int main(int argc, char **argv)
             }
         }
 
+        // Always compile the pure-Quark format runtime (used by `as str` casts)
+        {
+            auto format_path = ctx.root_path / "std" / "format" / "format.qk";
+            if (std::filesystem::exists(format_path)) {
+                mm.load_module(format_path);
+            }
+        }
+
         mm.build_graph(entry);
         if (ctx.errors.has_errors()) return 1;
 
@@ -93,89 +102,63 @@ int main(int argc, char **argv)
             return 0;
         }
         // Codegen
-        quark::codegen::FasmCodeGenerator fasmCodegen;
         std::string asm_code;
-
-        asm_code = fasmCodegen.generate(irgen.program);
-
+#ifdef _WIN32
+        {
+            quark::codegen::FasmCodeGenerator fasmCodegen;
+            asm_code = fasmCodegen.generate(irgen.program);
+        }
+#endif
         if (opts.emit_asm) {
+            quark::codegen::FasmCodeGenerator fasmCodegen;
+            asm_code = fasmCodegen.generate(irgen.program);
             utils::logger::info("asm:");
             utils::logger::info(asm_code);
         }
-        // Write Asm File
+
         auto& root = ctx.root_path;
-        auto asm_path = root / "out.S";
 
-        {
-            std::ofstream file(asm_path);
-            file << asm_code;
-        }
-
-        // Build fasm
+        // Build
         if (opts.build || opts.run) {
         #ifdef _WIN32
-            auto fasm_path = root / "fasm" / "fasm.exe";
+            auto asm_path = root / "out.S";
             auto exe_path = root / "out.exe";
+            {
+                std::ofstream file(asm_path);
+                file << asm_code;
+            }
 
+            auto fasm_path = root / "fasm" / "fasm.exe";
             std::string build_cmd = fasm_path.string() + " " + asm_path.string() + " " + exe_path.string();
 
             if (std::system(build_cmd.c_str()) != 0) {
                 utils::logger::error("build failed\n");
                 return 1;
             }
+            std::filesystem::remove(asm_path);
         #else
-            auto fasm_path = root / "fasm" / "fasm";
             auto obj_path = root / "out.o";
             auto exe_path = root / "out";
 
-            // Assemble runtime files — only those whose modules have @link("name")
-            struct RuntimeAsm {
-                std::filesystem::path src;
-                std::string obj_name;
-            };
-            std::vector<RuntimeAsm> runtime_files;
-            for (auto* mod : mm.ordered_modules()) {
-                for (const auto& name : mod->linked) {
-                    runtime_files.push_back({
-                        root / "qkrt" / "linux" / (name + ".asm"),
-                        "qkrt_" + name + ".o"
-                    });
-                }
-            }
-
-            std::string link_objs;
-            for (const auto& r : runtime_files) {
-                auto obj = root / r.obj_name;
-                std::string cmd = fasm_path.string() + " " + r.src.string() + " " + obj.string();
-                if (std::system(cmd.c_str()) != 0) {
-                    utils::logger::error("build failed: runtime assembly\n");
-                    return 1;
-                }
-                if (!link_objs.empty()) link_objs += " ";
-                link_objs += obj.string();
-            }
-
-            // Assemble generated code
-            std::string asm_cmd = fasm_path.string() + " " + asm_path.string() + " " + obj_path.string();
-            if (std::system(asm_cmd.c_str()) != 0) {
-                utils::logger::error("build failed\n");
-                return 1;
+            // Native backend: IR -> instruction selection -> machine code -> ELF object
+            {
+                quark::codegen::NativeBackend nativeBackend;
+                auto elf_bytes = nativeBackend.generate(irgen.program);
+                std::ofstream file(obj_path, std::ios::binary);
+                file.write(
+                    reinterpret_cast<const char*>(elf_bytes.data()),
+                    static_cast<std::streamsize>(elf_bytes.size()));
             }
 
             // Link with ld
-            std::string link_cmd = "ld -o " + exe_path.string() + " " + obj_path.string() + " " + link_objs;
+            std::string link_cmd = "ld -o " + exe_path.string() + " " + obj_path.string();
             if (std::system(link_cmd.c_str()) != 0) {
                 utils::logger::error("link failed\n");
                 return 1;
             }
 
-            // Cleanup object files
-            for (const auto& r : runtime_files) {
-                std::filesystem::remove(root / r.obj_name);
-            }
             std::filesystem::remove(obj_path);
         #endif
-            std::filesystem::remove(asm_path);
         }
 
         // Run

@@ -1,74 +1,84 @@
 // std::arena
 //
-// Region-based memory allocator.
-// Allocate memory in bulk, free all at once.
+// Region (bump pointer) allocator built on top of mmap/munmap.
+// Pure Quark implementation.
 //
 // Usage:
 //   load "std::arena";
 //
-//   func main() i32 {
-//       mut r: Region = create_region(4096);
-//       p: *void = region_malloc(&r, 32);
-//       // use p...
-//       destroy_region(r);
-//       return 0;
-//   }
-//
-// Typed allocation:
-//   raw: *void = region_malloc(&r, 40);
-//   p: *i32 = raw as! *i32;
+//   mut r: std::arena::Region = std::arena::_create(1024);
+//   p: *i32 = std::arena::_region_bump(&r, 4) as! *i32;
 //   p[0] = 42;
-//
-// Global region:
-//   init_global_region(4096);
-//   r: *Region = global_region();
-//   p: *i32 = region_malloc(r, 16) as! *i32;
-//   p[0] = 42;
+//   std::arena::_destroy(&r);
 
-@link("arena") module "std::arena";
+module "std::arena";
 
-extern func _create(size: u64) *void;
-extern func _destroy(ptr: *void) void;
+@syscall(9) extern func sys_mmap(addr: u64, length: u64, prot: i64, flags: i64, fd: i64, offset: i64) i64;
+@syscall(11) extern func sys_munmap(addr: u64, length: u64) i64;
 
-extern func _region_mmap(size: u64) *void;
-extern func _region_munmap(ptr: *void, size: u64) void;
-extern func _region_bump(reg: *Region, size: u64) *void;
-extern func _global_region() *Region;
-extern func _init_global_region(size: u64) void;
-
-// A region is a chunk of memory. You allocate from it by bumping
-// an offset. When you destroy the region, all memory is freed at once.
 struct Region {
     data: *void;
     offset: u64;
     capacity: u64;
 };
 
-// create_region - create a new region of the given size in bytes.
-func create_region(size: u64) Region {
-    @init mut r: Region;
+@init mut g_global_region: Region;
+
+// _region_mmap - map `size` bytes of anonymous read/write memory.
+func _region_mmap(size: u64) *void {
+    mut r: i64 = sys_mmap(0 as u64, size, 3 as i64, (34 as i64), (-1 as i64), 0 as i64);
+    if (r < (0 as i64)) { return 0 as! *void; }
+    return (r as u64) as! *void;
+}
+
+// _region_munmap - unmap `size` bytes previously returned by _region_mmap.
+func _region_munmap(ptr: *void, size: u64) void {
+    if (ptr == (0 as! *void)) { return; }
+    sys_munmap((ptr as! u64), size);
+}
+
+// _region_bump - allocate `size` bytes from a region (16-byte aligned).
+// Returns NULL if the region has no space left.
+func _region_bump(mut reg: &Region, size: u64) *void {
+    mut a: u64 = size + (15 as u64);
+    a = a & ((-16 as i64) as u64);
+    off: u64 = reg.offset;
+    end: u64 = off + a;
+    if (end > reg.capacity) { return 0 as! *void; }
+    res: u64 = (reg.data as! u64) + off;
+    reg.offset = end;
+    return res as! *void;
+}
+
+// _create - create a new region backed by an mmap'd block of `size` bytes.
+func _create(size: u64) Region {
+    mut r: Region;
     r.data = _region_mmap(size);
     r.offset = 0;
     r.capacity = size;
     return r;
 }
 
-// destroy_region - free all memory in the region.
-func destroy_region(r: Region) void {
-    _region_munmap(r.data, r.capacity);
+// _destroy - unmap the backing memory of a region.
+func _destroy(mut reg: &Region) void {
+    _region_munmap(reg.data, reg.capacity);
+    reg.data = 0 as! *void;
+    reg.offset = 0;
+    reg.capacity = 0;
 }
 
-// region_malloc - allocate `size` bytes from the region.
-func region_malloc(r: *Region, size: u64) *void {
-    return _region_bump(r, size);
+// _global_region - returns the process-wide region used by std::string.
+func _global_region() &Region {
+    return &g_global_region;
 }
 
-// global_region - get the global region (lives for the whole program).
-func global_region() *Region {
-    return _global_region();
-}
-
-// init_global_region - initialize the global region with the given size.
-func init_global_region(size: u64) void {
-    _init_global_region(size);
+// _init_global_region - (re)allocate the global region backing memory.
+func _init_global_region(size: u64) void {
+    if (g_global_region.data != (0 as! *void)) {
+        _region_munmap(g_global_region.data, g_global_region.capacity);
+        g_global_region.data = 0 as! *void;
+    }
+    g_global_region.data = _region_mmap(size);
+    g_global_region.offset = 0;
+    g_global_region.capacity = size;
 }

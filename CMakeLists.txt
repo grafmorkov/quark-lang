@@ -20,6 +20,10 @@ add_library(libquark
     src/ir/ir_dump.cpp
     src/modules/modules.cpp
     src/backend/fasmcodegen.cpp
+    src/backend/x86_64.cpp
+    src/backend/isel.cpp
+    src/backend/elf_writer.cpp
+    src/backend/native_backend.cpp
     src/utils/file_manager.cpp
     src/utils/options.cpp
     src/utils/errors.cpp

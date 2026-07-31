@@ -2,6 +2,7 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 
 #include "quark/frontend/lexer.h"
 #include "quark/frontend/token.h"
@@ -132,14 +133,15 @@ namespace quark::lx {
             type,
             std::string_view(buffer.data() + start, pos - start),
             {},
+            0,
             {ctx.srcloc.file, token_line, token_column, static_cast<int>(pos - start)}
         };
     }
     Token Lexer::make_number() {
         Token tok = make_token(TOKEN_NUMBER);
-        tok.number = std::stod(
-            std::string(buffer.data() + start, pos - start)
-        );
+        std::string text = std::string(buffer.data() + start, pos - start);
+        tok.number = std::stod(text);
+        tok.inum = std::strtoull(text.c_str(), nullptr, 10);
         return tok;
     }
     Token Lexer::number() {
@@ -237,6 +239,7 @@ namespace quark::lx {
             TOKEN_STRING,
             std::string_view(buffer.data() + start + 1, pos - start - 2),
             {},
+            0,
             {ctx.srcloc.file, token_line, token_column, static_cast<int>(pos - start)}
         };
     }

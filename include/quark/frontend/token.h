@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -110,6 +111,7 @@ namespace quark{
             double number;    // TOKEN_NUMBER
             uint8_t char_val; // TOKEN_CHAR_LITERAL
         };
+        uint64_t inum = 0;    // TOKEN_NUMBER (integer literal, raw u64)
 
         SourceLocation loc;
     };

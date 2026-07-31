@@ -333,11 +333,19 @@ std::io::print("hello");
 std::io::exit(0);
 ```
 
-`extern` declares a function implemented in runtime assembly:
+`extern` declares a function implemented outside of Quark (system calls, native runtime, or another module):
 
 ```
 extern func print(text: str) void;
 ```
+
+Functions marked with `@syscall(N)` are lowered to the Linux syscall with number N:
+
+```
+@syscall(1) extern func sys_write(fd: i64, buf: str, len: i64) i64;
+```
+
+The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) is written in pure Quark on top of these syscalls.
 
 ### `using`
 
@@ -372,6 +380,8 @@ Supported attributes:
 | `@public`  | function / variable / field / struct | 0    | Make symbol visible outside the module               |
 | `@private` | function / variable / field / struct | 0    | Hide symbol from other modules                       |
 | `@hide`    | module                               | 0    | Make all module symbols private by default           |
+| `@syscall` | function (extern only)               | 1    | Lower function to Linux syscall `N`                  |
+| `@export`  | function                             | 1    | Use `name` as the function symbol in the object file |
 
 ### `@entry`
 
@@ -459,6 +469,36 @@ Applied to a module (place `@hide` on any top-level declaration). Makes all symb
 @public func api() i32    { return 2; }
 ```
 
+### `@syscall`
+
+Declares an `extern` function implemented as a raw Linux syscall. The argument is the syscall number.
+
+```
+@syscall(1) extern func sys_write(fd: i64, buf: str, len: i64) i64;
+@syscall(60) extern func sys_exit(code: i64) void;
+```
+
+The generated wrapper follows the System V calling convention: arguments arrive in
+`rdi, rsi, rdx, rcx, r8, r9` (up to 6), then `rcx` is moved to `r10`, the syscall
+number is loaded into `rax`, and `syscall` is executed. The result is returned in `rax`.
+
+```
+extern func print(text: str) void;   // error: @syscall requires extern
+@syscall("1") extern func bad() i64; // error: argument must be an integer literal
+```
+
+### `@export`
+
+Assigns a fixed symbol name to a function in the generated object file (instead of the
+compiler-generated internal name `fn_<id>__<name>`). Useful for calling Quark functions
+from native code or for stable symbols during debugging.
+
+```
+@export("my_func") func do_work() i32 {
+    return 42;
+}
+```
+
 ---
 
 ## Regions & Pointers. Arrays
@@ -538,7 +578,7 @@ func main() {
 
 ```
 quark file.qk                     # generate out.S (assembly)
-quark file.qk --build             # compile to out.exe
+quark file.qk --build             # compile to out
 quark file.qk --run               # build and run
 quark file.qk --emit-ir           # print intermediate representation
 quark file.qk --emit-asm          # print generated assembly
@@ -546,7 +586,7 @@ quark file.qk --time              # print compilation time
 quark file.qk --no-compile        # semantic analysis only
 ```
 
-Requires: CMake 3.20+, flat assembler (fasm), C++20 compiler.
+Requires: CMake 3.20+, C++20 compiler. Flat assembler (fasm) is only needed on Windows.
 
 ---
 

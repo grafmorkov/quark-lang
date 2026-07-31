@@ -3,7 +3,8 @@
 Quark is an experimental systems programming language focused on explicit state,
 predictable semantics, and transparent memory management.
 
-The compiler currently targets fasm as a backend.
+On Linux the compiler uses a native backend (IR -> x86-64 machine code -> ELF).
+On Windows it targets fasm as a backend.
 
 > Note: Quark is still in development and not everything is done
 
@@ -38,7 +39,7 @@ The documentation is in **Doc.md** file
 ## Architecture
 
 ```text
-Load modules -> AST -> semantic analysis -> IR -> fasm -> native binary
+Load modules -> AST -> semantic analysis -> IR -> native binary
 ```
 
 ### Pipeline
@@ -47,8 +48,7 @@ Load modules -> AST -> semantic analysis -> IR -> fasm -> native binary
 1. Parse source code into AST
 2. Run semantic validation passes
 3. Generate intermediate representation
-4. Generate asm source code
-5. Compile with fasm
+4. Generate machine code (Linux: native backend; Windows: fasm -> exe)
 
 ---
 
@@ -58,6 +58,7 @@ Load modules -> AST -> semantic analysis -> IR -> fasm -> native binary
 * attributes
 * explicit behaviour
 * arena-based compiler memory management
+* stdlib written in pure Quark (io, format, heap, arena, vector, string)
 
 ---
 
@@ -66,7 +67,7 @@ Load modules -> AST -> semantic analysis -> IR -> fasm -> native binary
 ### Requirements
 
 * CMake 3.20+
-* Fasm compiler(copy and paste the fasm.exe/fasm in the fasm/ folder)
+* Fasm compiler (copy and paste the fasm.exe/fasm in the fasm/ folder) — Windows only
 
 Build the compiler:
 
@@ -111,7 +112,8 @@ Build and run:
 | AST                  | completed   |
 | Semantic analysis    | completed   |
 | IR                   | completed   |
-| FASM backend         | completed   |
+| FASM backend         | completed     |
+| Native backend       | completed (Linux) |
 | Optimizations        | planned     |
 | Self-hosted compiler | planned     |
 

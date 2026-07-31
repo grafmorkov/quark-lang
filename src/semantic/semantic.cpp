@@ -4,6 +4,7 @@
 #include "quark/support/compiler_context.h"
 #include "quark/support/symbol_path.h"
 #include "quark/attributes/attributes.h"
+#include <cstdint>
 
 #include "utils/logger.h"
 
@@ -905,6 +906,20 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
         analyze_attribute(attr, attrs::AttributeTarget::Function);
     }
 
+    for (const auto& attr : func.attributes) {
+        if (attr.name == "syscall") {
+            if (!func.is_extern) {
+                ctx.errors.add("@syscall can only be used on extern functions: " + func.name);
+                return;
+            }
+            const auto* num = std::get_if<ast::IntExpr>(&attr.args[0]->kind);
+            if (!num) {
+                ctx.errors.add("@syscall argument must be an integer literal: " + func.name);
+                return;
+            }
+        }
+    }
+
     if (!func.return_type) {
         ctx.errors.add("Function missing return type: " + func.name);
         return;
@@ -1057,8 +1072,11 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
     if (!expr) return nullptr;
 
     const ast::Type* ty = std::visit(overloaded{
-        [&](const ast::IntExpr&) -> const ast::Type* {
-            return ctx.types.get_builtin(TypeKind::I32);
+        [&](const ast::IntExpr& n) -> const ast::Type* {
+            if (n.value >= INT32_MIN && n.value <= INT32_MAX) {
+                return ctx.types.get_builtin(TypeKind::I32);
+            }
+            return ctx.types.get_builtin(TypeKind::I64);
         },
         [&](const ast::BoolExpr&) -> const ast::Type* {
             return ctx.types.get_builtin(TypeKind::Bool);
@@ -1079,7 +1097,7 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
             return analyze_assign(n);
         },
         [&](const ast::BinaryExpr& n) -> const ast::Type* {
-            return analyze_binary(n);
+            return analyze_binary(n, expr);
         },
         [&](const ast::UnaryExpr& n) -> const ast::Type* {
             return analyze_unary(n);
@@ -1292,7 +1310,7 @@ namespace {
     }
 }
 
-const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b) {
+const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b, const ast::Expr* expr) {
     const ast::Type* l = analyze_expr(b.lhs);
     const ast::Type* r = analyze_expr(b.rhs);
 
@@ -1300,7 +1318,7 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b) {
 
     if (is_builtin_type_kind(l->kind) && is_builtin_type_kind(r->kind)) {
         if (!types_equal(l, r)) {
-            ctx.errors.add("Type mismatch in binary expression");
+            ctx.errors.add(expr->loc, "Type mismatch in binary expression");
             return nullptr;
         }
         return l;

@@ -105,6 +105,11 @@ struct IRString {
     std::string value;
 };
 
+struct IRGlobal {
+    std::string name;
+    uint32_t size;   // bytes in .data (8-byte aligned)
+};
+
 struct IRRegionBegin {
     Local region_local;  // local slot holding pointer to Region struct
     uint32_t region_size;
@@ -124,6 +129,21 @@ struct IRRegionEnd {
 struct IRAlloca {
     Reg dst;
     uint32_t offset; // cumulative byte offset from rbp (computed at IR gen time)
+};
+
+struct IRLoadGlobal {
+    Reg dst;
+    uint32_t global_id;
+};
+
+struct IRStoreGlobal {
+    uint32_t global_id;
+    Reg src;
+};
+
+struct IRLoadGlobalAddr {
+    Reg dst;
+    uint32_t global_id;
 };
 
 struct IRLoadElement {
@@ -161,7 +181,10 @@ using IRInst = std::variant<
     IRRegionBegin,
     IRRegionAlloc,
     IRRegionEnd,
-    IRAlloca
+    IRAlloca,
+    IRLoadGlobal,
+    IRStoreGlobal,
+    IRLoadGlobalAddr
 >;
 
 struct IRFunction {
@@ -178,11 +201,14 @@ struct IRFunction {
     bool is_extern = false;
     bool is_entry = false;
     bool sret = false;   // returns struct via hidden pointer arg
+    int64_t syscall_number = -1;   // >= 0 for extern functions lowered to a raw syscall
+    std::string export_name;       // overrides the asm symbol name (@export)
 };
 
 struct IRProgram {
     std::vector<IRFunction> functions;
     std::vector<IRString> strings;
+    std::vector<IRGlobal> globals;
 
     void dump() const;
 };

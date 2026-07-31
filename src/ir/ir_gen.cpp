@@ -121,7 +121,8 @@ bool is_declaration_stmt(const ast::Stmt& stmt) {
            std::holds_alternative<ast::NamespaceStmt>(stmt.kind) ||
            std::holds_alternative<ast::StructDecl>(stmt.kind) ||
            std::holds_alternative<ast::EnumDecl>(stmt.kind) ||
-           std::holds_alternative<ast::UsingStmt>(stmt.kind);
+           std::holds_alternative<ast::UsingStmt>(stmt.kind) ||
+           std::holds_alternative<ast::VarDecl>(stmt.kind);
 }
 
 const ast::Type* symbol_type(const quark::symb_t::Symbol& sym) {
@@ -256,7 +257,10 @@ IRBinaryOp IRGenerator::map_op(ast::BinaryOp op) {
 
 void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) {
     program.functions.clear();
+    program.strings.clear();
+    program.globals.clear();
     function_ids.clear();
+    global_ids.clear();
     namespace_stack.clear();
     local_scopes.clear();
     type_scopes.clear();
@@ -326,6 +330,74 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
         register_function(fn.name);
     }
 
+    auto register_global = [&](const std::string& qname, const ast::Type* type) -> uint32_t {
+        auto it = global_ids.find(qname);
+        if (it != global_ids.end()) {
+            return it->second;
+        }
+
+        uint32_t sz = type_size(type, &ctx);
+        if (sz == 0) sz = 8;
+        if (sz < 8) sz = 8;
+
+        const uint32_t id = static_cast<uint32_t>(program.globals.size());
+        global_ids.emplace(qname, id);
+
+        IRGlobal g;
+        g.name = qname;
+        g.size = sz;
+        program.globals.push_back(std::move(g));
+
+        return id;
+    };
+
+    auto collect_globals_in_stmts =
+        [&](auto&& self,
+            const std::vector<ast::Stmt*>& stmts,
+            const modules::Module* module) -> void
+    {
+        for (const auto* stmt : stmts) {
+            if (!stmt) continue;
+
+            std::visit(overloaded{
+                [&](const ast::VarDecl& v) {
+                    auto* sym = ctx.symbols.lookup(v.name);
+                    if (!sym) {
+                        return;
+                    }
+                    auto* vs = std::get_if<quark::symb_t::VarSymbol>(&sym->data);
+                    if (!vs) {
+                        return;
+                    }
+
+                    const std::string qname = support::qualify_name(
+                        sym->owning_module, {}, v.name
+                    );
+                    register_global(qname, vs->type);
+                },
+                [&](const ast::NamespaceStmt& ns) {
+                    namespace_stack.push_back(ns.name);
+                    if (ns.body) {
+                        self(self, ns.body->stmts, module);
+                    }
+                    namespace_stack.pop_back();
+                },
+                [&](const auto&) {}
+            }, stmt->kind);
+        }
+    };
+
+    for (auto* mod : modules) {
+        if (!mod) continue;
+        for (const auto& part : mod->namespace_path) {
+            ctx.symbols.enter_namespace(part);
+        }
+        collect_globals_in_stmts(collect_globals_in_stmts, mod->ast, mod);
+        for (size_t i = 0; i < mod->namespace_path.size(); ++i) {
+            ctx.symbols.exit_namespace();
+        }
+    }
+
     for (auto* mod : modules) {
         if (!mod) continue;
         gen_module(*mod);
@@ -340,7 +412,6 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
 
         IRFunction* saved_func = current_func;
         uint32_t saved_next_reg = next_reg;
-        uint32_t saved_next_label = next_label;
         uint32_t saved_next_local = next_local;
         bool saved_terminated = current_terminated;
         auto saved_locals = local_scopes;
@@ -362,10 +433,9 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
         current_func->sret = is_sret;
         current_func->arg_count = static_cast<uint32_t>(fn.args.size()) + (is_sret ? 1 : 0);
 
-        next_reg = 0;
-        next_label = 0;
-        next_local = 0;
-        current_terminated = false;
+    next_reg = 0;
+    next_local = 0;
+    current_terminated = false;
 
         local_scopes.clear();
         type_scopes.clear();
@@ -387,7 +457,6 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
         if (fn.is_extern) {
             current_func = saved_func;
             next_reg = saved_next_reg;
-            next_label = saved_next_label;
             next_local = saved_next_local;
             current_terminated = saved_terminated;
             local_scopes = std::move(saved_locals);
@@ -415,7 +484,6 @@ void IRGenerator::gen_program(std::span<quark::modules::Module* const> modules) 
 
         current_func = saved_func;
         next_reg = saved_next_reg;
-        next_label = saved_next_label;
         next_local = saved_next_local;
         current_terminated = saved_terminated;
         local_scopes = std::move(saved_locals);
@@ -474,7 +542,6 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
 
     IRFunction* saved_func = current_func;
     uint32_t saved_next_reg = next_reg;
-    uint32_t saved_next_label = next_label;
     uint32_t saved_next_local = next_local;
     bool saved_terminated = current_terminated;
     auto saved_namespace = namespace_stack;
@@ -490,10 +557,18 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
     current_func_return_type = func.return_type;
 
     current_func->is_entry = false;
+    current_func->syscall_number = -1;
     for (const auto& attr : func.attributes) {
         if (attr.name == "entry") {
             current_func->is_entry = true;
-            break;
+        } else if (attr.name == "syscall" && !attr.args.empty()) {
+            if (const auto* num = std::get_if<ast::IntExpr>(&attr.args[0]->kind)) {
+                current_func->syscall_number = num->value;
+            }
+        } else if (attr.name == "export" && !attr.args.empty()) {
+            if (const auto* se = std::get_if<ast::StringExpr>(&attr.args[0]->kind)) {
+                current_func->export_name = se->value;
+            }
         }
     }
 
@@ -504,7 +579,6 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
     current_func->arg_count = static_cast<uint32_t>(func.args.size()) + (is_sret ? 1 : 0);
 
     next_reg = 0;
-    next_label = 0;
     next_local = 0;
     current_terminated = false;
 
@@ -528,7 +602,6 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
     if (func.is_extern) {
         current_func = saved_func;
         next_reg = saved_next_reg;
-        next_label = saved_next_label;
         next_local = saved_next_local;
         current_terminated = saved_terminated;
         namespace_stack = std::move(saved_namespace);
@@ -557,7 +630,6 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
 
     current_func = saved_func;
     next_reg = saved_next_reg;
-    next_label = saved_next_label;
     next_local = saved_next_local;
     current_terminated = saved_terminated;
     namespace_stack = std::move(saved_namespace);
@@ -600,6 +672,10 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
         },
 
         [&](const ast::VarDecl& node) {
+            if (!current_func) {
+                // Top-level globals are handled by the collection pass in gen_program.
+                return;
+            }
             if (!node.type) {
                 ctx.errors.add("Variable declaration missing type: " + node.name); return;
             }
@@ -994,9 +1070,23 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             }
 
             if (auto* vs = std::get_if<symb_t::VarSymbol>(&sym->data)) {
-                if (vs->const_value.has_value()) {
+                if (!vs->is_mut && vs->const_value.has_value()) {
                     const uint32_t dst = new_reg();
                     emit(IRLoadConst{ dst, static_cast<int32_t>(*vs->const_value) });
+                    return dst;
+                }
+
+                const std::string qname = support::qualify_name(
+                    sym->owning_module, {}, node.name
+                );
+                auto git = global_ids.find(qname);
+                if (git != global_ids.end()) {
+                    const uint32_t dst = new_reg();
+                    if (vs->type && vs->type->kind == ast::TypeKind::Struct) {
+                        emit(IRLoadGlobalAddr{ dst, git->second });
+                    } else {
+                        emit(IRLoadGlobal{ dst, git->second });
+                    }
                     return dst;
                 }
             }
@@ -1054,6 +1144,24 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                             return dst;
                         }
                     }
+
+                    // Global variable address
+                    auto* gsym = ctx.symbols.lookup(var->name);
+                    if (gsym) {
+                        if (auto* gvs = std::get_if<symb_t::VarSymbol>(&gsym->data)) {
+                            if (gvs->is_mut || !gvs->const_value.has_value()) {
+                                const std::string qname = support::qualify_name(
+                                    gsym->owning_module, {}, var->name
+                                );
+                                auto git = global_ids.find(qname);
+                                if (git != global_ids.end()) {
+                                    const uint32_t dst = new_reg();
+                                    emit(IRLoadGlobalAddr{ dst, git->second });
+                                    return dst;
+                                }
+                            }
+                        }
+                    }
                 }
                 ctx.errors.add("Cannot take address of non-local expression");
                 return 0;
@@ -1102,6 +1210,15 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
                 if (!symbol_is_mutable(*sym)) {
                     ctx.errors.add("Cannot assign to immutable variable: " + var->name); return 0;
+                }
+
+                const std::string qname = support::qualify_name(
+                    sym->owning_module, {}, var->name
+                );
+                auto git = global_ids.find(qname);
+                if (git != global_ids.end()) {
+                    emit(IRStoreGlobal{ git->second, value });
+                    return value;
                 }
 
                 ctx.errors.add("Global assignment lowering is not implemented yet: " + var->name); return 0;
