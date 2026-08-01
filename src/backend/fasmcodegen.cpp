@@ -665,13 +665,6 @@ namespace {
         emit_line("format PE64 console");
         emit_line("entry start");
         emit_line();
-        emit_line("include 'qkrt\\windows\\format.asm'");
-        emit_line("include 'qkrt\\windows\\arena.asm'");
-        emit_line("include 'qkrt\\windows\\heap.asm'");
-        emit_line("include 'qkrt\\windows\\file.asm'");
-        emit_line("include 'qkrt\\windows\\io.asm'");
-        emit_line("include 'qkrt\\windows\\string.asm'");
-        emit_line();
         emit_line("section '.text' code readable executable");
 #else
         emit_line("format ELF64");

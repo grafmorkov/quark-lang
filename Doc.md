@@ -345,7 +345,7 @@ Functions marked with `@syscall(N)` are lowered to the Linux syscall with number
 @syscall(1) extern func sys_write(fd: i64, buf: str, len: i64) i64;
 ```
 
-The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) is written in pure Quark on top of these syscalls.
+The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) is written in pure Quark: on Linux on top of syscalls, on Windows on top of `@import` (WinAPI).
 
 ### `using`
 
@@ -382,6 +382,7 @@ Supported attributes:
 | `@hide`    | module                               | 0    | Make all module symbols private by default           |
 | `@syscall` | function (extern only)               | 1    | Lower function to Linux syscall `N`                  |
 | `@export`  | function                             | 1    | Use `name` as the function symbol in the object file |
+| `@import`  | function (extern only)               | 1-2  | Import a function from a Windows DLL                 |
 
 ### `@entry`
 
@@ -471,7 +472,7 @@ Applied to a module (place `@hide` on any top-level declaration). Makes all symb
 
 ### `@syscall`
 
-Declares an `extern` function implemented as a raw Linux syscall. The argument is the syscall number.
+Declares an `extern` function implemented as a raw Linux syscall. The argument is the syscall number. (Windows uses `@import` instead.)
 
 ```
 @syscall(1) extern func sys_write(fd: i64, buf: str, len: i64) i64;
@@ -497,6 +498,26 @@ from native code or for stable symbols during debugging.
 @export("my_func") func do_work() i32 {
     return 42;
 }
+```
+
+### `@import`
+
+Declares an `extern` function implemented by a Windows DLL. The call is emitted
+through the PE import table (IAT) by the native backend. Windows only.
+
+The first argument is the DLL name. An optional second argument is the exported
+symbol name; when omitted, the Quark function name is used as the export name.
+
+```
+@import("kernel32.dll", "ExitProcess") extern func sys_exit_process(uExitCode: u32) void;
+@import("kernel32.dll") extern func GetTickCount() u32;   // imports GetTickCount
+```
+
+On Linux, use `@syscall` instead.
+
+```
+@import extern func bad() i64;          // error: @import requires a DLL name
+extern func also_bad() i64;             // error: @import requires extern
 ```
 
 ---
@@ -577,16 +598,16 @@ func main() {
 ## How to Build and Run
 
 ```
-quark file.qk                     # generate out.S (assembly)
-quark file.qk --build             # compile to out
-quark file.qk --run               # build and run
-quark file.qk --emit-ir           # print intermediate representation
-quark file.qk --emit-asm          # print generated assembly
-quark file.qk --time              # print compilation time
-quark file.qk --no-compile        # semantic analysis only
+quark file.qk -o output          # compile to native binary (ELF/PE32+)
+quark file.qk --emit-ir          # print intermediate representation
+quark file.qk --emit-asm         # print generated assembly
+quark file.qk --time             # print compilation time
+quark file.qk --no-compile       # semantic analysis only
 ```
 
-Requires: CMake 3.20+, C++20 compiler. Flat assembler (fasm) is only needed on Windows.
+The native backend generates machine code directly (x86-64): ELF on Linux, PE32+ on Windows. No external assembler is required.
+
+Requires: CMake 3.20+, C++20 compiler.
 
 ---
 

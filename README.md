@@ -3,8 +3,8 @@
 Quark is an experimental systems programming language focused on explicit state,
 predictable semantics, and transparent memory management.
 
-On Linux the compiler uses a native backend (IR -> x86-64 machine code -> ELF).
-On Windows it targets fasm as a backend.
+The compiler uses a native backend (IR -> x86-64 machine code) on both platforms:
+ELF executables on Linux, PE32+ executables on Windows. No external assembler is needed.
 
 > Note: Quark is still in development and not everything is done
 
@@ -48,7 +48,7 @@ Load modules -> AST -> semantic analysis -> IR -> native binary
 1. Parse source code into AST
 2. Run semantic validation passes
 3. Generate intermediate representation
-4. Generate machine code (Linux: native backend; Windows: fasm -> exe)
+4. Generate machine code (native backend: ELF on Linux, PE32+ on Windows)
 
 ---
 
@@ -59,6 +59,7 @@ Load modules -> AST -> semantic analysis -> IR -> native binary
 * explicit behaviour
 * arena-based compiler memory management
 * stdlib written in pure Quark (io, format, heap, arena, vector, string)
+* Windows stdlib via `@import` (WinAPI), no assembly runtime
 
 ---
 
@@ -67,7 +68,7 @@ Load modules -> AST -> semantic analysis -> IR -> native binary
 ### Requirements
 
 * CMake 3.20+
-* Fasm compiler (copy and paste the fasm.exe/fasm in the fasm/ folder) — Windows only
+* C++20 compiler
 
 Build the compiler:
 
@@ -83,23 +84,13 @@ cmake --build build
 
 ## Usage
 
-Generate asm source:
+Compile to a native executable:
 
 ```bash
-./quark file.qk
+./quark file.qk -o program
 ```
 
-Build executable:
-
-```bash
-./quark file.qk --build
-```
-
-Build and run:
-
-```bash
-./quark file.qk --run
-```
+Other options: `--emit-ir`, `--emit-asm`, `--no-compile`, `--time`.
 
 ---
 
@@ -112,8 +103,7 @@ Build and run:
 | AST                  | completed   |
 | Semantic analysis    | completed   |
 | IR                   | completed   |
-| FASM backend         | completed     |
-| Native backend       | completed (Linux) |
+| Native backend       | completed (Linux & Windows) |
 | Optimizations        | planned     |
 | Self-hosted compiler | planned     |
 

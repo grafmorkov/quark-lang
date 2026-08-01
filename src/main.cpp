@@ -109,13 +109,10 @@ int main(int argc, char **argv)
             utils::logger::info(asm_code);
         }
 
-        auto& root = ctx.root_path;
-
         // Build
-        if (opts.build || opts.run) {
+        if (opts.has_output) {
+            std::filesystem::path exe_path = opts.output_file;
         #ifdef _WIN32
-            auto exe_path = root / "out.exe";
-
             // Native backend: IR -> instruction selection -> machine code -> PE executable
             {
                 quark::codegen::NativeBackend nativeBackend;
@@ -126,8 +123,7 @@ int main(int argc, char **argv)
                     static_cast<std::streamsize>(pe_bytes.size()));
             }
         #else
-            auto obj_path = root / "out.o";
-            auto exe_path = root / "out";
+            std::filesystem::path obj_path = exe_path.string() + ".o";
 
             // Native backend: IR -> instruction selection -> machine code -> ELF object
             {
@@ -148,16 +144,6 @@ int main(int argc, char **argv)
 
             std::filesystem::remove(obj_path);
         #endif
-        }
-
-        // Run
-        if (opts.run) {
-            #ifdef _WIN32
-                auto run_path = root / "out.exe";
-            #else
-                auto run_path = root / "out";
-            #endif
-            std::system(run_path.string().c_str());
         }
 
         auto end = std::chrono::high_resolution_clock::now();

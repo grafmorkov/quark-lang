@@ -10,8 +10,6 @@ namespace utils::options{
         	std::unordered_map<std::string, Flag> flag_map = {
             	{"--emit-ir", Flag::EmitIR},
             	{"--emit-asm", Flag::EmitAsm},
-            	{"--build", Flag::Build},
-            	{"--run", Flag::Run},
             	{"--no-compile", Flag::NoCompile},
             	{"--time", Flag::Time},
         };
@@ -19,13 +17,20 @@ namespace utils::options{
         for (int i = 1; i < argc; ++i) {
             std::string arg = argv[i];
 
+            if (arg == "-o") {
+                if (i + 1 >= argc) {
+                    throw std::runtime_error("Option '-o' requires an output file");
+                }
+                opts.output_file = argv[++i];
+                opts.has_output = true;
+                continue;
+            }
+
             auto it = flag_map.find(arg);
             if (it != flag_map.end()) {
                 switch (it->second) {
                     case Flag::EmitIR: opts.emit_ir = true; break;
                     case Flag::EmitAsm: opts.emit_asm = true; break;
-                    case Flag::Build: opts.build = true; break;
-                    case Flag::Run: opts.run = true; break;
                     case Flag::NoCompile: opts.no_compile = true; break;
                     case Flag::Time: opts.time = true; break;
                 }

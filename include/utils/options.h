@@ -14,18 +14,16 @@ namespace utils::options {
     struct Options {
         bool emit_ir = false;
         bool emit_asm = false;
-        bool build = false;
-        bool run = false;
         bool no_compile = false;
         bool time = false;
         std::string input_file;
+        std::string output_file;
+        bool has_output = false;
     };
 
     enum class Flag {
         EmitIR,
         EmitAsm,
-        Build,
-        Run,
         NoCompile,
         Time
     };
