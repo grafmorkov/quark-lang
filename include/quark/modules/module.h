@@ -42,11 +42,22 @@ public:
     Module* load_entry(const fs::path& path);
     Module* load_module(const fs::path& path);
 
+    // Load a std:: module from the stdlib embedded into the binary.
+    // Returns nullptr if the module is not found in the embedded table.
+    Module* load_embedded(const std::string& imp);
+
     void build_graph(Module* entry);
 
     const std::vector<Module*>& ordered_modules() const;
 
 private:
+    Module* build_module(const std::string& file_key,
+                         const std::string& display_path,
+                         const std::string& source,
+                         const fs::path& disk_path);
+    Module* load_embedded_file(const std::string& rel_path, const std::string& source);
+    Module* load_embedded_module(const std::string& imp);
+
     std::string extract_module_name(const std::vector<ast::Stmt*>& ast,
                                     std::vector<ast::Attribute>& out_attrs) const;
     void topo_sort();

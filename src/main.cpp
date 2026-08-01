@@ -49,21 +49,9 @@ int main(int argc, char **argv)
 
         auto* entry = mm.load_entry(opts.input_file);
 
-        // Load std::attrs for runtime attribute lowering (e.g. @guard)
-        {
-            auto guard_path = ctx.root_path / "std" / "guard.qk";
-            if (std::filesystem::exists(guard_path)) {
-                auto* guard_mod = mm.load_module(guard_path);
-                auto io_path = ctx.root_path / "std" / "io.qk";
-                if (std::filesystem::exists(io_path)) {
-                    auto* io_mod = mm.load_module(io_path);
-                    guard_mod->dependencies.push_back(io_mod);
-                }
-            }
-        }
-
-        // Always compile the pure-Quark format runtime (used by `as str` casts)
-        {
+        // Always compile the pure-Quark format runtime (used by `as str` casts).
+        // It ships embedded in the binary; fall back to the source tree in dev builds.
+        if (mm.load_embedded("std::format") == nullptr) {
             auto format_path = ctx.root_path / "std" / "format" / "format.qk";
             if (std::filesystem::exists(format_path)) {
                 mm.load_module(format_path);

@@ -3,6 +3,7 @@
 #include "quark/frontend/lexer.h"
 #include "quark/frontend/parser.h"
 #include "quark/support/symbol_path.h"
+#include "quark_std_embedded.h"
 #include "utils/file_manager.h"
 #include "utils/logger.h"
 
@@ -58,6 +59,24 @@ fs::path module_name_to_path(const std::string& name) {
     return p;
 }
 
+// Same as module_name_to_path but always uses forward slashes (embedded table keys).
+std::string module_name_to_rel_path(const std::string& name) {
+    std::string out;
+    size_t start = 0;
+    while (true) {
+        size_t sep = name.find("::", start);
+        if (sep == std::string::npos) {
+            out += name.substr(start);
+            break;
+        }
+        out += name.substr(start, sep - start);
+        out += '/';
+        start = sep + 2;
+    }
+    out += ".qk";
+    return out;
+}
+
 } // namespace
 
 ModuleManager::ModuleManager(CompilerContext& ctx_)
@@ -81,8 +100,63 @@ Module* ModuleManager::load_module(const fs::path& path) {
         return it->second;
     }
 
-    // Read and split into lines
     std::string source = utils::io::read_file(canon);
+    return build_module(file_key, canon.string(), source, canon);
+}
+
+Module* ModuleManager::load_embedded(const std::string& imp) {
+    return load_embedded_module(imp);
+}
+
+Module* ModuleManager::load_embedded_file(const std::string& rel_path, const std::string& source) {
+    const std::string file_key = "<embedded>:" + rel_path;
+    if (auto it = loaded_files.find(file_key); it != loaded_files.end()) {
+        return it->second;
+    }
+    return build_module(file_key, rel_path, source, {});
+}
+
+Module* ModuleManager::load_embedded_module(const std::string& imp) {
+    const auto& table = embedded_std::std_modules();
+    if (table.empty()) return nullptr;
+
+    const std::string rest = imp.rfind("std::", 0) == 0 ? imp.substr(5) : imp;
+
+    // Candidate embedded paths, most specific first: platform overrides,
+    // then the shared std/ tree. Each is either a primary file or a directory.
+    std::vector<std::pair<std::string, bool>> candidates;
+#ifdef _WIN32
+    candidates.emplace_back("std/win/" + module_name_to_rel_path(rest), false);
+    candidates.emplace_back("std/win/" + rest, true);
+#endif
+    candidates.emplace_back("std/" + module_name_to_rel_path(rest), false);
+    candidates.emplace_back("std/" + rest, true);
+
+    for (const auto& [prefix, is_dir] : candidates) {
+        Module* found = nullptr;
+        for (const auto& [key, src] : table) {
+            const bool matches = is_dir
+                ? key.rfind(prefix + "/", 0) == 0
+                : key == prefix;
+            if (!matches) continue;
+
+            // Primary file: use it unconditionally (module name checked on load).
+            if (!is_dir) return load_embedded_file(key, src);
+
+            // Directory: load all files and keep the one declaring this module.
+            auto* m = load_embedded_file(key, src);
+            if (m->name == imp) found = m;
+        }
+        if (found) return found;
+    }
+    return nullptr;
+}
+
+Module* ModuleManager::build_module(const std::string& file_key,
+                                    const std::string& display_path,
+                                    const std::string& source,
+                                    const fs::path& disk_path) {
+    // Read and split into lines
     std::vector<std::string> lines;
     {
         size_t pos = 0;
@@ -96,7 +170,7 @@ Module* ModuleManager::load_module(const fs::path& path) {
             pos = end + 1;
         }
     }
-    ctx.srcloc.file = canon.string();
+    ctx.srcloc.file = display_path;
     ctx.srcloc.line = 1;
     ctx.srcloc.column = 1;
 
@@ -137,9 +211,12 @@ Module* ModuleManager::load_module(const fs::path& path) {
             namespace_path.push_back(module_name.substr(start, sep - start));
             start = sep + 2;
         }
-    } else {
-        namespace_path = module_namespace_from_path(canon, ctx.root_path);
+    } else if (!disk_path.empty()) {
+        namespace_path = module_namespace_from_path(disk_path, ctx.root_path);
         module_name = support::join_namespace(namespace_path);
+    } else {
+        ctx.errors.add("embedded module has no module declaration: " + display_path);
+        return nullptr;
     }
 
     // Find or create module by name
@@ -150,7 +227,7 @@ Module* ModuleManager::load_module(const fs::path& path) {
         mod = mod_it->second;
         // Merge AST
         mod->ast.insert(mod->ast.end(), ast.begin(), ast.end());
-        mod->file_paths.push_back(canon);
+        if (!disk_path.empty()) mod->file_paths.push_back(disk_path);
         // Merge imports (dedup)
         for (const auto& imp : imports) {
             if (std::find(mod->imports.begin(), mod->imports.end(), imp) == mod->imports.end()) {
@@ -161,8 +238,8 @@ Module* ModuleManager::load_module(const fs::path& path) {
         mod = memory::make_default<Module>(ctx.module_arena);
         mod->name = module_name;
         mod->namespace_path = namespace_path;
-        mod->path = canon;
-        mod->file_paths = { canon };
+        mod->path = disk_path;
+        mod->file_paths = disk_path.empty() ? std::vector<fs::path>{} : std::vector<fs::path>{ disk_path };
         mod->ast = std::move(ast);
         mod->imports = std::move(imports);
         mod->attributes = std::move(mod_attrs);
@@ -234,61 +311,71 @@ void ModuleManager::build_graph(Module* entry) {
         for (const auto& imp : mod->imports) {
             Module* dep = nullptr;
 
-#ifdef _WIN32
-            // Windows native backend: std modules are implemented with @import
-            // and live in <root>/std/win/ (e.g. "std::io" -> std/win/io/io.qk).
+            // 1. The standard library is embedded into the compiler binary.
             if (imp.rfind("std::", 0) == 0) {
-                fs::path rest = module_name_to_path(imp.substr(5)); // "io.qk"
-                fs::path win_root = ctx.root_path / "std" / "win";
-                fs::path primary = win_root / rest;
-                fs::path dir = win_root / rest.parent_path() / rest.stem();
-
-                if (fs::exists(primary)) {
-                    dep = load_module(primary);
-                } else if (fs::exists(dir) && fs::is_directory(dir)) {
-                    for (const auto& dirent : fs::directory_iterator(dir)) {
-                        if (dirent.path().extension() != ".qk") continue;
-                        auto* m = load_module(dirent.path());
-                        if (m->name == imp) dep = m;
-                    }
-                }
+                dep = load_embedded_module(imp);
             }
-            // Pure-Quark std modules without a Windows override (e.g. std::string,
-            // std::vector) fall back to the shared std/ tree.
-            if (dep == nullptr)
-#endif
+
+            // 2. Filesystem fallback (user modules, dev std overrides).
+            if (!dep)
+#ifdef _WIN32
             {
-            // Try loading as module name (e.g. "std::io")
-            fs::path mod_rel = module_name_to_path(imp);     // e.g. "std/io.qk"
-            fs::path mod_dir_rel = mod_rel.parent_path() / mod_rel.stem(); // e.g. "std/io"
+                // Windows native backend: std modules are implemented with @import
+                // and live in <root>/std/win/ (e.g. "std::io" -> std/win/io/io.qk).
+                if (imp.rfind("std::", 0) == 0) {
+                    fs::path rest = module_name_to_path(imp.substr(5)); // "io.qk"
+                    fs::path win_root = ctx.root_path / "std" / "win";
+                    fs::path primary = win_root / rest;
+                    fs::path dir = win_root / rest.parent_path() / rest.stem();
 
-            const std::vector<fs::path> bases = {
-                mod->path.parent_path(),
-                fs::current_path(),
-                ctx.root_path
-            };
-
-            for (const auto& base : bases) {
-                fs::path primary = base / mod_rel;      // "base/std/io.qk"
-                fs::path dir = base / mod_dir_rel;      // "base/std/io/"
-
-                // 1. Primary file
-                if (fs::exists(primary)) {
-                    dep = load_module(primary);
-                }
-
-                // 2. Module directory - scan for additional .qk files
-                if (fs::exists(dir) && fs::is_directory(dir)) {
-                    for (const auto& dirent : fs::directory_iterator(dir)) {
-                        if (dirent.path().extension() != ".qk") continue;
-                        auto* m = load_module(dirent.path());
-                        if (m->name == imp) dep = m;
+                    if (fs::exists(primary)) {
+                        dep = load_module(primary);
+                    } else if (fs::exists(dir) && fs::is_directory(dir)) {
+                        for (const auto& dirent : fs::directory_iterator(dir)) {
+                            if (dirent.path().extension() != ".qk") continue;
+                            auto* m = load_module(dirent.path());
+                            if (m->name == imp) dep = m;
+                        }
                     }
                 }
+                // Pure-Quark std modules without a Windows override (e.g. std::string,
+                // std::vector) fall back to the shared std/ tree.
+                if (dep == nullptr)
+#endif
+                {
+                    // Try loading as module name (e.g. "std::io")
+                    fs::path mod_rel = module_name_to_path(imp);     // e.g. "std/io.qk"
+                    fs::path mod_dir_rel = mod_rel.parent_path() / mod_rel.stem(); // e.g. "std/io"
 
-                if (dep) break;
+                    std::vector<fs::path> bases;
+                    if (!mod->path.empty()) bases.push_back(mod->path.parent_path());
+                    bases.push_back(fs::current_path());
+                    bases.push_back(ctx.root_path);
+
+                    for (const auto& base : bases) {
+                        fs::path primary = base / mod_rel;      // "base/std/io.qk"
+                        fs::path dir = base / mod_dir_rel;      // "base/std/io/"
+
+                        // 1. Primary file
+                        if (fs::exists(primary)) {
+                            dep = load_module(primary);
+                        }
+
+                        // 2. Module directory - scan for additional .qk files
+                        if (fs::exists(dir) && fs::is_directory(dir)) {
+                            for (const auto& dirent : fs::directory_iterator(dir)) {
+                                if (dirent.path().extension() != ".qk") continue;
+                                auto* m = load_module(dirent.path());
+                                if (m->name == imp) dep = m;
+                            }
+                        }
+
+                        if (dep) break;
+                    }
+                }
+#ifdef _WIN32
             }
-            }
+#endif
 
             if (!dep) {
                 ctx.errors.add("Unknown imported module: " + imp);
