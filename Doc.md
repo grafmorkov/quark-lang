@@ -62,12 +62,16 @@ func main() i32 {
 
 ## Control Flow
 
-### if / else
+### if / else if / else
 
 ```
 if (x < 10) {
     std::io::print("small");
-} else {
+}
+else if(x == 10){
+  std::io::print("medium");
+}
+else {
     std::io::print("big");
 }
 ```
