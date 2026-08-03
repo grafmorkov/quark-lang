@@ -16,7 +16,7 @@ ELF executables on Linux, PE32+ executables on Windows. No external assembler is
 load "std::io";
 using std::io;
 
-@entry func main() {
+@entry func main() i32 {
     value: i32 = 10;
     mut result: i32 = value + 2;
 
