@@ -1,0 +1,30 @@
+load "std::io";
+using std::io;
+
+func classify(n: i32) str {
+    mut s: str = "x";
+    if (n < 2) {
+        s = "small";
+    } else if (n < 5) {
+        s = "medium";
+    } else {
+        s = "large";
+    }
+    return s;
+}
+
+func main() i32 {
+    a: str = 1 as str;
+    b: str = 2 as str;
+    c: str = 3 as str;
+    println(a);
+    println(b);
+    println(c);
+    println(classify(1));
+    println(classify(3));
+    println(classify(9));
+    println(12345 as str);
+    println((-42) as str);
+    println(0 as str);
+    return 0;
+}

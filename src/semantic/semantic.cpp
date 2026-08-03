@@ -1052,6 +1052,28 @@ void SemanticAnalyzer::analyze_if(const ast::IfStmt& stmt) {
         analyze_block(stmt.then_block);
     }
 
+    if (stmt.else_if) {
+        analyze_else_if(*stmt.else_if);
+    }
+
+    if (stmt.else_block) {
+        analyze_block(stmt.else_block);
+    }
+}
+
+void SemanticAnalyzer::analyze_else_if(const ast::ElseIfStmt& stmt) {
+    if (stmt.condition) {
+        analyze_expr(stmt.condition);
+    }
+
+    if (stmt.then_block) {
+        analyze_block(stmt.then_block);
+    }
+
+    if (stmt.next) {
+        analyze_else_if(*stmt.next);
+    }
+
     if (stmt.else_block) {
         analyze_block(stmt.else_block);
     }

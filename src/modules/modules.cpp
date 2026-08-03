@@ -200,7 +200,7 @@ Module* ModuleManager::build_module(const std::string& file_key,
         module_name = mod_decl->name;
         mod_attrs = std::move(mod_decl->attributes);
 
-        // Split "std::io" → ["std", "io"]
+        // Split "std::io" -> ["std", "io"]
         size_t start = 0;
         while (true) {
             size_t sep = module_name.find("::", start);
@@ -387,7 +387,22 @@ void ModuleManager::build_graph(Module* entry) {
         }
     };
 
-    dfs(entry);
+    // Resolve the dependency graph for every loaded module. The entry module
+    // is normally the only root, but modules loaded directly (e.g. the
+    // embedded std::format runtime) are not reachable from it and still need
+    // their own imports resolved. Snapshot the map first since dfs() loads new
+    // modules while we iterate.
+    std::vector<Module*> roots;
+    roots.reserve(modules.size());
+    for (auto& [_, mod] : modules) {
+        if (mod) roots.push_back(mod);
+    }
+    std::sort(roots.begin(), roots.end(),
+        [](Module* a, Module* b) { return a->name < b->name; });
+
+    for (Module* mod : roots) {
+        dfs(mod);
+    }
 
     topo_sort();
 }

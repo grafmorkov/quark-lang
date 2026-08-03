@@ -48,6 +48,7 @@ class SemanticAnalyzer {
         void analyze_return(const ast::ReturnStmt& ret);
         void analyze_func(const ast::FuncStmt& func);
         void analyze_if(const ast::IfStmt& stmt);
+        void analyze_else_if(const ast::ElseIfStmt& stmt);
         void analyze_while(const ast::WhileStmt& stmt);
         void analyze_region(const ast::RegionStmt& reg);
         void analyze_using(const ast::UsingStmt& us);

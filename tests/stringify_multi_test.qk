@@ -1,0 +1,32 @@
+load "std::io";
+using std::io;
+
+// Regression test: every `as str` result must point to its own buffer.
+// Before the fix all results aliased one shared scratch buffer, so this
+// printed the last formatted value repeatedly instead of the true ones.
+
+func pick(value: i32) i32 {
+    mut result: i32 = 0;
+    if (value > 10) {
+        result = 1;
+    } else {
+        result = 4;
+    }
+    return result;
+}
+
+func main() i32 {
+    x: i32 = 20;
+    s1: str = x as str;
+    s2: str = 20 as str;
+    s3: str = 2 as str;
+    println(s1);
+    println(s2);
+    println(s3);
+
+    a: str = pick(20) as str;
+    b: str = pick(1) as str;
+    println(a);
+    println(b);
+    return 0;
+}

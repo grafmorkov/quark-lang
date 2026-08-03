@@ -406,10 +406,40 @@ ast::IfStmt Parser::parse_if() {
 
     ret.then_block = parse_block();
 
+    ret.else_if = nullptr;
+    ret.else_block = nullptr;
+
     if (match(TOKEN_ELSE)) {
-        ret.else_block = parse_block();
-    } else {
-        ret.else_block = nullptr;
+        if (check(TOKEN_IF)) {
+            advance();
+            ret.else_if = parse_else_if();
+        } else {
+            ret.else_block = parse_block();
+        }
+    }
+
+    return ret;
+}
+
+ast::ElseIfStmt* Parser::parse_else_if() {
+    auto* ret = memory::make_default<ast::ElseIfStmt>(ctx.ast_arena);
+
+    expect(TOKEN_LPAREN, "Expected '('");
+    ret->condition = parse_expr(0);
+    expect(TOKEN_RPAREN, "Expected ')'");
+
+    ret->then_block = parse_block();
+
+    ret->else_block = nullptr;
+    ret->next = nullptr;
+
+    if (match(TOKEN_ELSE)) {
+        if (check(TOKEN_IF)) {
+            advance();
+            ret->next = parse_else_if();
+        } else {
+            ret->else_block = parse_block();
+        }
     }
 
     return ret;

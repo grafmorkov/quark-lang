@@ -814,7 +814,10 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
 
             const uint32_t then_label = new_label();
             const uint32_t end_label  = new_label();
-            const uint32_t else_label = node.else_block ? new_label() : end_label;
+
+            const bool has_else_if = node.else_if != nullptr;
+            const bool has_else = node.else_block != nullptr;
+            const uint32_t else_label = (has_else || has_else_if) ? new_label() : end_label;
 
             emit(IRBranch{
                 cond,
@@ -828,24 +831,62 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                 gen_block(*node.then_block);
             }
 
-            const bool then_terminated = current_terminated;
-            if (!then_terminated) {
+            bool all_terminated = current_terminated;
+            if (!all_terminated) {
                 emit(IRJump{ end_label });
             }
 
-            bool else_terminated = false;
-            if (node.else_block) {
+            bool has_default = false;
+            if (has_else_if) {
+                emit(IRLabel{ else_label });
+                current_terminated = false;
+
+                for (auto* ei = node.else_if; ei; ei = ei->next) {
+                    const uint32_t ei_cond = gen_expr(*ei->condition);
+                    const uint32_t ei_then = new_label();
+                    const bool has_rest = ei->next || ei->else_block;
+                    const uint32_t ei_else = has_rest ? new_label() : end_label;
+                    emit(IRBranch{ ei_cond, ei_then, ei_else });
+
+                    emit(IRLabel{ ei_then });
+                    current_terminated = false;
+                    if (ei->then_block) {
+                        gen_block(*ei->then_block);
+                    }
+                    all_terminated = all_terminated && current_terminated;
+                    if (!current_terminated) {
+                        emit(IRJump{ end_label });
+                    }
+
+                    if (ei->next) {
+                        emit(IRLabel{ ei_else });
+                        continue;
+                    }
+
+                    if (ei->else_block) {
+                        emit(IRLabel{ ei_else });
+                        current_terminated = false;
+                        gen_block(*ei->else_block);
+                        all_terminated = all_terminated && current_terminated;
+                        if (!current_terminated) {
+                            emit(IRJump{ end_label });
+                        }
+                        has_default = true;
+                    }
+                }
+            } else if (has_else) {
                 emit(IRLabel{ else_label });
                 current_terminated = false;
                 gen_block(*node.else_block);
-                else_terminated = current_terminated;
-                if (!else_terminated) {
+                all_terminated = all_terminated && current_terminated;
+                if (!current_terminated) {
                     emit(IRJump{ end_label });
                 }
+                has_default = true;
             }
 
             emit(IRLabel{ end_label });
-            current_terminated = node.else_block && then_terminated && else_terminated;
+            current_terminated = has_default && all_terminated;
         },
 
         [&](const ast::WhileStmt& node) {

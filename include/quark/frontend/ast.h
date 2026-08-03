@@ -15,6 +15,7 @@ namespace quark::ast {
     struct Stmt;
     struct Block;
     struct Attribute;
+    struct ElseIfStmt;
 
     // Types
 
@@ -196,7 +197,15 @@ namespace quark::ast {
     struct IfStmt {
         Expr* condition;
         Block* then_block;
+        ElseIfStmt* else_if;  // first else-if branch in the chain (nullptr if none)
         Block* else_block;
+    };
+
+    struct ElseIfStmt {
+        Expr* condition;
+        Block* then_block;
+        Block* else_block;  // plain else block (nullptr if the chain continues)
+        ElseIfStmt* next;   // next else-if branch in the chain (nullptr if none)
     };
 
     struct WhileStmt {

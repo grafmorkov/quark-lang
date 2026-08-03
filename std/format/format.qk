@@ -1,9 +1,12 @@
 // std::format
 //
 // Number-to-string formatting, used by `as str` casts.
-// Pure Quark implementation using global scratch buffers.
+// Pure Quark implementation. Each result is copied into its own heap
+// allocation so multiple formatted strings can coexist.
 
 module "std::format";
+
+load "std::heap";
 
 struct Buf32 {
     f0: u64;
@@ -26,6 +29,25 @@ struct Buf64 {
 @init mut g_buf32: Buf32;
 @init mut g_buf64: Buf64;
 
+// Copy a NUL-terminated buffer into a fresh heap allocation and return it
+// as a string. Falls back to the scratch buffer if allocation fails.
+func to_heap(src: *i8) str {
+    mut n: i32 = 0;
+    while (src[n] != (0 as i8)) {
+        n = n + 1;
+    }
+    buf: *i8 = std::heap::heap_malloc((n + 1) as u64) as! *i8;
+    if (buf == (0 as! *i8)) {
+        return src as! str;
+    }
+    mut i: i32 = 0;
+    while (i <= n) {
+        buf[i] = src[i];
+        i = i + 1;
+    }
+    return buf as! str;
+}
+
 // Write the decimal digits of `v` into `p` backwards, ending at index 30.
 // Returns the index just before the first digit.
 func digits_u64(v: u64, p: *i8) i32 {
@@ -47,8 +69,8 @@ func digits_u64(v: u64, p: *i8) i32 {
 }
 
 // Copy the digits [first+1..30] to the front of the buffer (offset by `neg`)
-// and NUL-terminate. Returns the buffer as a string.
-func finish(p: *i8, first: i32, neg: i32) str {
+// and NUL-terminate.
+func finish(p: *i8, first: i32, neg: i32) void {
     mut src: i32 = first + 1;
     mut dst: i32 = neg;
     while (src <= (30 as i32)) {
@@ -60,7 +82,6 @@ func finish(p: *i8, first: i32, neg: i32) str {
         p[0] = (45 as i8);
     }
     p[dst] = 0 as i8;
-    return p as! str;
 }
 
 @export("qk_format_i64")
@@ -75,14 +96,16 @@ func format_i64(v: i64) str {
         val = v as u64;
     }
     i: i32 = digits_u64(val, p);
-    return finish(p, i, neg);
+    finish(p, i, neg);
+    return to_heap(p);
 }
 
 @export("qk_format_u64")
 func format_u64(v: u64) str {
     p: *i8 = (&g_buf32) as! *i8;
     i: i32 = digits_u64(v, p);
-    return finish(p, i, 0);
+    finish(p, i, 0);
+    return to_heap(p);
 }
 
 @export("qk_format_f64")
@@ -163,5 +186,5 @@ func format_f64(v: f64) str {
         }
     }
     p[dst] = 0 as i8;
-    return p as! str;
+    return to_heap(p);
 }

@@ -47,6 +47,7 @@ namespace quark::ps {
             ast::LoadStmt parse_load();
             ast::UsingStmt parse_using();
             ast::IfStmt parse_if();
+            ast::ElseIfStmt* parse_else_if();
             std::vector<ast::Attribute> parse_attributes();
             ast::WhileStmt parse_while();
             ast::ReturnStmt parse_return();

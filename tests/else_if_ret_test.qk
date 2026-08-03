@@ -1,0 +1,19 @@
+load "std::io";
+using std::io;
+
+func classify(value: i32) i32 {
+    if (value > 10) {
+        return 1;
+    } else if (value > 5) {
+        return 2;
+    } else {
+        return 3;
+    }
+}
+
+func main() i32 {
+    println(classify(20) as str);
+    println(classify(7) as str);
+    println(classify(1) as str);
+    return 0;
+}
