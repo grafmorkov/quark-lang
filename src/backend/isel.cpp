@@ -803,18 +803,15 @@ void ISel::emit_start(const IRProgram& program) {
         utils::logger::crash("No entry point found");
     }
 #ifdef _WIN32
-    // The loader calls the entry point with rsp ≡ 8 (mod 16); the Win64 ABI
-    // requires rsp ≡ 0 (mod 16) at every call site. Align before calling.
     text.sub_rsp_imm32(8);
-    // Optional runtime init (defined by the Windows stdlib via @export).
     if (symbol_index.count("qk_io_init") != 0) {
         text.call_rel32("qk_io_init");
     }
     text.call_rel32(function_name(*entry));
-    // Restore the loader's stack so `ret` returns into the loader.
-    text.add_rsp_imm32(8);
-    // Return into the loader; it terminates the process with rax as the exit code.
-    text.ret();
+
+    text.mov_r64_r64(x86::RCX, x86::RAX);
+    text.sub_rsp_imm32(32);
+    text.call_mem_rip("ExitProcess");
 #else
     text.call_rel32(function_name(*entry));
     text.mov_r64_r64(x86::RDI, x86::RAX);
@@ -891,6 +888,7 @@ void ISel::generate(const IRProgram& program) {
 #ifdef _WIN32
     add_import_symbol("kernel32.dll", "VirtualAlloc");
     add_import_symbol("kernel32.dll", "VirtualFree");
+    add_import_symbol("kernel32.dll", "ExitProcess");
 #endif
 
     emit_start(program);
