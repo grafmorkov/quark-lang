@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(Quark VERSION 1.0 LANGUAGES CXX)
+project(Quark VERSION 0.37 LANGUAGES CXX)
 include(FetchContent)
 
 # C++ standard
@@ -13,6 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(STD_EMBED_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/quark_std_embedded.h")
 file(GLOB_RECURSE STD_QK_FILES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/std/*.qk")
+
 add_custom_command(
     OUTPUT "${STD_EMBED_HEADER}"
     COMMAND ${CMAKE_COMMAND}
@@ -48,6 +49,11 @@ add_library(libquark
     src/support/symbol_path.cpp
     "${STD_EMBED_HEADER}"
 )
+
+set_target_properties(libquark PROPERTIES
+        PREFIX ""
+)
+
 FetchContent_Declare(arena-alloc
     GIT_REPOSITORY https://github.com/grafmorkov/quark-alloc.git
     GIT_TAG v1.0.0)
