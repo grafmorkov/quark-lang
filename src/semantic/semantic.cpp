@@ -654,7 +654,7 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
     }
 }
 
-void SemanticAnalyzer::analyze_stmt(const ast::Stmt* stmt) {
+void SemanticAnalyzer::analyze_stmt(ast::Stmt* stmt) {
     if (!stmt) return;
 
     std::visit(overloaded{
@@ -664,9 +664,12 @@ void SemanticAnalyzer::analyze_stmt(const ast::Stmt* stmt) {
         [&](const ast::NamespaceStmt& n) { analyze_namespace_stmt(n); },
         [&](const ast::ExprStmt& n) { analyze_expr_stmt(n); },
         [&](const ast::ReturnStmt& n) { analyze_return(n); },
+        [&](const ast::BreakStmt& n) { analyze_break(n); },
+        [&](const ast::ContinueStmt& n) { analyze_continue(n); },
         [&](const ast::FuncStmt& n) { analyze_func(n); },
         [&](const ast::IfStmt& n) { analyze_if(n); },
         [&](const ast::WhileStmt& n) { analyze_while(n); },
+        [&](ast::SwitchStmt& n) { analyze_switch(n); },
         [&](const ast::ModuleDecl&) {},
         [&](const ast::LoadStmt&) {},
         [&](const ast::UsingStmt& n) { analyze_using(n); },
@@ -691,6 +694,13 @@ std::optional<int64_t> SemanticAnalyzer::try_eval_const(const ast::Expr* expr) {
     }
     if (const auto* ve = std::get_if<ast::VarExpr>(&expr->kind)) {
         auto* sym = ctx.symbols.lookup(ve->name);
+        if (sym && std::holds_alternative<symb_t::VarSymbol>(sym->data)) {
+            return std::get<symb_t::VarSymbol>(sym->data).const_value;
+        }
+    }
+    if (const auto* ne = std::get_if<ast::NamespaceExpr>(&expr->kind)) {
+        auto tmp = ast::Expr{ *ne };
+        auto* sym = resolve_qualified(ctx.symbols, support::flatten_path(&tmp));
         if (sym && std::holds_alternative<symb_t::VarSymbol>(sym->data)) {
             return std::get<symb_t::VarSymbol>(sym->data).const_value;
         }
@@ -953,6 +963,18 @@ void SemanticAnalyzer::analyze_return(const ast::ReturnStmt& ret) {
     }
 }
 
+void SemanticAnalyzer::analyze_break(const ast::BreakStmt&) {
+    if (break_depth == 0) {
+        ctx.errors.add("'break' must be inside a loop or switch");
+    }
+}
+
+void SemanticAnalyzer::analyze_continue(const ast::ContinueStmt&) {
+    if (loop_depth == 0) {
+        ctx.errors.add("'continue' must be inside a loop");
+    }
+}
+
 void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
     if (func.is_extern && func.body) {
         ctx.errors.add("Extern function cannot have a body: " + func.name);
@@ -1084,10 +1106,93 @@ void SemanticAnalyzer::analyze_while(const ast::WhileStmt& stmt) {
         analyze_expr(stmt.condition);
     }
 
+    ++loop_depth;
+    ++break_depth;
     if (stmt.body) {
         analyze_block(stmt.body);
     }
+    --loop_depth;
+    --break_depth;
 }
+
+void SemanticAnalyzer::analyze_switch(ast::SwitchStmt& stmt) {
+    if (!stmt.condition) {
+        ctx.errors.add("Switch statement missing condition");
+        return;
+    }
+
+    const ast::Type* cond_type = analyze_expr(stmt.condition);
+    if (!cond_type) return;
+
+    auto is_switchable = [](TypeKind k) {
+        // Bool, I8..I64, U8..U64 (char is an alias for u8)
+        return k >= TypeKind::Bool && k <= TypeKind::U64;
+    };
+    if (!is_switchable(cond_type->kind)) {
+        ctx.errors.add(stmt.condition->loc, "Switch expression must be an integer, bool, or char type");
+        return;
+    }
+
+    std::unordered_set<int64_t> seen_values;
+
+    ++break_depth;
+
+    for (auto& cs : stmt.cases) {
+        if (cs.values.empty()) {
+            ctx.errors.add("Case is missing a value");
+            continue;
+        }
+
+        cs.const_values.clear();
+
+        for (auto* v : cs.values) {
+            if (!v) {
+                ctx.errors.add("Case is missing a value");
+                cs.const_values.push_back(std::nullopt);
+                continue;
+            }
+
+            const ast::Type* case_type = analyze_expr(v);
+            if (case_type && !is_switchable(case_type->kind)) {
+                ctx.errors.add(v->loc, "Case value must be an integer, bool, or char constant");
+            }
+            if (case_type && !is_assignable(cond_type, case_type)) {
+                ctx.errors.add(v->loc, "Case value type mismatch with switch expression");
+            }
+
+            // A mutable variable is not a compile-time constant
+            bool is_mutable_var = false;
+            if (const auto* ve = std::get_if<ast::VarExpr>(&v->kind)) {
+                if (auto* sym = ctx.symbols.lookup(ve->name)) {
+                    if (auto* vs = std::get_if<symb_t::VarSymbol>(&sym->data)) {
+                        is_mutable_var = vs->is_mut;
+                    }
+                }
+            }
+
+            std::optional<int64_t> cv = is_mutable_var ? std::nullopt : try_eval_const(v);
+            if (!cv) {
+                ctx.errors.add(v->loc, "Case value must be a compile-time constant");
+            } else {
+                if (!seen_values.insert(*cv).second) {
+                    ctx.errors.add(v->loc, "Duplicate case value: " + std::to_string(*cv));
+                }
+            }
+            cs.const_values.push_back(cv);
+        }
+
+        if (cs.body) {
+            analyze_block(cs.body);
+        }
+    }
+
+    if (stmt.default_block) {
+        analyze_block(stmt.default_block);
+    }
+
+    --break_depth;
+}
+
 void SemanticAnalyzer::analyze_region(const ast::RegionStmt& reg) {
     bool prev = is_in_region;
     is_in_region = true;

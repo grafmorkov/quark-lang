@@ -805,6 +805,24 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
             current_terminated = true;
         },
 
+        [&](const ast::BreakStmt&) {
+            if (break_labels.empty()) {
+                ctx.errors.add("'break' must be inside a loop or switch");
+                return;
+            }
+            emit(IRJump{ break_labels.back() });
+            current_terminated = true;
+        },
+
+        [&](const ast::ContinueStmt&) {
+            if (continue_labels.empty()) {
+                ctx.errors.add("'continue' must be inside a loop");
+                return;
+            }
+            emit(IRJump{ continue_labels.back() });
+            current_terminated = true;
+        },
+
         [&](const ast::IfStmt& node) {
             if (!node.condition) {
                 ctx.errors.add("If statement missing condition"); return;
@@ -906,9 +924,13 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
 
             emit(IRLabel{ body_label });
             current_terminated = false;
+            break_labels.push_back(end_label);
+            continue_labels.push_back(cond_label);
             if (node.body) {
                 gen_block(*node.body);
             }
+            break_labels.pop_back();
+            continue_labels.pop_back();
 
             if (!current_terminated) {
                 emit(IRJump{ cond_label });
@@ -916,6 +938,82 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
 
             emit(IRLabel{ end_label });
             current_terminated = false;
+        },
+
+        [&](const ast::SwitchStmt& node) {
+            if (!node.condition) {
+                ctx.errors.add("Switch statement missing condition"); return;
+            }
+
+            ast::TypeKind tk = ast::TypeKind::I32;
+            if (node.condition->resolved_type) {
+                tk = node.condition->resolved_type->kind;
+            }
+
+            const uint32_t cond = gen_expr(*node.condition);
+
+            const uint32_t end_label = new_label();
+            emit(IRLabel{ new_label() });   // entry point of the first case check
+
+            bool all_terminated = true;
+
+            break_labels.push_back(end_label);
+
+            for (const auto& cs : node.cases) {
+                if (cs.values.empty() || cs.const_values.size() != cs.values.size()) {
+                    ctx.errors.add("Case is missing a value"); return;
+                }
+
+                const uint32_t body_label = new_label();
+                const uint32_t after_label = new_label(); // entry to the next group / default
+
+                for (size_t i = 0; i < cs.values.size(); ++i) {
+                    if (!cs.const_values[i]) {
+                        ctx.errors.add("Case value was not resolved to a constant"); return;
+                    }
+
+                    const uint32_t case_const = new_reg();
+                    emit(IRLoadConst{ case_const, *cs.const_values[i] });
+
+                    const uint32_t cmp = new_reg();
+                    emit(IRBinary{ IRBinaryOp::Eq, cmp, cond, case_const, tk });
+
+                    if (i + 1 < cs.values.size()) {
+                        const uint32_t mid = new_label();
+                        emit(IRBranch{ cmp, body_label, mid });
+                        emit(IRLabel{ mid });
+                    } else {
+                        emit(IRBranch{ cmp, body_label, after_label });
+                    }
+                }
+
+                emit(IRLabel{ body_label });
+                current_terminated = false;
+                if (cs.body) {
+                    gen_block(*cs.body);
+                }
+                all_terminated = all_terminated && current_terminated;
+                if (!current_terminated) {
+                    emit(IRJump{ end_label });
+                }
+
+                emit(IRLabel{ after_label });
+            }
+
+            bool has_default = node.default_block != nullptr;
+            if (has_default) {
+                current_terminated = false;
+                gen_block(*node.default_block);
+                all_terminated = all_terminated && current_terminated;
+                if (!current_terminated) {
+                    emit(IRJump{ end_label });
+                }
+            }
+
+            emit(IRLabel{ end_label });
+            current_terminated = has_default && all_terminated;
+
+            break_labels.pop_back();
         },
 
         [&](const ast::StructDecl&) {

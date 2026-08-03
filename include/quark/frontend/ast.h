@@ -194,6 +194,10 @@ namespace quark::ast {
         Expr* value;
     };
 
+    struct BreakStmt {};
+
+    struct ContinueStmt {};
+
     struct IfStmt {
         Expr* condition;
         Block* then_block;
@@ -211,6 +215,18 @@ namespace quark::ast {
     struct WhileStmt {
         Expr* condition;
         Block* body;
+    };
+
+    struct CaseStmt {
+        std::vector<Expr*> values;                            // one or more constant case values sharing one body
+        Block* body;
+        std::vector<std::optional<int64_t>> const_values;     // constant values, filled by semantic analysis
+    };
+
+    struct SwitchStmt {
+        Expr* condition;
+        std::vector<CaseStmt> cases;
+        Block* default_block;   // nullptr if no default
     };
 
     struct FuncArg {
@@ -287,8 +303,11 @@ namespace quark::ast {
     using StmtKind = std::variant<
         ExprStmt,
         ReturnStmt,
+        BreakStmt,
+        ContinueStmt,
         IfStmt,
         WhileStmt,
+        SwitchStmt,
         VarDecl,
         StructDecl,
         FuncStmt,

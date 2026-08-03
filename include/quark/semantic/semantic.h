@@ -27,9 +27,11 @@ class SemanticAnalyzer {
         std::vector<std::string> namespace_path;
         modules::Module* current_module = nullptr;
         bool is_in_region = false;
+        int loop_depth = 0;           // nesting depth of while loops
+        int break_depth = 0;          // nesting depth of loops and switches ('break' targets)
         const std::unordered_map<std::string, const ast::Type*>* current_type_subst = nullptr;
 
-        void analyze_stmt(const ast::Stmt* stmt);
+        void analyze_stmt(ast::Stmt* stmt);
         const ast::Type* analyze_expr(ast::Expr* expr);
         const ast::Type* analyze_block(const ast::Block* block);
         const ast::Type* resolve_lvalue(const ast::Expr* expr);
@@ -46,10 +48,13 @@ class SemanticAnalyzer {
         void analyze_namespace_stmt(const ast::NamespaceStmt& stmt);
         void analyze_expr_stmt(const ast::ExprStmt& expr);
         void analyze_return(const ast::ReturnStmt& ret);
+        void analyze_break(const ast::BreakStmt& br);
+        void analyze_continue(const ast::ContinueStmt& cont);
         void analyze_func(const ast::FuncStmt& func);
         void analyze_if(const ast::IfStmt& stmt);
         void analyze_else_if(const ast::ElseIfStmt& stmt);
         void analyze_while(const ast::WhileStmt& stmt);
+        void analyze_switch(ast::SwitchStmt& stmt);
         void analyze_region(const ast::RegionStmt& reg);
         void analyze_using(const ast::UsingStmt& us);
         void analyze_attribute(const ast::Attribute& attribute, const attrs::AttributeTarget target);

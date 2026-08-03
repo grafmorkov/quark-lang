@@ -1,0 +1,107 @@
+load "std::io";
+using std::io;
+
+func classify(x: i32) i32 {
+    switch (x) {
+        case 1: {
+            return 10;
+        }
+        case 2: {
+            return 20;
+        }
+        case 3: {
+            return 30;
+        }
+        default: {
+            return 0;
+        }
+    }
+}
+
+func main() i32 {
+    mut result: i32 = 0;
+
+    switch (1) {
+        case 1: {
+            result = 100;
+        }
+        case 2: {
+            result = 200;
+        }
+        default: {
+            result = 300;
+        }
+    }
+    println(result as str);      // 100
+
+    switch (5) {
+        case 1: {
+            result = 1;
+        }
+        case 2: {
+            result = 2;
+        }
+        default: {
+            result = -1;
+        }
+    }
+    println(result as str);      // -1
+
+    switch (true) {
+        case true: {
+            result = 7;
+        }
+        case false: {
+            result = 8;
+        }
+    }
+    println(result as str);      // 7
+
+    c: char = 'b';
+    switch (c) {
+        case 'a': {
+            result = 1;
+        }
+        case 'b': {
+            result = 2;
+        }
+        default: {
+            result = 3;
+        }
+    }
+    println(result as str);      // 2
+
+    // shared body: multiple case labels
+    switch (3) {
+        case 1:
+        case 2: {
+            result = 11;
+        }
+        case 3:
+        case 4: {
+            result = 22;
+        }
+        default: {
+            result = 33;
+        }
+    }
+    println(result as str);      // 22
+
+    // no default: falls through when nothing matches
+    switch (42) {
+        case 1: {
+            result = 1;
+        }
+        case 2: {
+            result = 2;
+        }
+    }
+    println(result as str);      // 2 (unchanged)
+
+    println(classify(2) as str); // 20
+    println(classify(9) as str); // 0
+
+    // switch must be terminating when all branches return
+    x: i32 = classify(1);
+    return x - 10;
+}

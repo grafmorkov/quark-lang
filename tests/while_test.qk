@@ -1,0 +1,78 @@
+load "std::io";
+using std::io;
+
+func main() i32 {
+    // simple while loop
+    mut i: i32 = 0;
+    mut total: i32 = 0;
+    while (i < 5) {
+        i = i + 1;
+        total = total + i;
+    }
+    println(total as str);      // 1+2+3+4+5 = 15
+
+    // break exits the loop early
+    mut a: i32 = 0;
+    mut s: i32 = 0;
+    while (a < 10) {
+        a = a + 1;
+        if (a == 5) {
+            break;
+        }
+        s = s + a;
+    }
+    println(s as str);          // 1+2+3+4 = 10
+
+    // continue skips the current iteration
+    mut b: i32 = 0;
+    mut e: i32 = 0;
+    while (b < 10) {
+        b = b + 1;
+        if (b == 3) {
+            continue;
+        }
+        e = e + b;
+    }
+    println(e as str);          // 1+2+4+5+6+7+8+9+10 = 52
+
+    // break inside a switch exits only the switch
+    mut t: i32 = 0;
+    mut n: i32 = 0;
+    while (t < 3) {
+        t = t + 1;
+        switch (t) {
+            case 1: { n = n + 1; break; }
+            default: { n = n + 10; }
+        }
+        n = n + 100;            // reached after every switch
+    }
+    println(n as str);          // (1+100) + (10+100) + (10+100) = 321
+
+    // continue inside a switch continues the enclosing loop
+    mut k: i32 = 0;
+    mut c2: i32 = 0;
+    while (k < 5) {
+        k = k + 1;
+        switch (k) {
+            case 2:
+            case 4: { continue; }
+            default: { c2 = c2 + k; }
+        }
+    }
+    println(c2 as str);         // 1+3+5 = 9
+
+    // nested loops: break exits only the innermost loop
+    mut x: i32 = 0;
+    mut y: i32 = 0;
+    while (x < 3) {
+        x = x + 1;
+        while (y < 5) {
+            y = y + 1;
+            break;
+        }
+    }
+    println(x as str);          // 3
+    println(y as str);          // 3 (y advances once per outer iteration)
+
+    return 0;
+}

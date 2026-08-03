@@ -183,7 +183,12 @@ namespace quark::lx {
             case str_hash("if"): return make_token(TOKEN_IF);
             case str_hash("else"): return make_token(TOKEN_ELSE);
             case str_hash("while"):return make_token(TOKEN_WHILE);
+            case str_hash("switch"):return make_token(TOKEN_SWITCH);
+            case str_hash("case"):return make_token(TOKEN_CASE);
+            case str_hash("default"):return make_token(TOKEN_DEFAULT);
             case str_hash("return"):return make_token(TOKEN_RETURN);
+            case str_hash("break"):return make_token(TOKEN_BREAK);
+            case str_hash("continue"):return make_token(TOKEN_CONTINUE);
             case str_hash("func"): return make_token(TOKEN_FUNC);
 
             case str_hash("mut"): return make_token(TOKEN_MUT);

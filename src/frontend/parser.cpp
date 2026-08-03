@@ -186,7 +186,8 @@ void Parser::sync() {
         if (check(TOKEN_LBRACE)) nesting++;
         switch (current.type) {
             case TOKEN_FUNC: case TOKEN_STRUCT: case TOKEN_IF:
-            case TOKEN_WHILE: case TOKEN_RETURN: case TOKEN_NAMESPACE:
+            case TOKEN_WHILE: case TOKEN_SWITCH: case TOKEN_RETURN: case TOKEN_NAMESPACE:
+            case TOKEN_BREAK: case TOKEN_CONTINUE:
             case TOKEN_MODULE: case TOKEN_LOAD: case TOKEN_USING: case TOKEN_AT:
             case TOKEN_EXTERN: case TOKEN_REGION: case TOKEN_ENUM:
                 if (nesting == 0) return;
@@ -239,8 +240,22 @@ ast::Stmt Parser::parse_statement() {
         return ast::Stmt{ ast::ReturnStmt{ parse_return() } };
     }
 
+    if (match(TOKEN_BREAK)) {
+        expect(TOKEN_SEMICOLON, "Expected ';' after break");
+        return ast::Stmt{ ast::BreakStmt{} };
+    }
+
+    if (match(TOKEN_CONTINUE)) {
+        expect(TOKEN_SEMICOLON, "Expected ';' after continue");
+        return ast::Stmt{ ast::ContinueStmt{} };
+    }
+
     if (match(TOKEN_IF)) {
         return ast::Stmt{ ast::IfStmt{ parse_if() } };
+    }
+
+    if (match(TOKEN_SWITCH)) {
+        return ast::Stmt{ ast::SwitchStmt{ parse_switch() } };
     }
 
     if (match(TOKEN_WHILE)) {
@@ -453,6 +468,48 @@ ast::WhileStmt Parser::parse_while() {
     expect(TOKEN_RPAREN, "Expected ')'");
 
     ret.body = parse_block();
+
+    return ret;
+}
+
+ast::SwitchStmt Parser::parse_switch() {
+    ast::SwitchStmt ret;
+
+    expect(TOKEN_LPAREN, "Expected '(' after switch");
+    ret.condition = parse_expr(0);
+    expect(TOKEN_RPAREN, "Expected ')'");
+
+    expect(TOKEN_LBRACE, "Expected '{' after switch condition");
+
+    ret.default_block = nullptr;
+
+    while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
+        if (match(TOKEN_CASE)) {
+            ast::CaseStmt cs;
+            while (true) {
+                cs.values.push_back(parse_expr(0));
+                expect(TOKEN_COLON, "Expected ':' after case value");
+                if (!check(TOKEN_CASE)) break;
+                advance(); // consume the next 'case' keyword (shared body)
+            }
+            cs.body = parse_block();
+            ret.cases.push_back(std::move(cs));
+        } else if (match(TOKEN_DEFAULT)) {
+            if (ret.default_block) {
+                ctx.errors.add(previous.loc, previous.text.length(), "Multiple 'default' blocks in switch");
+            }
+            expect(TOKEN_COLON, "Expected ':' after default");
+            ret.default_block = parse_block();
+        } else {
+            ctx.errors.add(current.loc, current.text.length(), "Expected 'case' or 'default' in switch body");
+            while (!check(TOKEN_EOF) && !check(TOKEN_CASE) &&
+                   !check(TOKEN_DEFAULT) && !check(TOKEN_RBRACE)) {
+                advance();
+            }
+        }
+    }
+
+    expect(TOKEN_RBRACE, "Expected '}' after switch body");
 
     return ret;
 }

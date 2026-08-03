@@ -84,6 +84,77 @@ while (x > 0) {
 }
 ```
 
+### break / continue
+
+`break` immediately exits the nearest enclosing `while` loop or `switch`.
+
+`continue` skips the rest of the current loop iteration and starts the next one:
+
+```qk
+while (i < 10) {
+    i = i + 1;
+
+    if (i == 5) {
+        break;      // stop the loop
+    }
+
+    if (i == 3) {
+        continue;   // skip sum += i
+    }
+
+    sum = sum + i;
+}
+```
+
+Notes:
+
+- `break` can only be used inside a `while` loop or `switch`.
+- `continue` can only be used inside a `while` loop.
+- If a `switch` is inside a `while`, `break` leaves only the `switch`, while `continue` starts the next iteration of the enclosing loop.
+
+### switch / case / default
+
+`switch` selects one branch based on the value of an expression:
+
+```qk
+switch (x) {
+    case 1: {
+        std::io::print("one");
+    }
+
+    case 2: {
+        std::io::print("two");
+    }
+
+    default: {
+        std::io::print("other");
+    }
+}
+```
+
+Multiple `case` labels may share the same body, just like in C:
+
+```qk
+switch (x) {
+    case 1:
+    case 2: {
+        std::io::print("one or two");
+    }
+
+    default: {
+        std::io::print("other");
+    }
+}
+```
+
+Rules:
+
+- The `switch` expression must have type `bool`, `char`, or an integer type.
+- `case` values must be compile-time constants (literals, enum variants, or `const` variables).
+- Duplicate `case` values are a compile-time error.
+- `default` is optional. If no case matches and there is no `default`, execution simply continues after the `switch`.
+- A `switch` is considered terminating only if every possible branch (`case` and `default`) terminates (for example, by `return`).
+
 ### References
 
 References (`&T`) are non-owning aliases to existing variables. They have the same size as pointers (8 bytes) but provide compile-time safety.

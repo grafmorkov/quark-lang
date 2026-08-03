@@ -29,6 +29,12 @@ struct IRGenerator {
 
     bool current_terminated = false;
 
+    // break/continue jump targets.
+    // break_labels is pushed by while and switch;
+    // continue_labels is pushed only by while.
+    std::vector<Label> break_labels;
+    std::vector<Label> continue_labels;
+
     // function name -> id
     std::unordered_map<std::string, uint32_t> function_ids;
 
