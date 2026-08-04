@@ -1,11 +1,11 @@
-#include "quanta/backend/elf_writer.h"
+#include "quant/backend/elf_writer.h"
 
 #include <cstring>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-namespace quanta::codegen::elf {
+namespace quant::codegen::elf {
 
 namespace {
 
@@ -222,4 +222,4 @@ std::vector<uint8_t> write(const mc::Object& obj) {
     return std::move(b.data);
 }
 
-} // namespace quanta::codegen::elf
+} // namespace quant::codegen::elf

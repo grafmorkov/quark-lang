@@ -1,7 +1,7 @@
 // std::heap
 //
 // Heap memory allocator (malloc/free/realloc).
-// Pure Quanta implementation using mmap/munmap.
+// Pure Quant implementation using mmap/munmap.
 //
 // Uses a first-fit free-list on top of mmap'd chunks.
 // Each block has a 16-byte header:

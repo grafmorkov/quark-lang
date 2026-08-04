@@ -1,6 +1,6 @@
 // std::io
 //
-// Input/output functions. Pure Quanta implementation using inline syscalls.
+// Input/output functions. Pure Quant implementation using inline syscalls.
 //
 // Usage:
 //   load "std::io";

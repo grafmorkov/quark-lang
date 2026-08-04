@@ -1,9 +1,9 @@
-#include "quanta/modules/module.h"
-#include "quanta/support/compiler_context.h"
-#include "quanta/frontend/lexer.h"
-#include "quanta/frontend/parser.h"
-#include "quanta/support/symbol_path.h"
-#include "quanta_std_embedded.h"
+#include "quant/modules/module.h"
+#include "quant/support/compiler_context.h"
+#include "quant/frontend/lexer.h"
+#include "quant/frontend/parser.h"
+#include "quant/support/symbol_path.h"
+#include "quant_std_embedded.h"
 #include "utils/file_manager.h"
 #include "utils/logger.h"
 
@@ -13,7 +13,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace quanta::modules {
+namespace quant::modules {
 
 namespace fs = std::filesystem;
 
@@ -338,7 +338,7 @@ void ModuleManager::build_graph(Module* entry) {
                         }
                     }
                 }
-                // Pure-Quanta std modules without a Windows override (e.g. std::string,
+                // Pure-Quant std modules without a Windows override (e.g. std::string,
                 // std::vector) fall back to the shared std/ tree.
                 if (dep == nullptr)
 #endif
@@ -411,4 +411,4 @@ const std::vector<Module*>& ModuleManager::ordered_modules() const {
     return ordered;
 }
 
-} // namespace quanta::modules
+} // namespace quant::modules

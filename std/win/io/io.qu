@@ -30,7 +30,7 @@ module "std::io";
 @init mut g_stderr: i64;
 
 // Scratch location for the WinAPI "bytes transferred" out-parameter.
-// The Quanta `&` operator only works on non-scalars, so it's a struct.
+// The Quant `&` operator only works on non-scalars, so it's a struct.
 struct IoScratch { v: i64; };
 @init mut g_scratch: IoScratch;
 

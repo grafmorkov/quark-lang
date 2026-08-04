@@ -2,14 +2,14 @@
 #include <utility>
 #include <variant>
 
-#include "quanta/ir/ir_gen.h"
-#include "quanta/attributes/attributes.h"
-#include "quanta/support/symbol_path.h"
+#include "quant/ir/ir_gen.h"
+#include "quant/attributes/attributes.h"
+#include "quant/support/symbol_path.h"
 #include "utils/logger.h"
 
 using namespace utils::logger;
 
-namespace quanta::codegen {
+namespace quant::codegen {
 
 namespace {
 
@@ -39,7 +39,7 @@ symb_t::Symbol* resolve_qualified(CompilerContext& ctx, const std::vector<std::s
 
     if (path.size() >= 2) {
         auto* first_sym = ctx.symbols.lookup(path[0]);
-        if (first_sym && std::holds_alternative<quanta::symb_t::EnumSymbol>(first_sym->data)) {
+        if (first_sym && std::holds_alternative<quant::symb_t::EnumSymbol>(first_sym->data)) {
             return ctx.symbols.lookup(path.back());
         }
     }
@@ -95,7 +95,7 @@ int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
                 }
                 return 0;
             }
-            auto* ss = std::get_if<quanta::symb_t::StructSymbol>(&sym->data);
+            auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data);
             if (!ss) return 0;
             int total = 0;
             for (size_t i = 0; i < ss->field_names.size(); ++i) {
@@ -125,21 +125,21 @@ bool is_declaration_stmt(const ast::Stmt& stmt) {
            std::holds_alternative<ast::VarDecl>(stmt.kind);
 }
 
-const ast::Type* symbol_type(const quanta::symb_t::Symbol& sym) {
-    if (const auto* v = std::get_if<quanta::symb_t::VarSymbol>(&sym.data)) {
+const ast::Type* symbol_type(const quant::symb_t::Symbol& sym) {
+    if (const auto* v = std::get_if<quant::symb_t::VarSymbol>(&sym.data)) {
         return v->type;
     }
-    if (const auto* a = std::get_if<quanta::symb_t::FuncArgSymbol>(&sym.data)) {
+    if (const auto* a = std::get_if<quant::symb_t::FuncArgSymbol>(&sym.data)) {
         return a->type;
     }
     return nullptr;
 }
 
-bool symbol_is_mutable(const quanta::symb_t::Symbol& sym) {
-    if (const auto* v = std::get_if<quanta::symb_t::VarSymbol>(&sym.data)) {
+bool symbol_is_mutable(const quant::symb_t::Symbol& sym) {
+    if (const auto* v = std::get_if<quant::symb_t::VarSymbol>(&sym.data)) {
         return v->is_mut;
     }
-    if (const auto* a = std::get_if<quanta::symb_t::FuncArgSymbol>(&sym.data)) {
+    if (const auto* a = std::get_if<quant::symb_t::FuncArgSymbol>(&sym.data)) {
         return a->is_mut;
     }
     return false;
@@ -181,7 +181,7 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
         ctx.errors.add("Unknown struct: " + base_type->struct_name); return {};
     }
 
-    auto* ss = std::get_if<quanta::symb_t::StructSymbol>(&sym->data);
+    auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data);
     if (!ss) {
         ctx.errors.add("Invalid struct symbol: " + base_type->struct_name); return {};
     }
@@ -255,7 +255,7 @@ IRBinaryOp IRGenerator::map_op(ast::BinaryOp op) {
     }
 }
 
-void IRGenerator::gen_program(std::span<quanta::modules::Module* const> modules) {
+void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) {
     program.functions.clear();
     program.strings.clear();
     program.globals.clear();
@@ -365,7 +365,7 @@ void IRGenerator::gen_program(std::span<quanta::modules::Module* const> modules)
                     if (!sym) {
                         return;
                     }
-                    auto* vs = std::get_if<quanta::symb_t::VarSymbol>(&sym->data);
+                    auto* vs = std::get_if<quant::symb_t::VarSymbol>(&sym->data);
                     if (!vs) {
                         return;
                     }
@@ -501,7 +501,7 @@ void IRGenerator::gen_program(std::span<quanta::modules::Module* const> modules)
         type_scopes = std::move(saved_types);
     }
 }
-void IRGenerator::gen_module(const quanta::modules::Module& mod) {
+void IRGenerator::gen_module(const quant::modules::Module& mod) {
     auto saved_namespace = namespace_stack;
     auto saved_module = current_module;
 
@@ -778,7 +778,7 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                     current_func_return_type->kind == ast::TypeKind::Struct) {
                     auto* sym = lookup_struct(ctx, current_func_return_type->struct_name);
                     if (sym) {
-                        auto* ss = std::get_if<quanta::symb_t::StructSymbol>(&sym->data);
+                        auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data);
                         if (ss) {
                             for (size_t i = 0; i < ss->field_names.size(); ++i) {
                                 const uint32_t offset = static_cast<uint32_t>(i * 8u);
@@ -1156,7 +1156,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
         // Last resort: check if the symbol was imported via `using`
         if (auto* sym = resolve_qualified(ctx, path)) {
-            if (std::get_if<quanta::symb_t::FuncSymbol>(&sym->data)) {
+            if (std::get_if<quant::symb_t::FuncSymbol>(&sym->data)) {
                 std::vector<std::string> full = sym->owning_module;
                 full.insert(full.end(), path.begin(), path.end());
                 const std::string qualified = support::join_namespace(full);
@@ -1485,7 +1485,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             if (base_type && base_type->kind == ast::TypeKind::Struct) {
                 auto* sym = lookup_struct(ctx, base_type->struct_name);
                 if (sym) {
-                    auto* ss = std::get_if<quanta::symb_t::StructSymbol>(&sym->data);
+                    auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data);
                     if (ss) {
                         for (size_t i = 0; i < ss->field_names.size(); ++i) {
                             if (ss->field_names[i] == node.field && i < ss->field_attributes.size()) {
@@ -1584,7 +1584,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                     auto it = ctx.generic_return_types.find(mangled);
                     if (it != ctx.generic_return_types.end()) ret_type = it->second;
                 } else if (auto* fn_sym = resolve_qualified(ctx, callee_path)) {
-                    auto* fs = std::get_if<quanta::symb_t::FuncSymbol>(&fn_sym->data);
+                    auto* fs = std::get_if<quant::symb_t::FuncSymbol>(&fn_sym->data);
                     if (fs) ret_type = fs->return_type;
                 }
                 if (ret_type && ret_type->kind == ast::TypeKind::Struct) {
@@ -1706,4 +1706,4 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
     }, expr.kind);
 }
 
-} // namespace quanta::codegen
+} // namespace quant::codegen

@@ -1,6 +1,6 @@
-#include "quanta/support/type_context.h"
+#include "quant/support/type_context.h"
 
-namespace quanta::types {
+namespace quant::types {
 
 namespace {
     std::string mangle_name(const std::string& base, const std::vector<const Type*>& args) {

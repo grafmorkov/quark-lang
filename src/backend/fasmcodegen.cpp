@@ -1,7 +1,7 @@
 #include <cstring>
 
-#include "quanta/backend/fasmcodegen.h"
-namespace quanta::codegen{
+#include "quant/backend/fasmcodegen.h"
+namespace quant::codegen{
 namespace {
 
     int64_t double_bits(double d) {
@@ -825,4 +825,4 @@ namespace {
         }
         return out.str();
     }
-} // namespace quanta::codegen
+} // namespace quant::codegen

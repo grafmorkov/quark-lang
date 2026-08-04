@@ -1,7 +1,7 @@
-#include "quanta/linker/linker.h"
-#include "quanta/support/compiler_context.h"
+#include "quant/linker/linker.h"
+#include "quant/support/compiler_context.h"
 
-namespace quanta::linker{
+namespace quant::linker{
 
 namespace {
     bool has_entry_attr(const ast::FuncStmt& func) {

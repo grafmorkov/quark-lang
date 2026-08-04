@@ -5,7 +5,7 @@
 #include <chrono>
 #include <sstream>
 
-namespace quanta{
+namespace quant{
 
     struct SourceLocation {
         std::string file = "<unknown>";
@@ -14,7 +14,7 @@ namespace quanta{
         int length = 0;
     };
 }
-using namespace quanta;
+using namespace quant;
 
 namespace utils::logger{
     // diagnostics (WITH location)

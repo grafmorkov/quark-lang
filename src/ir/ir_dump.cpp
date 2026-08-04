@@ -1,6 +1,6 @@
 #include <iostream>
-#include "quanta/ir/ir.h"
+#include "quant/ir/ir.h"
 
-namespace quanta::codegen{
+namespace quant::codegen{
 
 }

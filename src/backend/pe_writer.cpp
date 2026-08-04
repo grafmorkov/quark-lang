@@ -1,4 +1,4 @@
-#include "quanta/backend/pe_writer.h"
+#include "quant/backend/pe_writer.h"
 
 #include <cstring>
 #include <cstdint>
@@ -8,7 +8,7 @@
 
 #include "utils/logger.h"
 
-namespace quanta::codegen::pe {
+namespace quant::codegen::pe {
 
 namespace {
 
@@ -382,4 +382,4 @@ std::vector<uint8_t> write(const mc::Object& obj) {
     return std::move(out.data);
 }
 
-} // namespace quanta::codegen::pe
+} // namespace quant::codegen::pe

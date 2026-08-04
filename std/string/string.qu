@@ -1,6 +1,6 @@
 // std::string
 //
-// String functions. Pure Quanta implementation.
+// String functions. Pure Quant implementation.
 // str_concat, str_sub, str_copy allocate memory from the global arena
 // (std::arena). See std/arena/arena.qu for _init_global_region.
 //

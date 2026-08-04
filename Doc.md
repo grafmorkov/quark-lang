@@ -1,4 +1,4 @@
-# Quanta Language
+# Quant Language
 
 ## Types
 
@@ -408,7 +408,7 @@ std::io::print("hello");
 std::io::exit(0);
 ```
 
-`extern` declares a function implemented outside of Quanta (system calls, native runtime, or another module):
+`extern` declares a function implemented outside of Quant (system calls, native runtime, or another module):
 
 ```
 extern func print(text: str) void;
@@ -420,7 +420,7 @@ Functions marked with `@syscall(N)` are lowered to the Linux syscall with number
 @syscall(1) extern func sys_write(fd: i64, buf: str, len: i64) i64;
 ```
 
-The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) is written in pure Quanta: on Linux on top of syscalls, on Windows on top of `@import` (WinAPI).
+The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) is written in pure Quant: on Linux on top of syscalls, on Windows on top of `@import` (WinAPI).
 
 ### `using`
 
@@ -566,7 +566,7 @@ extern func print(text: str) void;   // error: @syscall requires extern
 ### `@export`
 
 Assigns a fixed symbol name to a function in the generated object file (instead of the
-compiler-generated internal name `fn_<id>__<name>`). Useful for calling Quanta functions
+compiler-generated internal name `fn_<id>__<name>`). Useful for calling Quant functions
 from native code or for stable symbols during debugging.
 
 ```
@@ -581,7 +581,7 @@ Declares an `extern` function implemented by a Windows DLL. The call is emitted
 through the PE import table (IAT) by the native backend. Windows only.
 
 The first argument is the DLL name. An optional second argument is the exported
-symbol name; when omitted, the Quanta function name is used as the export name.
+symbol name; when omitted, the Quant function name is used as the export name.
 
 ```
 @import("kernel32.dll", "ExitProcess") extern func sys_exit_process(uExitCode: u32) void;
@@ -598,7 +598,7 @@ extern func also_bad() i64;             // error: @import requires extern
 ---
 
 ## Regions & Pointers. Arrays
-Quanta has region memory system. Pointers can only be declared in ```region{}```. If a region dies, all pointers are destroyed.
+Quant has region memory system. Pointers can only be declared in ```region{}```. If a region dies, all pointers are destroyed.
 ```
 region r {
     p: *void = alloc(32);

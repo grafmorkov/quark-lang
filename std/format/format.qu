@@ -1,7 +1,7 @@
 // std::format
 //
 // Number-to-string formatting, used by `as str` casts.
-// Pure Quanta implementation. Each result is copied into its own heap
+// Pure Quant implementation. Each result is copied into its own heap
 // allocation so multiple formatted strings can coexist.
 
 module "std::format";

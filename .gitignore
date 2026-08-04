@@ -64,4 +64,4 @@ coverage/
 *.swo
 *~
 /fasm/*
-quanta-self-hosted/
+quant-self-hosted/

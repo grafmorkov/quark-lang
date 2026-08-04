@@ -13,7 +13,7 @@ func main() i32 {
     std::io::print(fd as str);
     std::io::print_char(10 as i8);
 
-    mut written: i64 = std::io::write(fd, "Hello from Quanta!\n", 19 as i64);
+    mut written: i64 = std::io::write(fd, "Hello from Quant!\n", 18 as i64);
 
     std::io::print("wrote ");
     std::io::print(written as str);

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(Quanta VERSION 0.37 LANGUAGES CXX)
+project(Quant VERSION 0.37 LANGUAGES CXX)
 include(FetchContent)
 
 # C++ standard
@@ -10,14 +10,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Embed the stdlib (.qu sources) into the compiler binary.
-set(STD_EMBED_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/quanta_std_embedded.h")
+set(STD_EMBED_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/quant_std_embedded.h")
 file(GLOB_RECURSE STD_QU_FILES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/std/*.qu")
 
 add_custom_command(
     OUTPUT "${STD_EMBED_HEADER}"
     COMMAND ${CMAKE_COMMAND}
-        -DQUANTA_STD_DIR=${CMAKE_CURRENT_SOURCE_DIR}/std
+        -DQUANT_STD_DIR=${CMAKE_CURRENT_SOURCE_DIR}/std
         -DOUTPUT_HEADER=${STD_EMBED_HEADER}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_std.cmake
     DEPENDS ${STD_QU_FILES}
@@ -25,8 +25,8 @@ add_custom_command(
     VERBATIM
 )
 
-# Library libquanta (C++ files)
-add_library(libquanta
+# Library libquant (C++ files)
+add_library(libquant
     src/frontend/lexer.cpp
     src/frontend/parser.cpp
     src/semantic/semantic.cpp
@@ -50,33 +50,33 @@ add_library(libquanta
     "${STD_EMBED_HEADER}"
 )
 
-set_target_properties(libquanta PROPERTIES
+set_target_properties(libquant PROPERTIES
         PREFIX ""
 )
 
 FetchContent_Declare(arena-alloc
-    GIT_REPOSITORY https://github.com/grafmorkov/quanta-alloc.git
-    GIT_TAG v1.0.1)
+    GIT_REPOSITORY https://github.com/grafmorkov/quant-alloc.git
+    GIT_TAG v1.0.2)
 FetchContent_MakeAvailable(arena-alloc)
 
-add_library(quanta-alloc INTERFACE)
-target_include_directories(quanta-alloc INTERFACE ${arena-alloc_SOURCE_DIR})
+add_library(quant-alloc INTERFACE)
+target_include_directories(quant-alloc INTERFACE ${arena-alloc_SOURCE_DIR})
 
-target_include_directories(libquanta
+target_include_directories(libquant
     PUBLIC
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/include/utils
         ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
-target_compile_definitions(libquanta PUBLIC
-    QUANTA_ROOT="${PROJECT_SOURCE_DIR}"
+target_compile_definitions(libquant PUBLIC
+    QUANT_ROOT="${PROJECT_SOURCE_DIR}"
 )
-target_link_libraries(libquanta PUBLIC quanta-alloc)
+target_link_libraries(libquant PUBLIC quant-alloc)
 
-# Executable file Quanta (main.cpp)
+# Executable file Quant (main.cpp)
 add_executable(qu
     src/main.cpp
 )
 target_link_libraries(qu
-    PRIVATE libquanta
+    PRIVATE libquant
 )

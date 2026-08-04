@@ -1,9 +1,9 @@
-#include "quanta/support/symbol_path.h"
+#include "quant/support/symbol_path.h"
 #include "utils/logger.h"
 
 #include <variant>
 
-namespace quanta::support {
+namespace quant::support {
 
 namespace {
 
@@ -81,4 +81,4 @@ std::string qualify_name(
     return join_namespace(path);
 }
 
-} // namespace quanta::support
+} // namespace quant::support

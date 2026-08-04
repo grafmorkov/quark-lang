@@ -1,12 +1,12 @@
-# Quanta
+# Quant
 
-Quanta is an experimental systems programming language focused on explicit state,
+Quant is an experimental systems programming language focused on explicit state,
 predictable semantics, and transparent memory management.
 
 The compiler uses a native backend (IR -> x86-64 machine code) on both platforms:
 ELF executables on Linux, PE32+ executables on Windows. No external assembler is needed.
 
-> Note: Quanta is still in development and not everything is done
+> Note: Quant is still in development and not everything is done
 
 ---
 
@@ -58,7 +58,7 @@ Load modules -> AST -> semantic analysis -> IR -> native binary
 * attributes
 * explicit behaviour
 * arena-based compiler memory management
-* stdlib written in pure Quanta (io, format, heap, arena, vector, string)
+* stdlib written in pure Quant (io, format, heap, arena, vector, string)
 * Windows stdlib via `@import` (WinAPI), no assembly runtime
 
 ---
@@ -73,8 +73,8 @@ Load modules -> AST -> semantic analysis -> IR -> native binary
 Build the compiler:
 
 ```bash
-git clone https://github.com/grafmorkov/quark-lang.git
-cd quark-lang
+git clone https://github.com/grafmorkov/quanta-lang.git
+cd quanta-lang
 
 cmake -B build
 cmake --build build

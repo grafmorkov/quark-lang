@@ -1,12 +1,12 @@
-#include "quanta/backend/native_backend.h"
+#include "quant/backend/native_backend.h"
 
-#include "quanta/backend/elf_writer.h"
-#include "quanta/backend/isel.h"
+#include "quant/backend/elf_writer.h"
+#include "quant/backend/isel.h"
 #ifdef _WIN32
-#include "quanta/backend/pe_writer.h"
+#include "quant/backend/pe_writer.h"
 #endif
 
-namespace quanta::codegen {
+namespace quant::codegen {
 
 std::vector<uint8_t> NativeBackend::generate(const IRProgram& program) {
     ISel isel;
@@ -18,4 +18,4 @@ std::vector<uint8_t> NativeBackend::generate(const IRProgram& program) {
 #endif
 }
 
-} // namespace quanta::codegen
+} // namespace quant::codegen

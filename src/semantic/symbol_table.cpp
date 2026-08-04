@@ -1,6 +1,6 @@
-#include "quanta/semantic/symbol_table.h"
+#include "quant/semantic/symbol_table.h"
 #include "utils/logger.h"
-#include "quanta/support/compiler_context.h"
+#include "quant/support/compiler_context.h"
 
 
 #include <type_traits>
@@ -8,7 +8,7 @@
 
 using namespace utils::logger;
 
-namespace quanta::symb_t {
+namespace quant::symb_t {
     SymbolTable::SymbolTable(memory::Arena& a) : arena(a){
         global_namespace = memory::make<Namespace>(arena);
 

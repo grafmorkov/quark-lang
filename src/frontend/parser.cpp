@@ -1,15 +1,15 @@
-#include "quanta/frontend/parser.h"
-#include "quanta/frontend/ast.h"
-#include "quanta/frontend/token.h"
-#include "quanta/support/alloc.h"
-#include "quanta/support/symbol_path.h"
+#include "quant/frontend/parser.h"
+#include "quant/frontend/ast.h"
+#include "quant/frontend/token.h"
+#include "quant/support/alloc.h"
+#include "quant/support/symbol_path.h"
 #include "utils/logger.h"
 
 #include <utility>
 
 using namespace utils::logger;
 
-namespace quanta::ps {
+namespace quant::ps {
 
 namespace {
 
@@ -1043,4 +1043,4 @@ const ast::Type* Parser::parse_type(bool allow_implicit_void, const std::vector<
     ctx.errors.add(current.loc, current.text.length(), "Expected type");
     return nullptr;
 }
-} // namespace quanta::ps
+} // namespace quant::ps

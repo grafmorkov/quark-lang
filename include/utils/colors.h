@@ -48,4 +48,4 @@ constexpr const char* BRIGHT  = "1";
 
 #endif
 
-} // namespace quanta::colors
+} // namespace quant::colors

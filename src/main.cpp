@@ -4,20 +4,20 @@
 #include <fstream>
 #include <cstdlib>
 
-#include "quanta/frontend/lexer.h"
-#include "quanta/frontend/parser.h"
-#include "quanta/semantic/semantic.h"
-#include "quanta/support/compiler_context.h"
+#include "quant/frontend/lexer.h"
+#include "quant/frontend/parser.h"
+#include "quant/semantic/semantic.h"
+#include "quant/support/compiler_context.h"
 
 #include "utils/options.h"
 #include "utils/logger.h"
 
-#include "quanta/ir/ir_gen.h"
-#include "quanta/backend/fasmcodegen.h"
-#include "quanta/backend/native_backend.h"
+#include "quant/ir/ir_gen.h"
+#include "quant/backend/fasmcodegen.h"
+#include "quant/backend/native_backend.h"
 
-#include "quanta/modules/module.h"
-#include "quanta/linker/linker.h"
+#include "quant/modules/module.h"
+#include "quant/linker/linker.h"
 
 int main(int argc, char **argv)
 {
@@ -33,7 +33,7 @@ int main(int argc, char **argv)
 
         auto start = high_resolution_clock::now();
 
-        quanta::CompilerContext ctx;
+        quant::CompilerContext ctx;
 
         {
             ctx.root_path = utils::io::get_executable_directory();
@@ -44,12 +44,12 @@ int main(int argc, char **argv)
             }
         }
 
-        quanta::modules::ModuleManager mm(ctx);
-        quanta::linker::Linker linker(mm, ctx);
+        quant::modules::ModuleManager mm(ctx);
+        quant::linker::Linker linker(mm, ctx);
 
         auto* entry = mm.load_entry(opts.input_file);
 
-        // Always compile the pure-Quanta format runtime (used by `as str` casts).
+        // Always compile the pure-Quant format runtime (used by `as str` casts).
         // It ships embedded in the binary; fall back to the source tree in dev builds.
         if (mm.load_embedded("std::format") == nullptr) {
             auto format_path = ctx.root_path / "std" / "format" / "format.qu";
@@ -63,7 +63,7 @@ int main(int argc, char **argv)
 
         // Semantic analysis
         for (auto* mod : mm.ordered_modules()) {
-            quanta::sm::SemanticAnalyzer sem(
+            quant::sm::SemanticAnalyzer sem(
                 ctx,
                 mod->namespace_path
             );
@@ -79,7 +79,7 @@ int main(int argc, char **argv)
         if (ctx.errors.has_errors()) return 1;
 
         // IRGen
-        quanta::codegen::IRGenerator irgen(ctx);
+        quant::codegen::IRGenerator irgen(ctx);
         irgen.gen_program(mm.ordered_modules());
         if (ctx.errors.has_errors()) return 1;
 
@@ -91,7 +91,7 @@ int main(int argc, char **argv)
         }
         // Codegen
         if (opts.emit_asm) {
-            quanta::codegen::FasmCodeGenerator fasmCodegen;
+            quant::codegen::FasmCodeGenerator fasmCodegen;
             std::string asm_code = fasmCodegen.generate(irgen.program);
             utils::logger::info("asm:");
             utils::logger::info(asm_code);
@@ -107,7 +107,7 @@ int main(int argc, char **argv)
             
             // Native backend: IR -> instruction selection -> machine code -> PE executable
             {
-                quanta::codegen::NativeBackend nativeBackend;
+                quant::codegen::NativeBackend nativeBackend;
                 auto pe_bytes = nativeBackend.generate(irgen.program);
                 std::ofstream file(exe_path, std::ios::binary);
                 file.write(
@@ -119,7 +119,7 @@ int main(int argc, char **argv)
 
             // Native backend: IR -> instruction selection -> machine code -> ELF object
             {
-                quanta::codegen::NativeBackend nativeBackend;
+                quant::codegen::NativeBackend nativeBackend;
                 auto elf_bytes = nativeBackend.generate(irgen.program);
                 std::ofstream file(obj_path, std::ios::binary);
                 file.write(
