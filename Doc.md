@@ -194,9 +194,7 @@ References are automatically dereferenced when accessing fields or indexing:
 struct Point { x: i32; y: i32; }
 
 func main() i32 {
-    p: Point;
-    p.x = 10;
-    p.y = 10;
+    p: Point = {10, 20};
     r: &Point = &p;
     return r.x + r.y;   // field access through reference
 }
@@ -294,7 +292,7 @@ struct Point {
 }
 
 func main() i32 {
-    p: Point = Point{ x: 10, y: 20 };
+    p: Point = Point{ 10, 20 };
     return p.x + p.y;
 }
 ```
