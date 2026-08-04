@@ -521,6 +521,17 @@ const ast::Type* SemanticAnalyzer::canonicalize_struct_type(const ast::Type* typ
     }
     if (type->kind != TypeKind::Struct) return type;
 
+    // Canonicalize nested type arguments first so they are qualified
+    // consistently even when the outer struct name cannot be resolved
+    // (e.g. Vec<Vec<Token>> keeps a qualified inner arg).
+    std::vector<const ast::Type*> new_args;
+    bool args_changed = false;
+    for (const auto* arg : type->type_args) {
+        const ast::Type* new_arg = canonicalize_struct_type(arg);
+        new_args.push_back(new_arg);
+        if (new_arg != arg) args_changed = true;
+    }
+
     std::string base = type->struct_name;
     std::string unmangled;
     if (ctx.types.is_mangled_name(base, unmangled)) {
@@ -530,18 +541,25 @@ const ast::Type* SemanticAnalyzer::canonicalize_struct_type(const ast::Type* typ
         if (dollar != std::string::npos) base = base.substr(0, dollar);
     }
 
-    if (base.find("::") != std::string::npos) return type;
+    if (base.find("::") != std::string::npos) {
+        if (args_changed) return ctx.types.get_deferred_generic(base, new_args);
+        return type;
+    }
 
     auto* sym = lookup_struct(ctx, base);
     if (!sym || sym->owning_module.empty()) {
+        if (args_changed) return ctx.types.get_deferred_generic(base, new_args);
         return type;
     }
 
     std::string canonical = support::join_namespace(sym->owning_module) + "::" + base;
-    if (canonical == type->struct_name) return type;
+    if (canonical == type->struct_name) {
+        if (args_changed) return ctx.types.get_deferred_generic(base, new_args);
+        return type;
+    }
 
     if (!type->type_args.empty()) {
-        return ctx.types.get_deferred_generic(canonical, type->type_args);
+        return ctx.types.get_deferred_generic(canonical, new_args);
     }
     return ctx.types.get_struct(canonical);
 }
@@ -1663,14 +1681,17 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
     // Check if this is a generic function call
     const auto* generic_def = ctx.types.get_generic_func(qualified_func_name);
     if (generic_def && !call.type_args.empty()) {
-        // Build substitution map: param name -> concrete type
+        // Build substitution map: param name -> concrete type.
+        // Canonicalize each explicit type argument so struct types are
+        // qualified the same way declaration types are (e.g. Token becomes
+        // <module>::Token, Vec<Token> keeps a canonicalized inner arg).
         std::unordered_map<std::string, const Type*> subst;
         if (call.type_args.size() != generic_def->params.size()) {
             ctx.errors.add("Type argument count mismatch for generic function: " + qualified_func_name);
             return nullptr;
         }
         for (size_t i = 0; i < generic_def->params.size(); ++i) {
-            subst[generic_def->params[i]] = call.type_args[i];
+            subst[generic_def->params[i]] = canonicalize_struct_type(call.type_args[i]);
         }
 
         // Mangle the concrete function name
@@ -2088,6 +2109,11 @@ const ast::Type* SemanticAnalyzer::analyze_sizeof(const ast::SizeofExpr& n) {
     }
     if (current_type_subst && !current_type_subst->empty()) {
         type = ctx.types.substitute_type(type, *current_type_subst);
+    }
+    // Materialize a generic struct instantiation so its size can be computed
+    // (e.g. sizeof(Vec<Token>) inside a generic function body).
+    if (type->kind == TypeKind::Struct && !type->type_args.empty()) {
+        ctx.types.try_instantiate(type->struct_name, type->type_args);
     }
     int sz = ctx.types.type_size(type);
     if (sz <= 0) {

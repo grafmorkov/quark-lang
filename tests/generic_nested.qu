@@ -1,0 +1,14 @@
+load "std::io";
+load "std::vector";
+using std::vector;
+
+struct Token {
+    id: i32;
+};
+
+func main() {
+    @init mut tokens: Vec<Vec<Token>>;
+
+    vec_free<Vec<Token>>(tokens);
+    std::io::print("ok\n");
+}

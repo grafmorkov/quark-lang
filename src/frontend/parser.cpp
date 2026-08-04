@@ -229,6 +229,43 @@ Token Parser::peek(int n) {
     return buffer[n];
 }
 
+bool Parser::looks_like_generic_args() {
+    // `current` is '<'. Scan forward to decide whether the tokens inside the
+    // angle brackets form a comma-separated type argument list (which may
+    // contain nested generics, e.g. Vec<Token>) closed by a matching '>' that
+    // is immediately followed by '(' or '{'.
+    // Depth starts at 1 because the opening '<' is `current`.
+    int depth = 1;
+    for (int i = 0; ; ++i) {
+        Token t = peek(i);
+        switch (t.type) {
+            case TOKEN_IDENT:
+            case TOKEN_COLON_COLON:
+            case TOKEN_VOID: case TOKEN_BOOL:
+            case TOKEN_I8: case TOKEN_I16: case TOKEN_I32: case TOKEN_I64:
+            case TOKEN_U8: case TOKEN_U16: case TOKEN_U32: case TOKEN_U64:
+            case TOKEN_F32: case TOKEN_F64:
+            case TOKEN_STR_TYPE: case TOKEN_CHAR_TYPE:
+            case TOKEN_STAR: case TOKEN_AMP:
+                break;
+            case TOKEN_LT:
+                ++depth;
+                break;
+            case TOKEN_GT:
+                --depth;
+                if (depth == 0) {
+                    Token after = peek(i + 1);
+                    return after.type == TOKEN_LPAREN || after.type == TOKEN_LBRACE;
+                }
+                break;
+            case TOKEN_COMMA:
+                break;
+            default:
+                return false;
+        }
+    }
+}
+
 // Statements
 
 ast::Stmt Parser::parse_statement() {
@@ -849,8 +886,7 @@ ast::Expr* Parser::parse_postfix(ast::Expr* left) {
         if (check(TOKEN_LT)) {
             auto n1 = peek(0);
             if (n1.type == TOKEN_IDENT || is_type_token(n1.type)) {
-                auto n2 = peek(1);
-                if (n2.type == TOKEN_GT || n2.type == TOKEN_COMMA) {
+                if (looks_like_generic_args()) {
                     advance(); // consume <
                     std::vector<const ast::Type*> type_args;
                     do {

@@ -67,6 +67,7 @@ namespace quant::ps {
             ast::Expr* make_cast(ast::Expr* value, const ast::Type* target, ast::CastKind kind);
             const ast::Type* parse_type(bool allow_implicit_void = false, const std::vector<std::string>* type_params = nullptr);
             bool is_var_decl();
+            bool looks_like_generic_args();
         };
 
     enum class Precedence {

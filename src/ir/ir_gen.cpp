@@ -1672,6 +1672,9 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::SizeofExpr& node) -> uint32_t {
+            if (node.type->kind == TypeKind::Struct && !node.type->type_args.empty()) {
+                ctx.types.try_instantiate(node.type->struct_name, node.type->type_args);
+            }
             int sz = ctx.types.type_size(node.type);
             if (sz <= 0) {
                 ctx.errors.add("sizeof: zero or unknown size"); return 0;
