@@ -46,6 +46,11 @@ int main(int argc, char **argv)
 
         quant::modules::ModuleManager mm(ctx);
         quant::linker::Linker linker(mm, ctx);
+        
+        if (!std::filesystem::path(opts.input_file).has_extension())
+        {
+            opts.input_file += ".qu";
+        }
 
         auto* entry = mm.load_entry(opts.input_file);
 
