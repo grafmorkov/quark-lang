@@ -1,4 +1,4 @@
-#include "quark/backend/pe_writer.h"
+#include "quanta/backend/pe_writer.h"
 
 #include <cstring>
 #include <cstdint>
@@ -8,7 +8,7 @@
 
 #include "utils/logger.h"
 
-namespace quark::codegen::pe {
+namespace quanta::codegen::pe {
 
 namespace {
 
@@ -382,4 +382,4 @@ std::vector<uint8_t> write(const mc::Object& obj) {
     return std::move(out.data);
 }
 
-} // namespace quark::codegen::pe
+} // namespace quanta::codegen::pe

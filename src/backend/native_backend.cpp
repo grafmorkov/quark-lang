@@ -1,12 +1,12 @@
-#include "quark/backend/native_backend.h"
+#include "quanta/backend/native_backend.h"
 
-#include "quark/backend/elf_writer.h"
-#include "quark/backend/isel.h"
+#include "quanta/backend/elf_writer.h"
+#include "quanta/backend/isel.h"
 #ifdef _WIN32
-#include "quark/backend/pe_writer.h"
+#include "quanta/backend/pe_writer.h"
 #endif
 
-namespace quark::codegen {
+namespace quanta::codegen {
 
 std::vector<uint8_t> NativeBackend::generate(const IRProgram& program) {
     ISel isel;
@@ -18,4 +18,4 @@ std::vector<uint8_t> NativeBackend::generate(const IRProgram& program) {
 #endif
 }
 
-} // namespace quark::codegen
+} // namespace quanta::codegen

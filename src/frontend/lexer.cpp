@@ -4,14 +4,14 @@
 #include <cctype>
 #include <cstdlib>
 
-#include "quark/frontend/lexer.h"
-#include "quark/frontend/token.h"
+#include "quanta/frontend/lexer.h"
+#include "quanta/frontend/token.h"
 
 constexpr unsigned int str_hash(const char* str, int h = 0){
         return !str[h] ? 5381 : (str_hash(str, h + 1) * 33) ^ str[h];
 }
 
-namespace quark::lx {
+namespace quanta::lx {
 
     char Lexer::peek() {
         if (pos >= buffer.size()) return '\0';

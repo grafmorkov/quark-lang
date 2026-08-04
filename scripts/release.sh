@@ -14,9 +14,9 @@ cmake --build build
 
 echo "[4/5] Staging..."
 mkdir -p dist
-cp build/quark dist/
+cp build/qu dist/
 
 #echo "[5/5] Packaging..."
-#tar -czf quark-linux-x86_64.tar.gz -C dist quark
+#tar -czf qu-linux-x86_64.tar.gz -C dist qu
 
 echo "Done."

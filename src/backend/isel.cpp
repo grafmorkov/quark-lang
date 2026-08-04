@@ -1,9 +1,9 @@
 #include <cstring>
 
-#include "quark/backend/isel.h"
+#include "quanta/backend/isel.h"
 #include "utils/logger.h"
 
-namespace quark::codegen {
+namespace quanta::codegen {
 
 namespace {
 
@@ -900,4 +900,4 @@ void ISel::generate(const IRProgram& program) {
     obj.relocs = std::move(text.relocs);
 }
 
-} // namespace quark::codegen
+} // namespace quanta::codegen

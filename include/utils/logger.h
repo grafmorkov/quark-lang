@@ -5,7 +5,7 @@
 #include <chrono>
 #include <sstream>
 
-namespace quark{
+namespace quanta{
 
     struct SourceLocation {
         std::string file = "<unknown>";
@@ -14,7 +14,7 @@ namespace quark{
         int length = 0;
     };
 }
-using namespace quark;
+using namespace quanta;
 
 namespace utils::logger{
     // diagnostics (WITH location)

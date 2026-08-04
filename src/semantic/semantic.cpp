@@ -1,9 +1,9 @@
-#include "quark/semantic/semantic.h"
-#include "quark/frontend/ast.h"
-#include "quark/semantic/symbol_table.h"
-#include "quark/support/compiler_context.h"
-#include "quark/support/symbol_path.h"
-#include "quark/attributes/attributes.h"
+#include "quanta/semantic/semantic.h"
+#include "quanta/frontend/ast.h"
+#include "quanta/semantic/symbol_table.h"
+#include "quanta/support/compiler_context.h"
+#include "quanta/support/symbol_path.h"
+#include "quanta/attributes/attributes.h"
 #include <cstdint>
 
 #include "utils/logger.h"
@@ -16,7 +16,7 @@
 namespace {
 
 symb_t::Symbol* resolve_qualified(
-    quark::symb_t::SymbolTable& symbols,
+    quanta::symb_t::SymbolTable& symbols,
     const std::vector<std::string>& path
 ) {
     if (path.empty()) return nullptr;
@@ -44,16 +44,16 @@ symb_t::Symbol* resolve_qualified(
 
     if (path.size() >= 2) {
         auto* first_sym = symbols.lookup(path[0]);
-        if (first_sym && std::holds_alternative<quark::symb_t::EnumSymbol>(first_sym->data)) {
+        if (first_sym && std::holds_alternative<quanta::symb_t::EnumSymbol>(first_sym->data)) {
             return symbols.lookup(path.back());
         }
     }
 
-    return symbols.lookup(quark::support::join_namespace(path));
+    return symbols.lookup(quanta::support::join_namespace(path));
 }
 
-symb_t::Symbol* lookup_struct(quark::CompilerContext& ctx, const std::string& struct_name) {
-    return resolve_qualified(ctx.symbols, quark::support::split_path(struct_name));
+symb_t::Symbol* lookup_struct(quanta::CompilerContext& ctx, const std::string& struct_name) {
+    return resolve_qualified(ctx.symbols, quanta::support::split_path(struct_name));
 }
 
 struct NamespacePathGuard {
@@ -89,7 +89,7 @@ std::string generic_key(const std::vector<std::string>& ns_path,
 
 using namespace utils::logger;
 
-namespace quark::sm {
+namespace quanta::sm {
 
 namespace {
 
@@ -233,9 +233,9 @@ std::string attr_target_to_string(attrs::AttributeTarget target)
     return result;
 }
 struct ScopeGuard {
-    quark::symb_t::SymbolTable& symbols;
+    quanta::symb_t::SymbolTable& symbols;
 
-    explicit ScopeGuard(quark::symb_t::SymbolTable& s)
+    explicit ScopeGuard(quanta::symb_t::SymbolTable& s)
         : symbols(s) {
         symbols.enter_scope();
     }
@@ -246,9 +246,9 @@ struct ScopeGuard {
 };
 
 struct NamespaceGuard {
-    quark::symb_t::SymbolTable& symbols;
+    quanta::symb_t::SymbolTable& symbols;
 
-    explicit NamespaceGuard(quark::symb_t::SymbolTable& s, const std::string& name)
+    explicit NamespaceGuard(quanta::symb_t::SymbolTable& s, const std::string& name)
         : symbols(s) {
         symbols.enter_namespace(name);
     }
@@ -258,54 +258,54 @@ struct NamespaceGuard {
     }
 };
 
-const ast::Type* symbol_type(const quark::symb_t::Symbol& sym) {
-    if (const auto* v = std::get_if<quark::symb_t::VarSymbol>(&sym.data)) {
+const ast::Type* symbol_type(const quanta::symb_t::Symbol& sym) {
+    if (const auto* v = std::get_if<quanta::symb_t::VarSymbol>(&sym.data)) {
         return v->type;
     }
-    if (const auto* a = std::get_if<quark::symb_t::FuncArgSymbol>(&sym.data)) {
+    if (const auto* a = std::get_if<quanta::symb_t::FuncArgSymbol>(&sym.data)) {
         return a->type;
     }
     return nullptr;
 }
 
-bool symbol_is_enum_value(const quark::symb_t::Symbol& sym) {
-    if (const auto* v = std::get_if<quark::symb_t::VarSymbol>(&sym.data)) {
+bool symbol_is_enum_value(const quanta::symb_t::Symbol& sym) {
+    if (const auto* v = std::get_if<quanta::symb_t::VarSymbol>(&sym.data)) {
         return v->const_value.has_value() && !v->is_mut;
     }
     return false;
 }
 
-bool symbol_is_mutable(const quark::symb_t::Symbol& sym) {
-    if (const auto* v = std::get_if<quark::symb_t::VarSymbol>(&sym.data)) {
+bool symbol_is_mutable(const quanta::symb_t::Symbol& sym) {
+    if (const auto* v = std::get_if<quanta::symb_t::VarSymbol>(&sym.data)) {
         return v->is_mut;
     }
-    if (const auto* a = std::get_if<quark::symb_t::FuncArgSymbol>(&sym.data)) {
+    if (const auto* a = std::get_if<quanta::symb_t::FuncArgSymbol>(&sym.data)) {
         return a->is_mut;
     }
     return false;
 }
 
-bool symbol_is_initialized(const quark::symb_t::Symbol& sym) {
-    if (const auto* v = std::get_if<quark::symb_t::VarSymbol>(&sym.data)) {
+bool symbol_is_initialized(const quanta::symb_t::Symbol& sym) {
+    if (const auto* v = std::get_if<quanta::symb_t::VarSymbol>(&sym.data)) {
         return v->is_initialized;
     }
-    if (std::get_if<quark::symb_t::FuncArgSymbol>(&sym.data)) {
+    if (std::get_if<quanta::symb_t::FuncArgSymbol>(&sym.data)) {
         return true;
     }
-    if (std::get_if<quark::symb_t::StructSymbol>(&sym.data)) {
+    if (std::get_if<quanta::symb_t::StructSymbol>(&sym.data)) {
         return true;
     }
-    if (std::get_if<quark::symb_t::EnumSymbol>(&sym.data)) {
+    if (std::get_if<quanta::symb_t::EnumSymbol>(&sym.data)) {
         return true;
     }
-    if (std::get_if<quark::symb_t::FuncSymbol>(&sym.data)) {
+    if (std::get_if<quanta::symb_t::FuncSymbol>(&sym.data)) {
         return true;
     }
     return false;
 }
 
-void mark_symbol_initialized(quark::symb_t::Symbol& sym) {
-    if (auto* v = std::get_if<quark::symb_t::VarSymbol>(&sym.data)) {
+void mark_symbol_initialized(quanta::symb_t::Symbol& sym) {
+    if (auto* v = std::get_if<quanta::symb_t::VarSymbol>(&sym.data)) {
         v->is_initialized = true;
     }
 }
@@ -348,7 +348,7 @@ const ast::Type* resolve_struct_field(
         return nullptr;
     }
 
-    auto* ss = std::get_if<quark::symb_t::StructSymbol>(&sym->data);
+    auto* ss = std::get_if<quanta::symb_t::StructSymbol>(&sym->data);
     if (!ss) {
         ctx.errors.add("Invalid struct symbol: " + base_type->struct_name);
         return nullptr;
@@ -2099,4 +2099,4 @@ const ast::Type* SemanticAnalyzer::analyze_sizeof(const ast::SizeofExpr& n) {
     return ctx.types.get_builtin(TypeKind::U64);
 }
 
-} // namespace quark::sm
+} // namespace quanta::sm

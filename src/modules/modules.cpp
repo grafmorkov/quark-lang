@@ -1,9 +1,9 @@
-#include "quark/modules/module.h"
-#include "quark/support/compiler_context.h"
-#include "quark/frontend/lexer.h"
-#include "quark/frontend/parser.h"
-#include "quark/support/symbol_path.h"
-#include "quark_std_embedded.h"
+#include "quanta/modules/module.h"
+#include "quanta/support/compiler_context.h"
+#include "quanta/frontend/lexer.h"
+#include "quanta/frontend/parser.h"
+#include "quanta/support/symbol_path.h"
+#include "quanta_std_embedded.h"
 #include "utils/file_manager.h"
 #include "utils/logger.h"
 
@@ -13,7 +13,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace quark::modules {
+namespace quanta::modules {
 
 namespace fs = std::filesystem;
 
@@ -42,7 +42,7 @@ std::vector<std::string> collect_imports(const std::vector<ast::Stmt*>& ast) {
     return ret;
 }
 
-// Convert module name like "std::io" to a relative path "std/io.qk"
+// Convert module name like "std::io" to a relative path "std/io.qu"
 fs::path module_name_to_path(const std::string& name) {
     fs::path p;
     size_t start = 0;
@@ -55,7 +55,7 @@ fs::path module_name_to_path(const std::string& name) {
         p /= name.substr(start, sep - start);
         start = sep + 2;
     }
-    p += ".qk";
+    p += ".qu";
     return p;
 }
 
@@ -73,7 +73,7 @@ std::string module_name_to_rel_path(const std::string& name) {
         out += '/';
         start = sep + 2;
     }
-    out += ".qk";
+    out += ".qu";
     return out;
 }
 
@@ -321,9 +321,9 @@ void ModuleManager::build_graph(Module* entry) {
 #ifdef _WIN32
             {
                 // Windows native backend: std modules are implemented with @import
-                // and live in <root>/std/win/ (e.g. "std::io" -> std/win/io/io.qk).
+                // and live in <root>/std/win/ (e.g. "std::io" -> std/win/io/io.qu).
                 if (imp.rfind("std::", 0) == 0) {
-                    fs::path rest = module_name_to_path(imp.substr(5)); // "io.qk"
+                    fs::path rest = module_name_to_path(imp.substr(5)); // "io.qu"
                     fs::path win_root = ctx.root_path / "std" / "win";
                     fs::path primary = win_root / rest;
                     fs::path dir = win_root / rest.parent_path() / rest.stem();
@@ -332,19 +332,19 @@ void ModuleManager::build_graph(Module* entry) {
                         dep = load_module(primary);
                     } else if (fs::exists(dir) && fs::is_directory(dir)) {
                         for (const auto& dirent : fs::directory_iterator(dir)) {
-                            if (dirent.path().extension() != ".qk") continue;
+                            if (dirent.path().extension() != ".qu") continue;
                             auto* m = load_module(dirent.path());
                             if (m->name == imp) dep = m;
                         }
                     }
                 }
-                // Pure-Quark std modules without a Windows override (e.g. std::string,
+                // Pure-Quanta std modules without a Windows override (e.g. std::string,
                 // std::vector) fall back to the shared std/ tree.
                 if (dep == nullptr)
 #endif
                 {
                     // Try loading as module name (e.g. "std::io")
-                    fs::path mod_rel = module_name_to_path(imp);     // e.g. "std/io.qk"
+                    fs::path mod_rel = module_name_to_path(imp);     // e.g. "std/io.qu"
                     fs::path mod_dir_rel = mod_rel.parent_path() / mod_rel.stem(); // e.g. "std/io"
 
                     std::vector<fs::path> bases;
@@ -353,7 +353,7 @@ void ModuleManager::build_graph(Module* entry) {
                     bases.push_back(ctx.root_path);
 
                     for (const auto& base : bases) {
-                        fs::path primary = base / mod_rel;      // "base/std/io.qk"
+                        fs::path primary = base / mod_rel;      // "base/std/io.qu"
                         fs::path dir = base / mod_dir_rel;      // "base/std/io/"
 
                         // 1. Primary file
@@ -361,10 +361,10 @@ void ModuleManager::build_graph(Module* entry) {
                             dep = load_module(primary);
                         }
 
-                        // 2. Module directory - scan for additional .qk files
+                        // 2. Module directory - scan for additional .qu files
                         if (fs::exists(dir) && fs::is_directory(dir)) {
                             for (const auto& dirent : fs::directory_iterator(dir)) {
-                                if (dirent.path().extension() != ".qk") continue;
+                                if (dirent.path().extension() != ".qu") continue;
                                 auto* m = load_module(dirent.path());
                                 if (m->name == imp) dep = m;
                             }
@@ -411,4 +411,4 @@ const std::vector<Module*>& ModuleManager::ordered_modules() const {
     return ordered;
 }
 
-} // namespace quark::modules
+} // namespace quanta::modules

@@ -1,4 +1,4 @@
-# Quark Language
+# Quanta Language
 
 ## Types
 
@@ -90,7 +90,7 @@ while (x > 0) {
 
 `continue` skips the rest of the current loop iteration and starts the next one:
 
-```qk
+```qu
 while (i < 10) {
     i = i + 1;
 
@@ -116,7 +116,7 @@ Notes:
 
 `switch` selects one branch based on the value of an expression:
 
-```qk
+```qu
 switch (x) {
     case 1: {
         std::io::print("one");
@@ -134,7 +134,7 @@ switch (x) {
 
 Multiple `case` labels may share the same body, just like in C:
 
-```qk
+```qu
 switch (x) {
     case 1:
     case 2: {
@@ -408,7 +408,7 @@ std::io::print("hello");
 std::io::exit(0);
 ```
 
-`extern` declares a function implemented outside of Quark (system calls, native runtime, or another module):
+`extern` declares a function implemented outside of Quanta (system calls, native runtime, or another module):
 
 ```
 extern func print(text: str) void;
@@ -420,7 +420,7 @@ Functions marked with `@syscall(N)` are lowered to the Linux syscall with number
 @syscall(1) extern func sys_write(fd: i64, buf: str, len: i64) i64;
 ```
 
-The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) is written in pure Quark: on Linux on top of syscalls, on Windows on top of `@import` (WinAPI).
+The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) is written in pure Quanta: on Linux on top of syscalls, on Windows on top of `@import` (WinAPI).
 
 ### `using`
 
@@ -566,7 +566,7 @@ extern func print(text: str) void;   // error: @syscall requires extern
 ### `@export`
 
 Assigns a fixed symbol name to a function in the generated object file (instead of the
-compiler-generated internal name `fn_<id>__<name>`). Useful for calling Quark functions
+compiler-generated internal name `fn_<id>__<name>`). Useful for calling Quanta functions
 from native code or for stable symbols during debugging.
 
 ```
@@ -581,7 +581,7 @@ Declares an `extern` function implemented by a Windows DLL. The call is emitted
 through the PE import table (IAT) by the native backend. Windows only.
 
 The first argument is the DLL name. An optional second argument is the exported
-symbol name; when omitted, the Quark function name is used as the export name.
+symbol name; when omitted, the Quanta function name is used as the export name.
 
 ```
 @import("kernel32.dll", "ExitProcess") extern func sys_exit_process(uExitCode: u32) void;
@@ -598,7 +598,7 @@ extern func also_bad() i64;             // error: @import requires extern
 ---
 
 ## Regions & Pointers. Arrays
-Quark has region memory system. Pointers can only be declared in ```region{}```. If a region dies, all pointers are destroyed.
+Quanta has region memory system. Pointers can only be declared in ```region{}```. If a region dies, all pointers are destroyed.
 ```
 region r {
     p: *void = alloc(32);
@@ -673,11 +673,11 @@ func main() {
 ## How to Build and Run
 
 ```
-quark file.qk -o output          # compile to native binary (ELF/PE32+)
-quark file.qk --emit-ir          # print intermediate representation
-quark file.qk --emit-asm         # print generated assembly
-quark file.qk --time             # print compilation time
-quark file.qk --no-compile       # semantic analysis only
+qu file.qu -o output          # compile to native binary (ELF/PE32+)
+qu file.qu --emit-ir          # print intermediate representation
+qu file.qu --emit-asm         # print generated assembly
+qu file.qu --time             # print compilation time
+qu file.qu --no-compile       # semantic analysis only
 ```
 
 The native backend generates machine code directly (x86-64): ELF on Linux, PE32+ on Windows. No external assembler is required.

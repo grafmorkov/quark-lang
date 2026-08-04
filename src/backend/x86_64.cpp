@@ -1,6 +1,6 @@
-#include "quark/backend/x86_64.h"
+#include "quanta/backend/x86_64.h"
 
-namespace quark::codegen::x86 {
+namespace quanta::codegen::x86 {
 
 namespace {
 
@@ -289,4 +289,4 @@ void Emitter::leave() { u8(0xC9); }
 void Emitter::ret() { u8(0xC3); }
 void Emitter::syscall() { u8(0x0F); u8(0x05); }
 
-} // namespace quark::codegen::x86
+} // namespace quanta::codegen::x86

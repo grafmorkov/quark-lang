@@ -1,18 +1,18 @@
-# Quark
+# Quanta
 
-Quark is an experimental systems programming language focused on explicit state,
+Quanta is an experimental systems programming language focused on explicit state,
 predictable semantics, and transparent memory management.
 
 The compiler uses a native backend (IR -> x86-64 machine code) on both platforms:
 ELF executables on Linux, PE32+ executables on Windows. No external assembler is needed.
 
-> Note: Quark is still in development and not everything is done
+> Note: Quanta is still in development and not everything is done
 
 ---
 
 ## Example
 
-```qk
+```qu
 load "std::io";
 using std::io;
 
@@ -58,7 +58,7 @@ Load modules -> AST -> semantic analysis -> IR -> native binary
 * attributes
 * explicit behaviour
 * arena-based compiler memory management
-* stdlib written in pure Quark (io, format, heap, arena, vector, string)
+* stdlib written in pure Quanta (io, format, heap, arena, vector, string)
 * Windows stdlib via `@import` (WinAPI), no assembly runtime
 
 ---
@@ -87,7 +87,7 @@ cmake --build build
 Compile to a native executable:
 
 ```bash
-./quark file.qk -o program
+./qu file.qu -o program
 ```
 
 Other options: `--emit-ir`, `--emit-asm`, `--no-compile`, `--time`.

@@ -4,20 +4,20 @@
 #include <fstream>
 #include <cstdlib>
 
-#include "quark/frontend/lexer.h"
-#include "quark/frontend/parser.h"
-#include "quark/semantic/semantic.h"
-#include "quark/support/compiler_context.h"
+#include "quanta/frontend/lexer.h"
+#include "quanta/frontend/parser.h"
+#include "quanta/semantic/semantic.h"
+#include "quanta/support/compiler_context.h"
 
 #include "utils/options.h"
 #include "utils/logger.h"
 
-#include "quark/ir/ir_gen.h"
-#include "quark/backend/fasmcodegen.h"
-#include "quark/backend/native_backend.h"
+#include "quanta/ir/ir_gen.h"
+#include "quanta/backend/fasmcodegen.h"
+#include "quanta/backend/native_backend.h"
 
-#include "quark/modules/module.h"
-#include "quark/linker/linker.h"
+#include "quanta/modules/module.h"
+#include "quanta/linker/linker.h"
 
 int main(int argc, char **argv)
 {
@@ -33,26 +33,26 @@ int main(int argc, char **argv)
 
         auto start = high_resolution_clock::now();
 
-        quark::CompilerContext ctx;
+        quanta::CompilerContext ctx;
 
         {
             ctx.root_path = utils::io::get_executable_directory();
             // If binary is in build/ subdirectory, use parent (source root)
             auto parent = ctx.root_path.parent_path();
-            if (std::filesystem::exists(parent / "std" / "io" / "io.qk")) {
+            if (std::filesystem::exists(parent / "std" / "io" / "io.qu")) {
                 ctx.root_path = parent;
             }
         }
 
-        quark::modules::ModuleManager mm(ctx);
-        quark::linker::Linker linker(mm, ctx);
+        quanta::modules::ModuleManager mm(ctx);
+        quanta::linker::Linker linker(mm, ctx);
 
         auto* entry = mm.load_entry(opts.input_file);
 
-        // Always compile the pure-Quark format runtime (used by `as str` casts).
+        // Always compile the pure-Quanta format runtime (used by `as str` casts).
         // It ships embedded in the binary; fall back to the source tree in dev builds.
         if (mm.load_embedded("std::format") == nullptr) {
-            auto format_path = ctx.root_path / "std" / "format" / "format.qk";
+            auto format_path = ctx.root_path / "std" / "format" / "format.qu";
             if (std::filesystem::exists(format_path)) {
                 mm.load_module(format_path);
             }
@@ -63,7 +63,7 @@ int main(int argc, char **argv)
 
         // Semantic analysis
         for (auto* mod : mm.ordered_modules()) {
-            quark::sm::SemanticAnalyzer sem(
+            quanta::sm::SemanticAnalyzer sem(
                 ctx,
                 mod->namespace_path
             );
@@ -79,7 +79,7 @@ int main(int argc, char **argv)
         if (ctx.errors.has_errors()) return 1;
 
         // IRGen
-        quark::codegen::IRGenerator irgen(ctx);
+        quanta::codegen::IRGenerator irgen(ctx);
         irgen.gen_program(mm.ordered_modules());
         if (ctx.errors.has_errors()) return 1;
 
@@ -91,7 +91,7 @@ int main(int argc, char **argv)
         }
         // Codegen
         if (opts.emit_asm) {
-            quark::codegen::FasmCodeGenerator fasmCodegen;
+            quanta::codegen::FasmCodeGenerator fasmCodegen;
             std::string asm_code = fasmCodegen.generate(irgen.program);
             utils::logger::info("asm:");
             utils::logger::info(asm_code);
@@ -107,7 +107,7 @@ int main(int argc, char **argv)
             
             // Native backend: IR -> instruction selection -> machine code -> PE executable
             {
-                quark::codegen::NativeBackend nativeBackend;
+                quanta::codegen::NativeBackend nativeBackend;
                 auto pe_bytes = nativeBackend.generate(irgen.program);
                 std::ofstream file(exe_path, std::ios::binary);
                 file.write(
@@ -119,7 +119,7 @@ int main(int argc, char **argv)
 
             // Native backend: IR -> instruction selection -> machine code -> ELF object
             {
-                quark::codegen::NativeBackend nativeBackend;
+                quanta::codegen::NativeBackend nativeBackend;
                 auto elf_bytes = nativeBackend.generate(irgen.program);
                 std::ofstream file(obj_path, std::ios::binary);
                 file.write(

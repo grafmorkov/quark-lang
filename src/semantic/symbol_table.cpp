@@ -1,6 +1,6 @@
-#include "quark/semantic/symbol_table.h"
+#include "quanta/semantic/symbol_table.h"
 #include "utils/logger.h"
-#include "quark/support/compiler_context.h"
+#include "quanta/support/compiler_context.h"
 
 
 #include <type_traits>
@@ -8,7 +8,7 @@
 
 using namespace utils::logger;
 
-namespace quark::symb_t {
+namespace quanta::symb_t {
     SymbolTable::SymbolTable(memory::Arena& a) : arena(a){
         global_namespace = memory::make<Namespace>(arena);
 

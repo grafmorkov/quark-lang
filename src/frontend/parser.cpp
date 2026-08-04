@@ -1,14 +1,15 @@
-#include "quark/frontend/parser.h"
-#include "quark/frontend/ast.h"
-#include "quark/frontend/token.h"
-#include "quark/support/symbol_path.h"
+#include "quanta/frontend/parser.h"
+#include "quanta/frontend/ast.h"
+#include "quanta/frontend/token.h"
+#include "quanta/support/alloc.h"
+#include "quanta/support/symbol_path.h"
 #include "utils/logger.h"
 
 #include <utility>
 
 using namespace utils::logger;
 
-namespace quark::ps {
+namespace quanta::ps {
 
 namespace {
 
@@ -1042,4 +1043,4 @@ const ast::Type* Parser::parse_type(bool allow_implicit_void, const std::vector<
     ctx.errors.add(current.loc, current.text.length(), "Expected type");
     return nullptr;
 }
-} // namespace quark::ps
+} // namespace quanta::ps

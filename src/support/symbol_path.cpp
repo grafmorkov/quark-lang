@@ -1,9 +1,9 @@
-#include "quark/support/symbol_path.h"
+#include "quanta/support/symbol_path.h"
 #include "utils/logger.h"
 
 #include <variant>
 
-namespace quark::support {
+namespace quanta::support {
 
 namespace {
 
@@ -81,4 +81,4 @@ std::string qualify_name(
     return join_namespace(path);
 }
 
-} // namespace quark::support
+} // namespace quanta::support

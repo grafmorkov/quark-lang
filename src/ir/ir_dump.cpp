@@ -1,6 +1,6 @@
 #include <iostream>
-#include "quark/ir/ir.h"
+#include "quanta/ir/ir.h"
 
-namespace quark::codegen{
+namespace quanta::codegen{
 
 }

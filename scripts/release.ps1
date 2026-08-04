@@ -11,6 +11,6 @@ cmake --build build --config Release
 Write-Host "[4/4] Packaging..."
 New-Item -ItemType Directory -Force dist | Out-Null
 
-Copy-Item build\Release\quark.exe dist\quark.exe
+Copy-Item build\Release\qu.exe dist\qu.exe
 
 Write-Host "Done."

@@ -1,7 +1,7 @@
-#include "quark/linker/linker.h"
-#include "quark/support/compiler_context.h"
+#include "quanta/linker/linker.h"
+#include "quanta/support/compiler_context.h"
 
-namespace quark::linker{
+namespace quanta::linker{
 
 namespace {
     bool has_entry_attr(const ast::FuncStmt& func) {
