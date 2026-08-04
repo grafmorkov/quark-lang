@@ -9,6 +9,11 @@
 
 #include "utils/logger.h"
 
+namespace quant
+{
+    struct CompilerContext;
+}
+
 namespace quant::ast {
 
     struct Expr;
@@ -50,8 +55,10 @@ namespace quant::ast {
     struct Type {
         TypeKind kind;
         std::string struct_name; // struct only
-        const Type* pointed; // ptr only
+        const Type* pointed; // ptr/reference only
         std::vector<const Type*> type_args;
+        
+        std::string to_string(CompilerContext& ctx) const;
     };
 
     // Expressions

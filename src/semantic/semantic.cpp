@@ -976,7 +976,7 @@ void SemanticAnalyzer::analyze_return(const ast::ReturnStmt& ret) {
     if (!value_type) return;
 
     if (!is_assignable(current_function_return_type, value_type)) {
-        ctx.errors.add(ret.value ? ret.value->loc : SourceLocation{}, 0, "Return type mismatch");
+        ctx.errors.add(ret.value ? ret.value->loc : SourceLocation{}, std::format("Return type mismatch, expected: {}, got: {}", current_function_return_type->to_string(ctx), value_type->to_string(ctx)));
         return;
     }
 }

@@ -27,6 +27,7 @@ add_custom_command(
 
 # Library libquant (C++ files)
 add_library(libquant
+    src/frontend/ast.cpp
     src/frontend/lexer.cpp
     src/frontend/parser.cpp
     src/semantic/semantic.cpp
