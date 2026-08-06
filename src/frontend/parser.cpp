@@ -1139,6 +1139,22 @@ ast::Expr* Parser::parse_postfix(ast::Expr* left) {
 
             continue;
         }
+        if (check(TOKEN_PLUS_PLUS) || check(TOKEN_MINUS_MINUS)) {
+            Token op = advance();
+
+            if (!std::holds_alternative<ast::VarExpr>(left->kind) &&
+                !std::holds_alternative<ast::FieldExpr>(left->kind) &&
+                !std::holds_alternative<ast::IndexExpr>(left->kind)) {
+                ctx.errors.add(op.loc, op.text.length(), "Invalid increment/decrement target");
+                return left;
+            }
+
+            auto* one = make_expr(ctx, ast::IntExpr{ 1 }, op.loc);
+            auto* bin = make_binary(left, one, op.type == TOKEN_PLUS_PLUS ? TOKEN_PLUS : TOKEN_MINUS);
+            left = make_expr(ctx, ast::AssignExpr{ left, bin }, left->loc);
+            continue;
+        }
+
         if (match(TOKEN_AS)) {
             ast::CastKind kind = ast::CastKind::ValueCast;
 

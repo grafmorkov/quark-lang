@@ -1,3 +1,4 @@
+#include <functional>
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -93,8 +94,14 @@ namespace quant::lx {
                 return make_token(TOKEN_PIPE);
             case '<': return make_token(match('=') ? TOKEN_LTE : TOKEN_LT);
             case '>': return make_token(match('=') ? TOKEN_GTE : TOKEN_GT);
-            case '+': return make_token(match('=') ? TOKEN_PLUS_EQ: TOKEN_PLUS);
-            case '-': return make_token(match('=') ? TOKEN_MINUS_EQ: TOKEN_MINUS);
+            case '+':
+                if(match('=')) return make_token(TOKEN_PLUS_EQ);
+                if(match('+')) return make_token(TOKEN_PLUS_PLUS);
+                return make_token(TOKEN_PLUS);
+            case '-':
+                if(match('=')) return make_token(TOKEN_MINUS_EQ);
+                if(match('-')) return make_token(TOKEN_MINUS_MINUS);
+                return make_token(TOKEN_MINUS);
             case '*': return make_token(match('=') ? TOKEN_STAR_EQ: TOKEN_STAR);
             case ';': return make_token(TOKEN_SEMICOLON);
             case '@': return make_token(TOKEN_AT);

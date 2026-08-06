@@ -80,7 +80,7 @@ else {
 
 ```
 while (x > 0) {
-    x = x - 1;
+    x--;
 }
 ```
 
@@ -109,16 +109,16 @@ is desugared at parse time into:
 Examples:
 
 ```
-for (mut i32 i = 0; i < 10; i = i + 1) {
+for (mut i32 i = 0; i < 10; i++) {
     std::io::print(i as str);
 }
 
 // reuse an existing variable
-for (i = 0; i < 10; i = i + 1) { ... }
+for (i = 0; i < 10; i++) { ... }
 
 // omitted clauses
 for (;;) { ... }                 // infinite loop, use break
-for (; i < 10; i = i + 1) { ... } // no init
+for (; i < 10; i++) { ... } // no init
 ```
 
 Rules:

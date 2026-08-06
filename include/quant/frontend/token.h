@@ -84,6 +84,8 @@ namespace quant{
         TOKEN_SLASH_EQ,     // /=
         TOKEN_AMP_EQ,       // &=
         TOKEN_PIPE_EQ,      // |=
+        TOKEN_PLUS_PLUS,    // ++
+        TOKEN_MINUS_MINUS, // --
 
         TOKEN_EQ,        // =
         TOKEN_EQEQ,      // ==
