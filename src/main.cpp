@@ -46,7 +46,7 @@ int main(int argc, char **argv)
 
         quant::modules::ModuleManager mm(ctx);
         quant::linker::Linker linker(mm, ctx);
-        
+
         if (!std::filesystem::path(opts.input_file).has_extension())
         {
             opts.input_file += ".qu";
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
         if (ctx.errors.has_errors()) return 1;
 
         if (opts.emit_ir) {
-             utils::logger::info("IR");
+             irgen.program.dump();
         }
         if(opts.no_compile){
             return 0;
@@ -109,7 +109,7 @@ int main(int argc, char **argv)
             if (!exe_path.has_extension()) {
                 exe_path += ".exe";
             }
-            
+
             // Native backend: IR -> instruction selection -> machine code -> PE executable
             {
                 quant::codegen::NativeBackend nativeBackend;
