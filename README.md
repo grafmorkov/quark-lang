@@ -73,8 +73,8 @@ Load modules -> AST -> semantic analysis -> IR -> native binary
 Build the compiler:
 
 ```bash
-git clone https://github.com/quant-lang/quanta.git
-cd quanta
+git clone https://github.com/quant-lang/quant.git
+cd quant
 
 cmake -B build
 cmake --build build
