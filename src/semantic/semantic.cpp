@@ -687,6 +687,7 @@ void SemanticAnalyzer::analyze_stmt(ast::Stmt* stmt) {
         [&](const ast::FuncStmt& n) { analyze_func(n); },
         [&](const ast::IfStmt& n) { analyze_if(n); },
         [&](const ast::WhileStmt& n) { analyze_while(n); },
+        [&](const ast::BlockStmt& n) { analyze_block(n.body); },
         [&](ast::SwitchStmt& n) { analyze_switch(n); },
         [&](const ast::ModuleDecl&) {},
         [&](const ast::LoadStmt&) {},

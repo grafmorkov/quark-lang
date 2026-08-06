@@ -224,6 +224,10 @@ namespace quant::ast {
         Block* body;
     };
 
+    struct BlockStmt {
+        Block* body;
+    };
+
     struct CaseStmt {
         std::vector<Expr*> values;                            // one or more constant case values sharing one body
         Block* body;
@@ -314,6 +318,7 @@ namespace quant::ast {
         ContinueStmt,
         IfStmt,
         WhileStmt,
+        BlockStmt,
         SwitchStmt,
         VarDecl,
         StructDecl,

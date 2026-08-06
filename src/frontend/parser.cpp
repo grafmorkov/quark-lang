@@ -234,7 +234,7 @@ void Parser::sync() {
         if (check(TOKEN_LBRACE)) nesting++;
         switch (current.type) {
             case TOKEN_STRUCT: case TOKEN_IF:
-            case TOKEN_WHILE: case TOKEN_SWITCH: case TOKEN_RETURN: case TOKEN_NAMESPACE:
+            case TOKEN_WHILE: case TOKEN_FOR: case TOKEN_SWITCH: case TOKEN_RETURN: case TOKEN_NAMESPACE:
             case TOKEN_BREAK: case TOKEN_CONTINUE:
             case TOKEN_MODULE: case TOKEN_LOAD: case TOKEN_USING: case TOKEN_AT:
             case TOKEN_EXTERN: case TOKEN_REGION: case TOKEN_ENUM:
@@ -345,6 +345,10 @@ ast::Stmt Parser::parse_statement() {
 
     if (match(TOKEN_WHILE)) {
         return ast::Stmt{ ast::WhileStmt{ parse_while() } };
+    }
+
+    if (match(TOKEN_FOR)) {
+        return parse_for();
     }
 
     if (match(TOKEN_EXTERN)) {
@@ -601,6 +605,78 @@ ast::WhileStmt Parser::parse_while() {
 
     ret.body = parse_block();
 
+    return ret;
+}
+
+ast::Stmt Parser::parse_for() {
+    // `for (init; cond; step) body` is desugared into:
+    //   {
+    //       init;
+    //       while (cond) {
+    //           body
+    //           step;
+    //       }
+    //   }
+    const SourceLocation loc = previous.loc;
+
+    expect(TOKEN_LPAREN, "Expected '(' after for");
+
+    ast::Stmt* init_stmt = nullptr;
+    if (!check(TOKEN_SEMICOLON)) {
+        if (declaration_kind() == DeclKind::Var) {
+            init_stmt = memory::make<ast::Stmt>(ctx.ast_arena, parse_var_decl());
+        } else {
+            ast::Expr* expr = parse_expr(0);
+            init_stmt = memory::make<ast::Stmt>(ctx.ast_arena, ast::ExprStmt{ expr });
+            expect(TOKEN_SEMICOLON, "Expected ';' after for initializer");
+        }
+    } else {
+        expect(TOKEN_SEMICOLON, "Expected ';' after for initializer");
+    }
+
+    ast::Expr* cond = nullptr;
+    if (!check(TOKEN_SEMICOLON)) {
+        cond = parse_expr(0);
+    }
+    expect(TOKEN_SEMICOLON, "Expected ';' after for condition");
+
+    ast::Expr* step = nullptr;
+    if (!check(TOKEN_RPAREN)) {
+        step = parse_expr(0);
+    }
+    expect(TOKEN_RPAREN, "Expected ')' after for clauses");
+
+    ast::Block* body = parse_block();
+
+    auto* block = memory::make_default<ast::Block>(ctx.ast_arena);
+
+    if (init_stmt) {
+        block->stmts.push_back(init_stmt);
+    }
+
+    ast::WhileStmt while_node;
+    while_node.condition = cond ? cond : make_expr(ctx, ast::BoolExpr{ true }, loc);
+
+    auto* while_body = memory::make_default<ast::Block>(ctx.ast_arena);
+    if (body) {
+        for (auto* stmt : body->stmts) {
+            while_body->stmts.push_back(stmt);
+        }
+    }
+    if (step) {
+        while_body->stmts.push_back(
+            memory::make<ast::Stmt>(ctx.ast_arena, ast::ExprStmt{ step })
+        );
+    }
+    while_node.body = while_body;
+
+    block->stmts.push_back(
+        memory::make<ast::Stmt>(ctx.ast_arena, ast::WhileStmt{ while_node })
+    );
+
+    ast::Stmt ret;
+    ret.kind = ast::BlockStmt{ block };
+    ret.loc = loc;
     return ret;
 }
 

@@ -57,6 +57,7 @@ namespace quant::ps {
             ast::SwitchStmt parse_switch();
             std::vector<ast::Attribute> parse_attributes();
             ast::WhileStmt parse_while();
+            ast::Stmt parse_for();
             ast::ReturnStmt parse_return();
             ast::FuncStmt parse_func(bool is_extern);
             ast::RegionStmt parse_region();

@@ -84,6 +84,50 @@ while (x > 0) {
 }
 ```
 
+### for
+
+`for` is a wrapper over `while`:
+
+```
+for (init; cond; step) {
+    // body
+}
+```
+
+is desugared at parse time into:
+
+```
+{
+    init;
+    while (cond) {
+        // body
+        step;
+    }
+}
+```
+
+Examples:
+
+```
+for (mut i32 i = 0; i < 10; i = i + 1) {
+    std::io::print(i as str);
+}
+
+// reuse an existing variable
+for (i = 0; i < 10; i = i + 1) { ... }
+
+// omitted clauses
+for (;;) { ... }                 // infinite loop, use break
+for (; i < 10; i = i + 1) { ... } // no init
+```
+
+Rules:
+
+- `init` is either a variable declaration or an expression, both end with `;`. Since the loop counter is mutated by `step`, declare it with `mut` (unless the `step` only reads it).
+- `cond` may be omitted (treated as `true`).
+- `step` may be omitted.
+- Since `for` is literally the while loop above, `continue` skips to the condition check and does **not** run the `step`.
+
 ### break / continue
 
 `break` immediately exits the nearest enclosing `while` loop or `switch`.

@@ -1,0 +1,56 @@
+load "std::io";
+using std::io;
+
+i32 main() {
+    // basic for loop with a declared counter
+    mut i32 total = 0;
+    for (mut i32 i = 0; i < 5; i = i + 1) {
+        total = total + i;
+    }
+    println(total as str);          // 0+1+2+3+4 = 10
+
+    // for loop reusing an existing variable
+    mut i32 n = 0;
+    for (n = 0; n < 3; n = n + 1) {
+        total = total + n;
+    }
+    println(total as str);          // 10 + 0+1+2 = 13
+
+    // break exits the loop early
+    mut i32 s = 0;
+    for (mut i32 a = 0; a < 10; a = a + 1) {
+        if (a == 4) {
+            break;
+        }
+        s = s + a;
+    }
+    println(s as str);              // 0+1+2+3 = 6
+
+    // empty condition loops forever until break
+    mut i32 k = 0;
+    for (;;) {
+        k = k + 1;
+        if (k == 3) {
+            break;
+        }
+    }
+    println(k as str);              // 3
+
+    // empty init and step
+    mut i32 c = 0;
+    for (; c < 2; c = c + 1) {
+        total = total + c;
+    }
+    println(total as str);          // 13 + 0+1 = 14
+
+    // nested for loops
+    mut i32 prod = 0;
+    for (mut i32 x = 0; x < 3; x = x + 1) {
+        for (mut i32 y = 0; y < 3; y = y + 1) {
+            prod = prod + 1;
+        }
+    }
+    println(prod as str);           // 3*3 = 9
+
+    return 0;
+}

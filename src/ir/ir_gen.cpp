@@ -940,6 +940,12 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
             current_terminated = false;
         },
 
+        [&](const ast::BlockStmt& node) {
+            if (node.body) {
+                gen_block(*node.body);
+            }
+        },
+
         [&](const ast::SwitchStmt& node) {
             if (!node.condition) {
                 ctx.errors.add("Switch statement missing condition"); return;
