@@ -7,13 +7,13 @@
 // Usage:
 //   load "std::types";
 //
-//   func find(x: i32) opt<i32> {
+//   opt<i32> find(i32 x) {
 //       if (x > 0) { return opt_some<i32>(x * 2); }
 //       return opt_none<i32>();
 //   }
 //
-//   func main() i32 {
-//       r: opt<i32> = find(5);
+//   i32 main() {
+//       opt<i32> r = find(5);
 //       if (opt_is_some(r)) {
 //           std::io::print(opt_unwrap(r) as str);
 //       }
@@ -23,44 +23,44 @@
 module "std::types";
 
 struct opt<T> {
-    has_value: bool = false;
+    bool has_value = false;
 
     @init @guard(has_value)
-    value: T;
+    T value;
 };
 
 // opt_some - create an option with a value.
-func opt_some<T>(val: T) opt<T> {
-    @init mut o: opt<T>;
+opt<T> opt_some<T>(T val) {
+    @init mut opt<T> o;
     o.has_value = true;
     o.value = val;
     return o;
 }
 
 // opt_none - create an empty option.
-func opt_none<T>() opt<T> {
-    @init mut o: opt<T>;
+opt<T> opt_none<T>() {
+    @init mut opt<T> o;
     o.has_value = false;
     return o;
 }
 
 // opt_is_some - check if it has a value.
-func opt_is_some<T>(o: opt<T>) bool {
+bool opt_is_some<T>(opt<T> o) {
     return o.has_value;
 }
 
 // opt_is_none - check if it's empty.
-func opt_is_none<T>(o: opt<T>) bool {
+bool opt_is_none<T>(opt<T> o) {
     return !o.has_value;
 }
 
 // opt_unwrap - get the value (panics if none).
-func opt_unwrap<T>(o: opt<T>) T {
+T opt_unwrap<T>(opt<T> o) {
     return o.value;
 }
 
 // opt_unwrap_or - get the value or use default if none.
-func opt_unwrap_or<T>(o: opt<T>, default: T) T {
+T opt_unwrap_or<T>(opt<T> o, T default) {
     if (o.has_value) {
         return o.value;
     }

@@ -8,13 +8,13 @@
 // Usage:
 //   load "std::types";
 //
-//   func divide(a: i32, b: i32) result<i32, str> {
+//   result<i32, str> divide(i32 a, i32 b) {
 //       if (b == 0) { return result_err<i32, str>("division by zero"); }
 //       return result_ok<i32, str>(a / b);
 //   }
 //
-//   func main() i32 {
-//       r: result<i32, str> = divide(10, 3);
+//   i32 main() {
+//       result<i32, str> r = divide(10, 3);
 //       if (result_is_ok(r)) {
 //           std::io::print(result_unwrap_ok(r) as str);
 //       }
@@ -24,53 +24,53 @@
 module "std::types";
 
 struct result<T, E> {
-    is_ok: bool = false;
+    bool is_ok = false;
 
     @init @guard(is_ok)
-    ok_value: T;
+    T ok_value;
 
     @init @guard(!is_ok)
-    err_value: E;
+    E err_value;
 };
 
 // result_ok - create an ok result with a value.
-func result_ok<T, E>(val: T) result<T, E> {
-    @init mut r: result<T, E>;
+result<T, E> result_ok<T, E>(T val) {
+    @init mut result<T, E> r;
     r.is_ok = true;
     r.ok_value = val;
     return r;
 }
 
 // result_err - create an error result.
-func result_err<T, E>(err: E) result<T, E> {
-    @init mut r: result<T, E>;
+result<T, E> result_err<T, E>(E err) {
+    @init mut result<T, E> r;
     r.is_ok = false;
     r.err_value = err;
     return r;
 }
 
 // result_is_ok - check if result is ok.
-func result_is_ok<T, E>(r: result<T, E>) bool {
+bool result_is_ok<T, E>(result<T, E> r) {
     return r.is_ok;
 }
 
 // result_is_err - check if result is error.
-func result_is_err<T, E>(r: result<T, E>) bool {
+bool result_is_err<T, E>(result<T, E> r) {
     return !r.is_ok;
 }
 
 // result_unwrap_ok - get the ok value.
-func result_unwrap_ok<T, E>(r: result<T, E>) T {
+T result_unwrap_ok<T, E>(result<T, E> r) {
     return r.ok_value;
 }
 
 // result_unwrap_err - get the error value.
-func result_unwrap_err<T, E>(r: result<T, E>) E {
+E result_unwrap_err<T, E>(result<T, E> r) {
     return r.err_value;
 }
 
 // result_unwrap_or - get the ok value or use default if error.
-func result_unwrap_or<T, E>(r: result<T, E>, default: T) T {
+T result_unwrap_or<T, E>(result<T, E> r, T default) {
     if (r.is_ok) {
         return r.ok_value;
     }

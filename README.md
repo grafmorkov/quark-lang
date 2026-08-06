@@ -16,16 +16,16 @@ ELF executables on Linux, PE32+ executables on Windows. No external assembler is
 load "std::io";
 using std::io;
 
-@entry func main() i32 {
-    value: i32 = 10;
-    mut result: i32 = value + 2;
+@entry i32 main() {
+    i32 value = 10;
+    mut i32 result = value + 2;
 
     if (value > 5) {
         result = 0;
     } else {
         result = 1;
     }
-    msg: str = result as str; // casting
+    str msg = result as str; // casting
     println(msg);
     return 0;
 }

@@ -1,8 +1,8 @@
 load "std::io";
 using std::io;
 
-func classify(n: i32) str {
-    mut s: str = "x";
+str classify(i32 n) {
+    mut str s = "x";
     if (n < 2) {
         s = "small";
     } else if (n < 5) {
@@ -13,10 +13,10 @@ func classify(n: i32) str {
     return s;
 }
 
-func main() i32 {
-    a: str = 1 as str;
-    b: str = 2 as str;
-    c: str = 3 as str;
+i32 main() {
+    str a = 1 as str;
+    str b = 2 as str;
+    str c = 3 as str;
     println(a);
     println(b);
     println(c);

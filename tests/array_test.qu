@@ -1,8 +1,8 @@
 load "std::io";
 
-func main() i32 {
+i32 main() {
     region r {
-        p: *i32 = alloc(i32, 10);
+        *i32 p = alloc(i32, 10);
         p[0] = 42;
         p[1] = p[0] + 1;
         std::io::print(p[0] as str);

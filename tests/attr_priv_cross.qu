@@ -1,5 +1,5 @@
 load "tests::lib_priv";
 
-@entry func main() i32 {
+@entry i32 main() {
     return tests::lib_priv::secret();
 }

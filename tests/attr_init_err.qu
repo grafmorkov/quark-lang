@@ -1,5 +1,5 @@
-@entry func main() i32 {
-    @init mut x: i32;
+@entry i32 main() {
+    @init mut i32 x;
     x = 42;
     return x;
 }

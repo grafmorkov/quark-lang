@@ -1,4 +1,4 @@
-func main() i32 {
-    a: str = 42 as str;
+i32 main() {
+    str a = 42 as str;
     return 0 as i32;
 }

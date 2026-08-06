@@ -6,8 +6,8 @@
 //   load "std::vector";
 //   using std::vector;
 //
-//   func main() {
-//       @init mut v: Vec<i32>;
+//   void main() {
+//       @init mut Vec<i32> v;
 //       vec_push<i32>(&v, 10);
 //       vec_push<i32>(&v, 20);
 //       vec_push<i32>(&v, 30);
@@ -25,13 +25,13 @@ module "std::vector";
 load "std::heap";
 
 struct Vec<T> {
-    mut data: *T;
-    mut size: i32;
-    mut capacity: i32;
+    mut *T data;
+    mut i32 size;
+    mut i32 capacity;
 };
 
-func vec_push<T>(mut v: &Vec<T>, val: T) void {
-    elem_size: i32 = sizeof(T);
+void vec_push<T>(mut &Vec<T> v, T val) {
+    i32 elem_size = sizeof(T);
     if (v.capacity == 0) {
         v.data = std::heap::heap_malloc(elem_size) as! *T;
         v.capacity = 1;
@@ -45,15 +45,15 @@ func vec_push<T>(mut v: &Vec<T>, val: T) void {
     v.size = v.size + 1;
 }
 
-func vec_get<T>(v: &Vec<T>, index: i32) T {
+T vec_get<T>(&Vec<T> v, i32 index) {
     return v.data[index];
 }
 
-func vec_len<T>(v: &Vec<T>) u64 {
+u64 vec_len<T>(&Vec<T> v) {
     return v.size;
 }
 
-func vec_free<T>(mut v: &Vec<T>) void {
+void vec_free<T>(mut &Vec<T> v) {
     if (v.capacity > 0) {
         std::heap::heap_free(v.data as! *void);
         v.data = 0 as! *T;

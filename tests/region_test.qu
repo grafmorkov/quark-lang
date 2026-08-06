@@ -1,8 +1,8 @@
 load "std::io";
 
-func main() i32 {
+i32 main() {
     region r {
-        p: *void = alloc(32);
+        *void p = alloc(32);
     }
     return 0;
 }

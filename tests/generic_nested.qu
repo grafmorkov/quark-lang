@@ -3,11 +3,11 @@ load "std::vector";
 using std::vector;
 
 struct Token {
-    id: i32;
+    i32 id;
 };
 
-func main() {
-    @init mut tokens: Vec<Vec<Token>>;
+void main() {
+    @init mut Vec<Vec<Token>> tokens;
 
     vec_free<Vec<Token>>(tokens);
     std::io::print("ok\n");

@@ -1,10 +1,10 @@
 struct Optional<T> {
-    has_value: bool = false;
-    value: T;
+    bool has_value = false;
+    T value;
 };
 
-@entry func main() i32 {
-    @init mut opt: Optional<i32>;
+@entry i32 main() {
+    @init mut Optional<i32> opt;
     opt.has_value = true;
     opt.value = 42;
     return opt.value;

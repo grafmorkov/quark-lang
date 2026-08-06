@@ -1,6 +1,6 @@
-func foo(){
+void foo() {
 
 }
-func main(){
+void main() {
     foo();
 }

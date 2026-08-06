@@ -1,9 +1,9 @@
 struct Box<T> {
-    value: T;
+    T value;
 };
 
-@entry func main() i32 {
-    @init mut b: Box<i32>;
+@entry i32 main() {
+    @init mut Box<i32> b;
     b.value = 42;
     return b.value;
 }

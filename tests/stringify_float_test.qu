@@ -1,13 +1,13 @@
 load "std::io";
 using std::io;
 
-func main() i32 {
+i32 main() {
     println(3.14 as str);
     println((-0.5) as str);
     println(1.5e2 as str);
     println(0.0 as str);
-    a: str = 1.25 as str;
-    b: str = 2.5 as str;
+    str a = 1.25 as str;
+    str b = 2.5 as str;
     println(a);
     println(b);
     return 0;

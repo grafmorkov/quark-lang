@@ -1,7 +1,7 @@
 load "std::io";
 using std::io;
 
-func classify(value: i32) i32 {
+i32 classify(i32 value) {
     if (value > 10) {
         return 1;
     } else if (value > 5) {
@@ -11,7 +11,7 @@ func classify(value: i32) i32 {
     }
 }
 
-func main() i32 {
+i32 main() {
     println(classify(20) as str);
     println(classify(7) as str);
     println(classify(1) as str);

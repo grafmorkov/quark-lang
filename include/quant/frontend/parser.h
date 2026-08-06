@@ -10,6 +10,12 @@
 
 namespace quant::ps {
 
+    enum class DeclKind {
+        None,
+        Var,
+        Func
+    };
+
     class Parser {
         public:
             Parser(lx::Lexer& lex, CompilerContext& ctx);
@@ -66,7 +72,7 @@ namespace quant::ps {
             ast::Expr* make_binary(ast::Expr* left, ast::Expr* right, TokenType op);
             ast::Expr* make_cast(ast::Expr* value, const ast::Type* target, ast::CastKind kind);
             const ast::Type* parse_type(bool allow_implicit_void = false, const std::vector<std::string>* type_params = nullptr);
-            bool is_var_decl();
+            DeclKind declaration_kind();
             bool looks_like_generic_args();
         };
 

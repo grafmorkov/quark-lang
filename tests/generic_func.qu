@@ -1,7 +1,7 @@
-func identity<T>(x: T) T {
+T identity<T>(T x) {
     return x;
 }
 
-@entry func main() i32 {
+@entry i32 main() {
     return identity<i32>(42);
 }

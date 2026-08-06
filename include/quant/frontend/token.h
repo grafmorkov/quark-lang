@@ -65,8 +65,6 @@ namespace quant{
         TOKEN_STR_TYPE,
         TOKEN_CHAR_TYPE,
 
-        TOKEN_PTR,
-
         // operators
         TOKEN_PLUS,      // +
         TOKEN_MINUS,     // -
@@ -119,6 +117,10 @@ namespace quant{
         uint64_t inum = 0;    // TOKEN_NUMBER (integer literal, raw u64)
 
         SourceLocation loc;
+
+        [[nodiscard]] bool is_type() const noexcept{
+             return type >= TOKEN_VOID && type <= TOKEN_CHAR_TYPE;
+        }
     };
     std::string token_type_to_string(TokenType type);
 }

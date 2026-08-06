@@ -5,24 +5,24 @@
 
 module "std::heap";
 
-@import("kernel32.dll", "VirtualAlloc") extern func sys_virtual_alloc(lpAddress: *void, dwSize: u64, flAllocationType: u32, flProtect: u32) *void;
+@import("kernel32.dll", "VirtualAlloc") extern *void sys_virtual_alloc(*void lpAddress, u64 dwSize, u32 flAllocationType, u32 flProtect);
 
-@init mut heap_head: u64;
+@init mut u64 heap_head;
 
 // Try to satisfy the allocation from the existing free list.
 // Returns NULL if no free block is big enough.
-func alloc_from_list(need: u64) *void {
-    mut rbx: u64 = heap_head;
-    mut prev: u64 = 0;
+*void alloc_from_list(u64 need) {
+    mut u64 rbx = heap_head;
+    mut u64 prev = 0;
     while (rbx != (0 as u64)) {
-        mut sz: u64 = (rbx as! *u64)[0];
+        mut u64 sz = (rbx as! *u64)[0];
         sz = sz & ((-2 as i64) as u64);
         if (sz >= need) {
-            rest: u64 = sz - need;
+            u64 rest = sz - need;
             if (rest < (32 as u64)) {
                 // Exact fit: unlink from free list
                 (rbx as! *u64)[0] = sz | (1 as u64);
-                nxt: u64 = (rbx as! *u64)[1];
+                u64 nxt = (rbx as! *u64)[1];
                 if (prev == (0 as u64)) {
                     heap_head = nxt;
                 } else {
@@ -32,7 +32,7 @@ func alloc_from_list(need: u64) *void {
             }
             // Split from the end: keep free block at rbx, take from top
             (rbx as! *u64)[0] = rest;
-            used: u64 = rbx + rest;
+            u64 used = rbx + rest;
             (used as! *u64)[0] = need | (1 as u64);
             return ((used + (16 as u64)) as! *void);
         }
@@ -43,27 +43,27 @@ func alloc_from_list(need: u64) *void {
 }
 
 // Allocate a new chunk and add it to the free list as a free block.
-func refill() bool {
-    chunk: u64 = sys_virtual_alloc(0 as! *void, (65536 as u64), (12288 as u32), (4 as u32)) as! u64;
+bool refill() {
+    u64 chunk = sys_virtual_alloc(0 as! *void, (65536 as u64), (12288 as u32), (4 as u32)) as! u64;
     if (chunk == (0 as u64)) { return false; }
-    size: u64 = (65536 as u64) - (64 as u64);
+    u64 size = (65536 as u64) - (64 as u64);
     (chunk as! *u64)[0] = size;
     (chunk as! *u64)[1] = heap_head;
     heap_head = chunk;
-    guard: u64 = chunk + size;
+    u64 guard = chunk + size;
     (guard as! *u64)[0] = 1 as u64;
     return true;
 }
 
 // heap_malloc - allocate `size` bytes. Returns 16-byte aligned pointer, or NULL.
-func heap_malloc(size: u64) *void {
-    mut need: u64 = size + (31 as u64);
+*void heap_malloc(u64 size) {
+    mut u64 need = size + (31 as u64);
     need = need & ((-16 as i64) as u64);
     if (need < (32 as u64)) { need = 32 as u64; }
     while (true) {
-        p: *void = alloc_from_list(need);
+        *void p = alloc_from_list(need);
         if (p != (0 as! *void)) { return p; }
-        ok: bool = refill();
+        bool ok = refill();
         if (!ok) { return 0 as! *void; }
     }
     return 0 as! *void;
@@ -71,23 +71,23 @@ func heap_malloc(size: u64) *void {
 
 // heap_free - free a pointer previously returned by heap_malloc/realloc.
 // free(NULL) is a no-op.
-func heap_free(ptr: *void) void {
+void heap_free(*void ptr) {
     if (ptr == (0 as! *void)) { return; }
-    mut rbx: u64 = (ptr as! u64) - (16 as u64);
+    mut u64 rbx = (ptr as! u64) - (16 as u64);
 
     // Mark as free
-    mut sz: u64 = (rbx as! *u64)[0];
+    mut u64 sz = (rbx as! *u64)[0];
     sz = sz & ((-2 as i64) as u64);
     (rbx as! *u64)[0] = sz;
 
     // Try to coalesce with the next physical block
-    rcx: u64 = rbx + sz;
-    mut nf: u64 = (rcx as! *u64)[0];
+    u64 rcx = rbx + sz;
+    mut u64 nf = (rcx as! *u64)[0];
     if ((nf & (1 as u64)) == (0 as u64)) {
         // Next block is free - find it in the free list and unlink it
-        mut rdx: u64 = heap_head;
-        mut r8: u64 = 0;
-        mut stop: bool = false;
+        mut u64 rdx = heap_head;
+        mut u64 r8 = 0;
+        mut bool stop = false;
         while (!stop) {
             if (rdx == rcx) {
                 stop = true;
@@ -102,13 +102,13 @@ func heap_free(ptr: *void) void {
             }
         }
         if (rdx == rcx) {
-            nxt: u64 = (rcx as! *u64)[1];
+            u64 nxt = (rcx as! *u64)[1];
             if (r8 == (0 as u64)) {
                 heap_head = nxt;
             } else {
                 (r8 as! *u64)[1] = nxt;
             }
-            mut ns: u64 = nf & ((-2 as i64) as u64);
+            mut u64 ns = nf & ((-2 as i64) as u64);
             (rbx as! *u64)[0] = sz + ns;
         }
     }
@@ -120,28 +120,28 @@ func heap_free(ptr: *void) void {
 
 // heap_realloc - resize an allocation. May move the data.
 // Returns the new pointer, or NULL on OOM.
-func heap_realloc(ptr: *void, new_size: u64) *void {
+*void heap_realloc(*void ptr, u64 new_size) {
     if (ptr == (0 as! *void)) { return heap_malloc(new_size); }
     if (new_size == (0 as u64)) {
         heap_free(ptr);
         return 0 as! *void;
     }
 
-    mut old: u64 = ptr as! u64;
-    rbx: u64 = old - (16 as u64);
-    mut o_sz: u64 = (rbx as! *u64)[0];
+    mut u64 old = ptr as! u64;
+    u64 rbx = old - (16 as u64);
+    mut u64 o_sz = (rbx as! *u64)[0];
     o_sz = o_sz & ((-2 as i64) as u64);
 
-    mut need: u64 = new_size + (31 as u64);
+    mut u64 need = new_size + (31 as u64);
     need = need & ((-16 as i64) as u64);
     if (need < (32 as u64)) { need = 32 as u64; }
 
     // New size fits in the old block - done (maybe shrink)
     if (need <= o_sz) {
-        rest: u64 = o_sz - need;
+        u64 rest = o_sz - need;
         if (rest >= (32 as u64)) {
             // Split: create a free block after the shrunken allocation
-            nb: u64 = rbx + need;
+            u64 nb = rbx + need;
             (rbx as! *u64)[0] = need | (1 as u64);
             (nb as! *u64)[0] = rest;
             heap_free(((nb + (16 as u64)) as! *void));
@@ -150,15 +150,15 @@ func heap_realloc(ptr: *void, new_size: u64) *void {
     }
 
     // Try to extend into the next physical block if it is free
-    next: u64 = rbx + o_sz;
-    mut nf: u64 = (next as! *u64)[0];
+    u64 next = rbx + o_sz;
+    mut u64 nf = (next as! *u64)[0];
     if ((nf & (1 as u64)) == (0 as u64)) {
-        ns: u64 = nf & ((-2 as i64) as u64);
+        u64 ns = nf & ((-2 as i64) as u64);
         if ((o_sz + ns) >= need) {
             // Unlink the next block from the free list
-            mut rdx: u64 = heap_head;
-            mut r9: u64 = 0;
-            mut stop2: bool = false;
+            mut u64 rdx = heap_head;
+            mut u64 r9 = 0;
+            mut bool stop2 = false;
             while (!stop2) {
                 if (rdx == next) {
                     stop2 = true;
@@ -173,7 +173,7 @@ func heap_realloc(ptr: *void, new_size: u64) *void {
                 }
             }
             if (rdx == next) {
-                nxt2: u64 = (next as! *u64)[1];
+                u64 nxt2 = (next as! *u64)[1];
                 if (r9 == (0 as u64)) {
                     heap_head = nxt2;
                 } else {
@@ -182,9 +182,9 @@ func heap_realloc(ptr: *void, new_size: u64) *void {
                 // Merge and mark as used
                 (rbx as! *u64)[0] = (o_sz + ns) | (1 as u64);
                 // Shrink if the combined block is larger than needed
-                rest2: u64 = (o_sz + ns) - need;
+                u64 rest2 = (o_sz + ns) - need;
                 if (rest2 >= (32 as u64)) {
-                    nb2: u64 = rbx + need;
+                    u64 nb2 = rbx + need;
                     (rbx as! *u64)[0] = need | (1 as u64);
                     (nb2 as! *u64)[0] = rest2;
                     heap_free(((nb2 + (16 as u64)) as! *void));
@@ -195,16 +195,16 @@ func heap_realloc(ptr: *void, new_size: u64) *void {
     }
 
     // Allocate a new block and move the data
-    nptr: *void = heap_malloc(new_size);
+    *void nptr = heap_malloc(new_size);
     if (nptr == (0 as! *void)) { return 0 as! *void; }
 
-    mut o_usable: u64 = o_sz - (16 as u64);
-    mut n_usable: u64 = need - (16 as u64);
-    mut len: u64 = o_usable;
+    mut u64 o_usable = o_sz - (16 as u64);
+    mut u64 n_usable = need - (16 as u64);
+    mut u64 len = o_usable;
     if (n_usable < len) { len = n_usable; }
 
-    dst: u64 = nptr as! u64;
-    mut i: u64 = 0;
+    u64 dst = nptr as! u64;
+    mut u64 i = 0;
     while (i < len) {
         ((dst + i) as! *u8)[0] = ((old + i) as! *u8)[0];
         i = i + (1 as u64);

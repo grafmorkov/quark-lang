@@ -1,9 +1,9 @@
 module "tests::lib_priv";
 
-@private func secret() i32 {
+@private i32 secret() {
     return 42;
 }
 
-func public_fn() i32 {
+i32 public_fn() {
     return secret();
 }

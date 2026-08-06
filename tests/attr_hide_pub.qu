@@ -1,5 +1,5 @@
 load "tests::lib_hidden";
 
-@entry func main() i32 {
+@entry i32 main() {
     return tests::lib_hidden::pub_fn();
 }

@@ -1,47 +1,47 @@
 load "std::heap";
 
-func main() {
+void main() {
     // malloc + free
-    p: *i32 = std::heap::heap_malloc(8) as! *i32;
+    *i32 p = std::heap::heap_malloc(8) as! *i32;
     p[0] = 42;
     std::heap::heap_free(p as! *void);
 
     // realloc (grow)
-    mut q: *i32 = std::heap::heap_malloc(8) as! *i32;
+    mut *i32 q = std::heap::heap_malloc(8) as! *i32;
     q[0] = 7;
     q = std::heap::heap_realloc(q as! *void, 32) as! *i32;
     std::heap::heap_free(q as! *void);
 
     // realloc (shrink)
-    mut r: *i32 = std::heap::heap_malloc(64) as! *i32;
+    mut *i32 r = std::heap::heap_malloc(64) as! *i32;
     r[0] = 99;
     r = std::heap::heap_realloc(r as! *void, 8) as! *i32;
     std::heap::heap_free(r as! *void);
 
     // realloc(NULL, size) == malloc(size)
-    mut s: *i32 = std::heap::heap_realloc(0 as! *void, 8) as! *i32;
+    mut *i32 s = std::heap::heap_realloc(0 as! *void, 8) as! *i32;
     s[0] = 123;
     std::heap::heap_free(s as! *void);
 
     // Multiple alloc/free to exercise freelist and coalescing
-    a: *i32 = std::heap::heap_malloc(8) as! *i32;
-    b: *i32 = std::heap::heap_malloc(16) as! *i32;
-    c: *i32 = std::heap::heap_malloc(32) as! *i32;
+    *i32 a = std::heap::heap_malloc(8) as! *i32;
+    *i32 b = std::heap::heap_malloc(16) as! *i32;
+    *i32 c = std::heap::heap_malloc(32) as! *i32;
     a[0] = 1; b[0] = 2; c[0] = 3;
     std::heap::heap_free(b as! *void);
     std::heap::heap_free(a as! *void);
     std::heap::heap_free(c as! *void);
 
     // Stress: many small allocs
-    mut i: i32 = 0;
+    mut i32 i = 0;
     while (i < 10) {
-        x: *i32 = std::heap::heap_malloc(8) as! *i32;
+        *i32 x = std::heap::heap_malloc(8) as! *i32;
         x[0] = i;
         std::heap::heap_free(x as! *void);
         i = i + 1;
     }
 
     // Large alloc
-    big: *void = std::heap::heap_malloc(4096);
+    *void big = std::heap::heap_malloc(4096);
     std::heap::heap_free(big);
 }

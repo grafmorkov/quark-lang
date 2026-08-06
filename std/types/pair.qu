@@ -5,8 +5,8 @@
 // Usage:
 //   load "std::types";
 //
-//   func main() i32 {
-//       p: pair<i32, str> = pair<i32, str>{ 42, "hello" };
+//   i32 main() {
+//       pair<i32, str> p = pair<i32, str>{ 42, "hello" };
 //       std::io::print(p.first as str);
 //       return 0;
 //   }
@@ -14,6 +14,6 @@
 module "std::types";
 
 struct pair<A,B> {
-    first: A;
-    second: B;
+    A first;
+    B second;
 };

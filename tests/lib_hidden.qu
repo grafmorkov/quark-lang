@@ -1,9 +1,9 @@
 module "tests::lib_hidden";
 
-@hide func internal_fn() i32 {
+@hide i32 internal_fn() {
     return 2;
 }
 
-@public func pub_fn() i32 {
+@public i32 pub_fn() {
     return 1;
 }

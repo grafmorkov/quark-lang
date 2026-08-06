@@ -5,8 +5,8 @@
 // Usage:
 //   load "std::types";
 //
-//   func main() i32 {
-//       e: either<i32, str> = either_left<i32, str>(42);
+//   i32 main() {
+//       either<i32, str> e = either_left<i32, str>(42);
 //       if (either_is_left(e)) {
 //           std::io::print(either_unwrap_left(e) as str);
 //       }
@@ -16,53 +16,53 @@
 module "std::types";
 
 struct either<L, R> {
-    is_left: bool = false;
+    bool is_left = false;
 
     @init @guard(is_left)
-    left_val: L;
+    L left_val;
 
     @init @guard(!is_left)
-    right_val: R;
+    R right_val;
 };
 
 // either_left - create a left value.
-func either_left<L, R>(val: L) either<L, R> {
-    @init mut e: either<L, R>;
+either<L, R> either_left<L, R>(L val) {
+    @init mut either<L, R> e;
     e.is_left = true;
     e.left_val = val;
     return e;
 }
 
 // either_right - create a right value.
-func either_right<L, R>(val: R) either<L, R> {
-    @init mut e: either<L, R>;
+either<L, R> either_right<L, R>(R val) {
+    @init mut either<L, R> e;
     e.is_left = false;
     e.right_val = val;
     return e;
 }
 
 // either_is_left - check if it's a left value.
-func either_is_left<L, R>(e: either<L, R>) bool {
+bool either_is_left<L, R>(either<L, R> e) {
     return e.is_left;
 }
 
 // either_is_right - check if it's a right value.
-func either_is_right<L, R>(e: either<L, R>) bool {
+bool either_is_right<L, R>(either<L, R> e) {
     return !e.is_left;
 }
 
 // either_unwrap_left - get the left value.
-func either_unwrap_left<L, R>(e: either<L, R>) L {
+L either_unwrap_left<L, R>(either<L, R> e) {
     return e.left_val;
 }
 
 // either_unwrap_right - get the right value.
-func either_unwrap_right<L, R>(e: either<L, R>) R {
+R either_unwrap_right<L, R>(either<L, R> e) {
     return e.right_val;
 }
 
 // either_unwrap_left_or - get the left value or use default.
-func either_unwrap_left_or<L, R>(e: either<L, R>, default: L) L {
+L either_unwrap_left_or<L, R>(either<L, R> e, L default) {
     if (e.is_left) {
         return e.left_val;
     }
@@ -70,7 +70,7 @@ func either_unwrap_left_or<L, R>(e: either<L, R>, default: L) L {
 }
 
 // either_unwrap_right_or - get the right value or use default.
-func either_unwrap_right_or<L, R>(e: either<L, R>, default: R) R {
+R either_unwrap_right_or<L, R>(either<L, R> e, R default) {
     if (e.is_left) {
         return default;
     }

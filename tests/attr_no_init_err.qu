@@ -1,8 +1,8 @@
-func identity(v: i32) i32 {
+i32 identity(i32 v) {
     return v;
 }
 
-@entry func main() i32 {
-    x: i32;
+@entry i32 main() {
+    i32 x;
     return identity(x);
 }

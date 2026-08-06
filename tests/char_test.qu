@@ -1,10 +1,10 @@
-func main() i32 {
-    c: char = 'a';
-    newline: char = '\n';
-    tab: char = '\t';
-    ret: char = '\r';
-    backslash: char = '\\';
-    quote: char = '\'';
-    nullc: char = '\0';
+i32 main() {
+    char c = 'a';
+    char newline = '\n';
+    char tab = '\t';
+    char ret = '\r';
+    char backslash = '\\';
+    char quote = '\'';
+    char nullc = '\0';
     return c as i32;
 }

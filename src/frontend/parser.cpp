@@ -136,6 +136,53 @@ ast::Expr* make_expr(CompilerContext& ctx, T&& kind, SourceLocation loc = {}) {
     return e;
 }
 
+// Rewrite a type so that bare struct types matching a generic parameter name
+// become generic parameters. Needed because the return type of a generic
+// function is parsed before the `<T, ...>` parameter list is seen.
+const ast::Type* bind_type_params(CompilerContext& ctx, const ast::Type* t, const std::vector<std::string>& params) {
+    if (!t) return nullptr;
+
+    if (t->kind == ast::TypeKind::Struct) {
+        if (t->type_args.empty()) {
+            for (const auto& p : params) {
+                if (t->struct_name == p) {
+                    return ctx.types.get_generic_param(p);
+                }
+            }
+            return t;
+        }
+
+        std::vector<const ast::Type*> new_args;
+        bool changed = false;
+        for (const auto* arg : t->type_args) {
+            const ast::Type* new_arg = bind_type_params(ctx, arg, params);
+            new_args.push_back(new_arg);
+            if (new_arg != arg) changed = true;
+        }
+        if (changed) {
+            std::string base = t->struct_name;
+            std::string unmangled;
+            if (ctx.types.is_mangled_name(base, unmangled)) {
+                base = unmangled;
+            }
+            return ctx.types.get_deferred_generic(base, new_args);
+        }
+        return t;
+    }
+
+    if (t->kind == ast::TypeKind::Pointer || t->kind == ast::TypeKind::Reference) {
+        const ast::Type* new_pointed = bind_type_params(ctx, t->pointed, params);
+        if (new_pointed != t->pointed) {
+            return t->kind == ast::TypeKind::Pointer
+                ? ctx.types.get_pointer(new_pointed)
+                : ctx.types.get_reference(new_pointed);
+        }
+        return t;
+    }
+
+    return t;
+}
+
 } // namespace
 
 Parser::Parser(lx::Lexer& lex, CompilerContext& ctx_)
@@ -186,7 +233,7 @@ void Parser::sync() {
         }
         if (check(TOKEN_LBRACE)) nesting++;
         switch (current.type) {
-            case TOKEN_FUNC: case TOKEN_STRUCT: case TOKEN_IF:
+            case TOKEN_STRUCT: case TOKEN_IF:
             case TOKEN_WHILE: case TOKEN_SWITCH: case TOKEN_RETURN: case TOKEN_NAMESPACE:
             case TOKEN_BREAK: case TOKEN_CONTINUE:
             case TOKEN_MODULE: case TOKEN_LOAD: case TOKEN_USING: case TOKEN_AT:
@@ -301,14 +348,7 @@ ast::Stmt Parser::parse_statement() {
     }
 
     if (match(TOKEN_EXTERN)) {
-        expect(TOKEN_FUNC, "Expected 'func' after extern");
         auto func = parse_func(true);
-        func.attributes = std::move(attrs);
-        return ast::Stmt{ std::move(func) };
-    }
-
-    if (match(TOKEN_FUNC)) {
-        auto func = parse_func(false);
         func.attributes = std::move(attrs);
         return ast::Stmt{ std::move(func) };
     }
@@ -347,10 +387,19 @@ ast::Stmt Parser::parse_statement() {
         return ast::Stmt{ std::move(decl) };
     }
 
-    if (is_var_decl()) {
-        auto var = parse_var_decl();
-        var.attributes = std::move(attrs);
-        return ast::Stmt{ std::move(var) };
+    switch (declaration_kind()) {
+        case DeclKind::Func: {
+            auto func = parse_func(false);
+            func.attributes = std::move(attrs);
+            return ast::Stmt{ std::move(func) };
+        }
+        case DeclKind::Var: {
+            auto var = parse_var_decl();
+            var.attributes = std::move(attrs);
+            return ast::Stmt{ std::move(var) };
+        }
+        case DeclKind::None:
+            break;
     }
 
     ast::Expr* expr = parse_expr(0);
@@ -358,29 +407,75 @@ ast::Stmt Parser::parse_statement() {
     return ast::Stmt{ ast::ExprStmt{ expr } };
 }
 
-bool Parser::is_var_decl() {
-    if (check(TOKEN_MUT)) {
-        return peek(0).type == TOKEN_IDENT && peek(1).type == TOKEN_COLON;
+DeclKind Parser::declaration_kind() {
+    // Scan a leading `mut`, pointer/reference prefixes, and a type name
+    // (builtin keyword or qualified identifier, optionally generic), followed
+    // by an identifier. If that identifier is followed by '(' it's a function
+    // declaration (with optional `<T, ...>` type parameters), otherwise a
+    // variable declaration.
+    int i = 0;
+    // `current` holds the first token; peek(0) is the token after it.
+    auto at = [this](int n) { return n == 0 ? current : peek(n - 1); };
+
+    if (at(i).type == TOKEN_MUT) ++i;
+
+    while (at(i).type == TOKEN_STAR || at(i).type == TOKEN_AMP) ++i;
+
+    Token t = at(i);
+    if (t.is_type()) {
+        ++i;
+    } else if (t.type == TOKEN_IDENT) {
+        ++i;
+        while (at(i).type == TOKEN_COLON_COLON) {
+            if (at(i + 1).type != TOKEN_IDENT) return DeclKind::None;
+            i += 2;
+        }
+        if (at(i).type == TOKEN_LT) {
+            int depth = 1;
+            ++i;
+            while (depth > 0) {
+                Token p = at(i);
+                if (p.type == TOKEN_LT) ++depth;
+                else if (p.type == TOKEN_GT) --depth;
+                else if (p.type == TOKEN_EOF || p.type == TOKEN_SEMICOLON) return DeclKind::None;
+                ++i;
+            }
+        }
+    } else {
+        return DeclKind::None;
     }
-    return check(TOKEN_IDENT) && peek(0).type == TOKEN_COLON;
+
+    if (at(i).type != TOKEN_IDENT) return DeclKind::None;
+    ++i;
+
+    if (at(i).type == TOKEN_LT) {
+        int depth = 1;
+        ++i;
+        while (depth > 0) {
+            Token p = at(i);
+            if (p.type == TOKEN_LT) ++depth;
+            else if (p.type == TOKEN_GT) --depth;
+            else if (p.type == TOKEN_EOF || p.type == TOKEN_SEMICOLON) return DeclKind::None;
+            ++i;
+        }
+    }
+
+    return at(i).type == TOKEN_LPAREN ? DeclKind::Func : DeclKind::Var;
 }
 
 ast::VarDecl Parser::parse_var_decl() {
     ast::VarDecl ret;
     ret.is_mut = match(TOKEN_MUT);
 
+    ret.type = parse_type(false, current_type_params);
+
     Token name = expect(TOKEN_IDENT, "Expected variable name");
     ret.name = name.text;
 
-    ret.type = nullptr;
     ret.value = nullptr;
 
-    if (match(TOKEN_COLON)) {
-        ret.type = parse_type();
-
-        if (match(TOKEN_EQ)) {
-            ret.value = parse_expr(0);
-        }
+    if (match(TOKEN_EQ)) {
+        ret.value = parse_expr(0);
     }
 
     expect(TOKEN_SEMICOLON, "Expected ';' after declaration");
@@ -408,11 +503,10 @@ ast::StructDecl Parser::parse_struct_decl() {
         field.attributes = parse_attributes();
         field.is_mut = match(TOKEN_MUT);
 
+        field.type = parse_type(false, &ret.type_params);
+
         Token field_name = expect(TOKEN_IDENT, "Expected field name");
         field.name = field_name.text;
-
-        expect(TOKEN_COLON, "Expected ':' after field name");
-        field.type = parse_type(false, &ret.type_params);
 
         field.default_value = nullptr;
         if (match(TOKEN_EQ)) {
@@ -568,6 +662,8 @@ ast::ReturnStmt Parser::parse_return() {
 ast::FuncStmt Parser::parse_func(bool is_extern) {
     ast::FuncStmt ret;
 
+    ret.return_type = parse_type(false, current_type_params);
+
     Token name = expect(TOKEN_IDENT, "Expected function name");
     ret.name = name.text;
 
@@ -577,6 +673,10 @@ ast::FuncStmt Parser::parse_func(bool is_extern) {
             ret.type_params.push_back(std::string(param.text));
         } while(match(TOKEN_COMMA));
         expect(TOKEN_GT, "Expected '>' after type parameters");
+    }
+
+    if (!ret.type_params.empty()) {
+        ret.return_type = bind_type_params(ctx, ret.return_type, ret.type_params);
     }
 
     ret.is_extern = is_extern;
@@ -589,8 +689,6 @@ ast::FuncStmt Parser::parse_func(bool is_extern) {
     expect(TOKEN_LPAREN, "Expected '('");
     ret.args = parse_func_args(current_type_params);
     expect(TOKEN_RPAREN, "Expected ')'");
-
-    ret.return_type = parse_type(true, current_type_params);
 
     if (check(TOKEN_LBRACE)) {
         ret.body = parse_block();
@@ -643,10 +741,9 @@ std::vector<ast::FuncArg> Parser::parse_func_args(const std::vector<std::string>
     while (true) {
         bool is_mut = match(TOKEN_MUT);
 
-        Token name = expect(TOKEN_IDENT, "Expected argument name");
-        expect(TOKEN_COLON, "Expected ':' after argument name");
-
         const ast::Type* type = parse_type(true, type_params);
+
+        Token name = expect(TOKEN_IDENT, "Expected argument name");
 
         args.push_back({
             std::string(name.text),

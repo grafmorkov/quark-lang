@@ -1,7 +1,7 @@
 load "std::io";
 using std::io;
 
-func classify(x: i32) i32 {
+i32 classify(i32 x) {
     switch (x) {
         case 1: {
             return 10;
@@ -18,8 +18,8 @@ func classify(x: i32) i32 {
     }
 }
 
-func main() i32 {
-    mut result: i32 = 0;
+i32 main() {
+    mut i32 result = 0;
 
     switch (1) {
         case 1: {
@@ -57,7 +57,7 @@ func main() i32 {
     }
     println(result as str);      // 7
 
-    c: char = 'b';
+    char c = 'b';
     switch (c) {
         case 'a': {
             result = 1;
@@ -102,6 +102,6 @@ func main() i32 {
     println(classify(9) as str); // 0
 
     // switch must be terminating when all branches return
-    x: i32 = classify(1);
+    i32 x = classify(1);
     return x - 10;
 }

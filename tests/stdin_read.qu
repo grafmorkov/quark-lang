@@ -1,8 +1,8 @@
 load "std::io";
 
-func main() i32 {
+i32 main() {
     std::io::print("Press a key:");
-    mut c: i64 = std::io::read_char();
+    mut i64 c = std::io::read_char();
     std::io::print("You pressed: ");
     std::io::print_char(c as i8);
     std::io::print_char(10 as i8);

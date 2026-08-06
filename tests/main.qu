@@ -1,5 +1,5 @@
 load "std::io";
 
-func main() {
+void main() {
     std::io::print("Hello World!\n");
 }

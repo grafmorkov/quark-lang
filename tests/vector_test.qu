@@ -3,8 +3,8 @@ load "std::vector";
 
 using std::vector;
 
-func main() {
-    @init mut v: Vec<i32>;
+void main() {
+    @init mut Vec<i32> v;
 
     vec_push<i32>(&v, 10);
     vec_push<i32>(&v, 20);

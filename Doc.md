@@ -27,10 +27,10 @@ Integer literals are i32 by default. Float literals are f64 by default. Boolean 
 ## Variables
 
 ```
-a: i32 = 10;            // immutable, must be initialized
-mut b: str = "hello";   // mutable
-c: f64 = 3.14;
-d: f64 = 1.5e2;         // scientific notation
+i32 a = 10;            // immutable, must be initialized
+mut str b = "hello";   // mutable
+f64 c = 3.14;
+f64 d = 1.5e2;         // scientific notation
 ```
 
 Variables must have an explicit type annotation.
@@ -40,22 +40,22 @@ Variables must have an explicit type annotation.
 ## Functions
 
 ```
-func add(x: i32, y: i32) i32 {
+i32 add(i32 x, i32 y) {
     return x + y;
 }
 
-func greet(name: str) {
+void greet(str name) {
     std::io::print("hello ");
     std::io::print(name);
 }
 
-func main() i32 {
+i32 main() {
     return 0;
 }
 ```
 
-- Return type is required unless the function returns void (then it can be omitted).
-- Parameters can be mutable: `func foo(mut x: i32)`.
+- Return type is always required (use `void` if the function returns nothing).
+- Parameters can be mutable: `void foo(mut i32 x)`.
 - Function must have at least one return statement if return type is not void.
 
 ---
@@ -159,57 +159,49 @@ Rules:
 
 References (`&T`) are non-owning aliases to existing variables. They have the same size as pointers (8 bytes) but provide compile-time safety.
 
-```
-x: i32 = 42;
-r: &i32 = &x;     // take reference to x
-std::io::print(r as str);
-```
-
-References can be reassigned to point to different variables:
+Field access and indexing through a reference are automatically dereferenced:
 
 ```
-a: i32 = 10;
-b: i32 = 20;
-r: &i32 = &a;
-r = &b;            // reassign reference to point to b
-```
+struct Point { i32 x; i32 y; };
 
-References can be passed to functions that accept reference parameters:
-
-```
-func increment(r: &i32) void {
-    r = r + 1;     // modifies the original variable
-}
-
-func main() i32 {
-    mut x: i32 = 10;
-    increment(&x);
-    return 0;
+i32 main() {
+    Point p = {10, 20};
+    &Point r = &p;
+    return r.x + r.y;   // field access through a reference
 }
 ```
 
-References are automatically dereferenced when accessing fields or indexing:
+References can be reassigned to point to different variables (the reference itself must be `mut`):
 
 ```
-struct Point { x: i32; y: i32; }
+struct Point { i32 x; i32 y; };
 
-func main() i32 {
-    p: Point = {10, 20};
-    r: &Point = &p;
-    return r.x + r.y;   // field access through reference
+i32 main() {
+    mut Point a = {10, 20};
+    mut Point b = {1, 2};
+    mut &Point r = &a;
+    r = &b;             // reassign reference to point to b
+    return r.x;         // 1
 }
 ```
 
-References are automatically dereferenced for pointer dereference via index:
+References can be passed to functions that accept reference parameters. To modify the referenced value, the parameter must be `mut`:
 
 ```
-region {
-    p: *i32 = alloc(i32, 1);
-    p[0] = 42;
-    r: &*i32 = &p;      // reference to pointer
-    v: i32 = r[0];      // auto-deref, then index
+struct Point { i32 x; i32 y; };
+
+void bump(mut &Point p) {
+    p.x = p.x + 1;      // modifies the original variable
+}
+
+i32 main() {
+    mut Point p = {10, 20};
+    bump(&p);
+    return p.x;         // 11
 }
 ```
+
+Note: a reference cannot be taken to a builtin value type (`i32`, `bool`, `f64`, ...).
 
 ---
 
@@ -265,12 +257,12 @@ Each desugars to `x = x op y` at parse time.
 Converts between numeric types. Also converts numbers to string.
 
 ```
-a: i64 = 42 as i64;       // i32 -> i64
-b: i8  = 1000 as i8;      // i32 -> i8  (truncation)
-c: f64 = 10 as f64;       // i32 -> f64
-d: i32 = 3.9 as i32;      // f64 -> i32 (truncates to 3)
-s: str = 42 as str;       // number -> string
-t: str = 3.14 as str;     // float -> string
+i64 a = 42 as i64;       // i32 -> i64
+i8  b = 1000 as i8;      // i32 -> i8  (truncation)
+f64 c = 10 as f64;       // i32 -> f64
+i32 d = 3.9 as i32;      // f64 -> i32 (truncates to 3)
+str s = 42 as str;       // number -> string
+str t = 3.14 as str;     // float -> string
 ```
 
 ### Bit reinterpretation (`as!`)
@@ -278,7 +270,7 @@ t: str = 3.14 as str;     // float -> string
 Reinterprets the bytes of a value as a different type. Source and target must have the same size.
 
 ```
-x: u32 = -1 as i32 as! u32;   // reinterpret i32 bytes as u32
+u32 x = -1 as i32 as! u32;   // reinterpret i32 bytes as u32
 ```
 
 ---
@@ -287,12 +279,12 @@ x: u32 = -1 as i32 as! u32;   // reinterpret i32 bytes as u32
 
 ```
 struct Point {
-    x: i32;
-    y: i32;
+    i32 x;
+    i32 y;
 }
 
-func main() i32 {
-    p: Point = Point{ 10, 20 };
+i32 main() {
+    Point p = { 10, 20 };
     return p.x + p.y;
 }
 ```
@@ -300,7 +292,7 @@ func main() i32 {
 Fields can be mutable:
 ```
 struct Counter {
-    mut val: i32;
+    mut i32 val;
 }
 ```
 
@@ -320,8 +312,8 @@ enum Color {
 Variants can be accessed directly by name or qualified:
 
 ```
-x: i32 = Red;          // 0
-y: i32 = Color::Green; // 1
+i32 x = Red;          // 0
+i32 y = Color::Green; // 1
 ```
 
 Enums support attributes like `@public` and `@private`:
@@ -341,14 +333,14 @@ Structs can have type parameters with `<>`:
 
 ```
 struct Box<T> {
-    value: T;
+    T value;
 };
 ```
 
 When you use a generic struct, pass the type argument in `<>`:
 
 ```
-@init mut b: Box<i32>;
+@init mut Box<i32> b;
 b.value = 42;
 ```
 
@@ -356,8 +348,8 @@ Multiple type parameters are also supported:
 
 ```
 struct Pair<A, B> {
-    first: A;
-    second: B;
+    A first;
+    B second;
 };
 ```
 
@@ -368,7 +360,7 @@ Generics are compiled lazily: the concrete struct (like `Box$i32`) is created on
 Functions can also have type parameters:
 
 ```
-func identity<T>(x: T) T {
+T identity<T>(T x) {
     return x;
 }
 ```
@@ -382,7 +374,7 @@ identity<i32>(42);
 Multiple type parameters work too:
 
 ```
-func swap<A, B>(a: A, b: B) A {
+A swap<A, B>(A a, B b) {
     return a;
 }
 ```
@@ -409,13 +401,13 @@ std::io::exit(0);
 `extern` declares a function implemented outside of Quant (system calls, native runtime, or another module):
 
 ```
-extern func print(text: str) void;
+extern void print(str text);
 ```
 
 Functions marked with `@syscall(N)` are lowered to the Linux syscall with number N:
 
 ```
-@syscall(1) extern func sys_write(fd: i64, buf: str, len: i64) i64;
+@syscall(1) extern i64 sys_write(i64 fd, str buf, i64 len);
 ```
 
 The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) is written in pure Quant: on Linux on top of syscalls, on Windows on top of `@import` (WinAPI).
@@ -428,7 +420,7 @@ Imports all symbols from a namespace into the current scope:
 load "std::io";
 using std::io;
 
-func main() {
+void main() {
     print("hello\n");   // instead of std::io::print
 }
 ```
@@ -462,7 +454,7 @@ Supported attributes:
 The function with `@entry` is the program entry point (replaces `main` by name).
 
 ```
-@entry func start() i32 {
+@entry i32 start() {
     return 0;
 }
 ```
@@ -474,7 +466,7 @@ If no `@entry` is found, the linker falls back to a function named `main`.
 Declares a variable without an initializer, promising the compiler it will be initialized before use.
 
 ```
-@init x: i32;
+@init i32 x;
 foo(x);                  // no "uninitialized variable" error
 ```
 
@@ -487,22 +479,22 @@ Validates a condition at compile time when the value is used (passed to a functi
 The guard condition must be a compile-time constant expression (literals, const variables, and comparisons between them).
 
 ```
-count: i32 = 1;
-@guard(count > 0) mut value: i32;
+i32 count = 1;
+@guard(count > 0) mut i32 value;
 
 value = 10;               // ok (writes are not guarded)
 
-func work(x: i32) {}
+void work(i32 x) {}
 work(value);              // passes: count > 0 is true at compile time
 ```
 
 If the condition is false, compilation fails:
 
 ```
-count: i32 = 0;
-@guard(count > 0) mut value: i32;
+i32 count = 0;
+@guard(count > 0) mut i32 value;
 
-func work(x: i32) {}
+void work(i32 x) {}
 work(value);              // error: guard failed for 'value' in call to 'work'
 ```
 
@@ -510,7 +502,7 @@ Guard also works on struct fields:
 
 ```
 struct X {
-    @guard(true) data: i32;
+    @guard(true) i32 data;
 };
 ```
 
@@ -519,11 +511,11 @@ struct X {
 Restricts access to the declaring module. Other modules cannot call or reference the symbol.
 
 ```
-@private func helper() i32 {
+@private i32 helper() {
     return 42;
 }
 
-func public_fn() i32 {
+i32 public_fn() {
     return helper();     // ok - same module
 }
 ```
@@ -539,8 +531,8 @@ Explicitly marks a symbol as accessible from other modules. Useful inside `@hide
 Applied to a module (place `@hide` on any top-level declaration). Makes all symbols in the module private by default; only symbols with `@public` remain accessible from outside.
 
 ```
-@hide func internal() i32 { return 1; }
-@public func api() i32    { return 2; }
+@hide i32 internal() { return 1; }
+@public i32 api()    { return 2; }
 ```
 
 ### `@syscall`
@@ -548,8 +540,8 @@ Applied to a module (place `@hide` on any top-level declaration). Makes all symb
 Declares an `extern` function implemented as a raw Linux syscall. The argument is the syscall number. (Windows uses `@import` instead.)
 
 ```
-@syscall(1) extern func sys_write(fd: i64, buf: str, len: i64) i64;
-@syscall(60) extern func sys_exit(code: i64) void;
+@syscall(1) extern i64 sys_write(i64 fd, str buf, i64 len);
+@syscall(60) extern void sys_exit(i64 code);
 ```
 
 The generated wrapper follows the System V calling convention: arguments arrive in
@@ -557,8 +549,8 @@ The generated wrapper follows the System V calling convention: arguments arrive 
 number is loaded into `rax`, and `syscall` is executed. The result is returned in `rax`.
 
 ```
-extern func print(text: str) void;   // error: @syscall requires extern
-@syscall("1") extern func bad() i64; // error: argument must be an integer literal
+extern void print(str text);   // error: @syscall requires extern
+@syscall("1") extern i64 bad(); // error: argument must be an integer literal
 ```
 
 ### `@export`
@@ -568,7 +560,7 @@ compiler-generated internal name `fn_<id>__<name>`). Useful for calling Quant fu
 from native code or for stable symbols during debugging.
 
 ```
-@export("my_func") func do_work() i32 {
+@export("my_func") i32 do_work() {
     return 42;
 }
 ```
@@ -582,15 +574,15 @@ The first argument is the DLL name. An optional second argument is the exported
 symbol name; when omitted, the Quant function name is used as the export name.
 
 ```
-@import("kernel32.dll", "ExitProcess") extern func sys_exit_process(uExitCode: u32) void;
-@import("kernel32.dll") extern func GetTickCount() u32;   // imports GetTickCount
+@import("kernel32.dll", "ExitProcess") extern void sys_exit_process(u32 uExitCode);
+@import("kernel32.dll") extern u32 GetTickCount();   // imports GetTickCount
 ```
 
 On Linux, use `@syscall` instead.
 
 ```
-@import extern func bad() i64;          // error: @import requires a DLL name
-extern func also_bad() i64;             // error: @import requires extern
+@import extern i64 bad();          // error: @import requires a DLL name
+extern i64 also_bad();             // error: @import requires extern
 ```
 
 ---
@@ -599,13 +591,13 @@ extern func also_bad() i64;             // error: @import requires extern
 Quant has region memory system. Pointers can only be declared in ```region{}```. If a region dies, all pointers are destroyed.
 ```
 region r {
-    p: *void = alloc(32);
+    *void p = alloc(32);
 }
 ```
 Arrays are also supported and can (only) be declared in region:
 ```
 region r {
-    p: *i32 = alloc(i32, 10);
+    *i32 p = alloc(i32, 10);
     p[0] = 42;
     p[1] = p[0] + 1;
     std::io::print(p[0] as str);
@@ -620,9 +612,9 @@ region r {
 Nested regions are also supported:
 ```
 region outer {
-    a: *i32 = alloc(i32, 1);
+    *i32 a = alloc(i32, 1);
     region inner {
-        b: *i32 = alloc(i32, 1);
+        *i32 b = alloc(i32, 1);
     }
 }
 ```
@@ -646,21 +638,21 @@ region outer {
 Compile-time type size query:
 
 ```
-sz: u64 = sizeof(i32);   // 4
-sz: u64 = sizeof(i64);   // 8
-sz: u64 = sizeof(u8);    // 1
-sz: u64 = sizeof(*T);    // 8  (pointer)
-sz: u64 = sizeof(&T);    // 8  (reference)
+u64 sz = sizeof(i32);   // 4
+u64 sz = sizeof(i64);   // 8
+u64 sz = sizeof(u8);    // 1
+u64 sz = sizeof(*T);    // 8  (pointer)
+u64 sz = sizeof(&T);    // 8  (reference)
 ```
 
 In generic functions, `sizeof(T)` substitutes the concrete type at compile time:
 
 ```
-func foo<T>() void {
-   x: u64 = sizeof(T);
+void foo<T>() {
+   u64 x = sizeof(T);
 }
 
-func main() {
+void main() {
     foo<i64>();    // x = 8
     foo<i32>();    // x = 4
 }

@@ -4,43 +4,43 @@ load "std::arena";
 
 using std::string;
 
-func main() {
-    s: str = "hello";
+void main() {
+    str s = "hello";
 
     // str_len
-    l: u64 = str_len(s);
+    u64 l = str_len(s);
     if (l != (5 as u64)) { std::io::print("BAD len\n"); return; }
 
     // str_eq / str_neq
-    eq: bool = str_eq(s, "hello");
+    bool eq = str_eq(s, "hello");
     if (!eq) { std::io::print("BAD eq\n"); return; }
-    neq: bool = str_neq(s, "world");
+    bool neq = str_neq(s, "world");
     if (!neq) { std::io::print("BAD neq\n"); return; }
-    same: bool = str_neq(s, "hello");
+    bool same = str_neq(s, "hello");
     if (same) { std::io::print("BAD neq2\n"); return; }
 
     // str_empty
-    e: bool = str_empty(s);
+    bool e = str_empty(s);
     if (e) { std::io::print("BAD empty\n"); return; }
-    e2: bool = str_empty("");
+    bool e2 = str_empty("");
     if (!e2) { std::io::print("BAD empty2\n"); return; }
 
     // str_char_at
-    c: u8 = str_char_at(s, 1);
+    u8 c = str_char_at(s, 1);
     if (c != (101 as u8)) { std::io::print("BAD char_at\n"); return; }
 
     // Arena-allocated results
     std::arena::_init_global_region(1024);
 
-    cat: str = str_concat(s, " world");
+    str cat = str_concat(s, " world");
     if (!str_eq(cat, "hello world")) { std::io::print("BAD concat\n"); return; }
 
-    sub: str = str_sub(s, 1, 3);
+    str sub = str_sub(s, 1, 3);
     if (!str_eq(sub, "ell")) { std::io::print("BAD sub\n"); return; }
 
-    cp: str = str_copy(s);
+    str cp = str_copy(s);
     if (!str_eq(cp, "hello")) { std::io::print("BAD copy\n"); return; }
-    cp2: str = str_copy(cat);
+    str cp2 = str_copy(cat);
     if (!str_eq(cp2, "hello world")) { std::io::print("BAD copy2\n"); return; }
 
     std::io::print("str OK\n");

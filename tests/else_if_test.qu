@@ -1,9 +1,9 @@
 load "std::io";
 using std::io;
 
-func main() i32 {
-    mut result: i32 = 0;
-    value: i32 = 7;
+i32 main() {
+    mut i32 result = 0;
+    i32 value = 7;
 
     if (value > 10) {
         result = 1;
@@ -14,17 +14,17 @@ func main() i32 {
     } else {
         result = 4;
     }
-    msg: str = result as str;
+    str msg = result as str;
     println(msg);
 
     // without trailing else
-    mut count: i32 = 0;
+    mut i32 count = 0;
     if (value > 10) {
         count = 1;
     } else if (value > 5) {
         count = 2;
     }
-    msg2: str = count as str;
+    str msg2 = count as str;
     println(msg2);
 
     return 0;

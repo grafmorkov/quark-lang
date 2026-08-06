@@ -5,44 +5,44 @@
 
 module "std::arena";
 
-@import("kernel32.dll", "VirtualAlloc") extern func sys_virtual_alloc(lpAddress: *void, dwSize: u64, flAllocationType: u32, flProtect: u32) *void;
-@import("kernel32.dll", "VirtualFree") extern func sys_virtual_free(lpAddress: *void, dwSize: u64, dwFreeType: u32) i32;
+@import("kernel32.dll", "VirtualAlloc") extern *void sys_virtual_alloc(*void lpAddress, u64 dwSize, u32 flAllocationType, u32 flProtect);
+@import("kernel32.dll", "VirtualFree") extern i32 sys_virtual_free(*void lpAddress, u64 dwSize, u32 dwFreeType);
 
 struct Region {
-    data: *void;
-    offset: u64;
-    capacity: u64;
+    *void data;
+    u64 offset;
+    u64 capacity;
 };
 
-@init mut g_global_region: Region;
+@init mut Region g_global_region;
 
 // _region_mmap - map `size` bytes of readable/writable memory.
-func _region_mmap(size: u64) *void {
+*void _region_mmap(u64 size) {
     return sys_virtual_alloc(0 as! *void, size, (12288 as u32), (4 as u32));
 }
 
 // _region_munmap - release `size` bytes previously returned by _region_mmap.
-func _region_munmap(ptr: *void, size: u64) void {
+void _region_munmap(*void ptr, u64 size) {
     if (ptr == (0 as! *void)) { return; }
     sys_virtual_free(ptr, 0 as u64, (32768 as u32));
 }
 
 // _region_bump - allocate `size` bytes from a region (16-byte aligned).
 // Returns NULL if the region has no space left.
-func _region_bump(mut reg: &Region, size: u64) *void {
-    mut a: u64 = size + (15 as u64);
+*void _region_bump(mut &Region reg, u64 size) {
+    mut u64 a = size + (15 as u64);
     a = a & ((-16 as i64) as u64);
-    off: u64 = reg.offset;
-    end: u64 = off + a;
+    u64 off = reg.offset;
+    u64 end = off + a;
     if (end > reg.capacity) { return 0 as! *void; }
-    res: u64 = (reg.data as! u64) + off;
+    u64 res = (reg.data as! u64) + off;
     reg.offset = end;
     return res as! *void;
 }
 
 // _create - create a new region backed by an allocated block of `size` bytes.
-func _create(size: u64) Region {
-    mut r: Region;
+Region _create(u64 size) {
+    mut Region r;
     r.data = _region_mmap(size);
     r.offset = 0;
     r.capacity = size;
@@ -50,7 +50,7 @@ func _create(size: u64) Region {
 }
 
 // _destroy - release the backing memory of a region.
-func _destroy(mut reg: &Region) void {
+void _destroy(mut &Region reg) {
     _region_munmap(reg.data, reg.capacity);
     reg.data = 0 as! *void;
     reg.offset = 0;
@@ -58,12 +58,12 @@ func _destroy(mut reg: &Region) void {
 }
 
 // _global_region - returns the process-wide region used by std::string.
-func _global_region() &Region {
+&Region _global_region() {
     return &g_global_region;
 }
 
 // _init_global_region - (re)allocate the global region backing memory.
-func _init_global_region(size: u64) void {
+void _init_global_region(u64 size) {
     if (g_global_region.data != (0 as! *void)) {
         _region_munmap(g_global_region.data, g_global_region.capacity);
         g_global_region.data = 0 as! *void;
