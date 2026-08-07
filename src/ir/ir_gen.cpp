@@ -198,6 +198,49 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
     ctx.errors.add("Unknown field: " + field_name); return {};
 }
 
+bool is_signed_int_kind(ast::TypeKind k) {
+    return k >= ast::TypeKind::I8 && k <= ast::TypeKind::I64;
+}
+
+bool is_unsigned_int_kind(ast::TypeKind k) {
+    return k >= ast::TypeKind::U8 && k <= ast::TypeKind::U64;
+}
+
+bool is_float_kind(ast::TypeKind k) {
+    return k == ast::TypeKind::F32 || k == ast::TypeKind::F64;
+}
+
+bool is_numeric_kind(ast::TypeKind k) {
+    return k >= ast::TypeKind::I8 && k <= ast::TypeKind::F64;
+}
+
+int numeric_size(ast::TypeKind k) {
+    switch (k) {
+        case ast::TypeKind::I8:   case ast::TypeKind::U8:   return 1;
+        case ast::TypeKind::I16:  case ast::TypeKind::U16:  return 2;
+        case ast::TypeKind::I32:  case ast::TypeKind::U32:
+        case ast::TypeKind::F32:                             return 4;
+        case ast::TypeKind::I64:  case ast::TypeKind::U64:
+        case ast::TypeKind::F64:                             return 8;
+        default:                                             return 0;
+    }
+}
+
+// Usual arithmetic conversions for binary IR emission.
+ast::TypeKind binary_common_kind(ast::TypeKind a, ast::TypeKind b) {
+    if (a == b) return a;
+    if (a == ast::TypeKind::F64 || b == ast::TypeKind::F64) return ast::TypeKind::F64;
+    if (a == ast::TypeKind::F32 || b == ast::TypeKind::F32) return ast::TypeKind::F32;
+
+    const int sa = numeric_size(a);
+    const int sb = numeric_size(b);
+    const bool sia = is_signed_int_kind(a);
+    const bool sib = is_signed_int_kind(b);
+    if (sia == sib) return (sa >= sb) ? a : b;
+    if (sia) return (sa > sb) ? a : b;
+    return (sb > sa) ? b : a;
+}
+
 
 } // namespace
 
@@ -740,7 +783,7 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                     }
                 }
             } else if (node.value) {
-                const uint32_t value = gen_expr(*node.value);
+                const uint32_t value = gen_expr_as(*node.value, var_type);
                 emit(IRStoreLocal{ local, value });
             }
         },
@@ -794,7 +837,7 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
                 emit(IRLoadConst{ zero, 0 });
                 emit(IRReturn{ zero });
             } else if (node.value) {
-                const uint32_t value = gen_expr(*node.value);
+                const uint32_t value = gen_expr_as(*node.value, current_func_return_type);
                 emit(IRReturn{ value });
             } else {
                 const uint32_t zero = new_reg();
@@ -1192,7 +1235,11 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
         [&](const ast::FloatExpr& node) -> uint32_t {
             const uint32_t dst = new_reg();
-            emit(IRLoadFloatConst{ dst, node.value });
+            ast::TypeKind kind = ast::TypeKind::F64;
+            if (expr.resolved_type && expr.resolved_type->kind == ast::TypeKind::F32) {
+                kind = ast::TypeKind::F32;
+            }
+            emit(IRLoadFloatConst{ dst, node.value, kind });
             return dst;
         },
 
@@ -1264,21 +1311,31 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::BinaryExpr& node) -> uint32_t {
-            const uint32_t lhs = gen_expr(*node.lhs);
-            const uint32_t rhs = gen_expr(*node.rhs);
-            const uint32_t dst = new_reg();
+            ast::TypeKind lhs_kind = node.lhs && node.lhs->resolved_type
+                ? node.lhs->resolved_type->kind : ast::TypeKind::I32;
+            ast::TypeKind rhs_kind = node.rhs && node.rhs->resolved_type
+                ? node.rhs->resolved_type->kind : lhs_kind;
+            const ast::TypeKind common = binary_common_kind(lhs_kind, rhs_kind);
 
-            ast::TypeKind tk = ast::TypeKind::I32;
-            if (node.lhs && node.lhs->resolved_type) {
-                tk = node.lhs->resolved_type->kind;
-            }
+            // Widen each operand to the common type before the operation
+            auto widen_operand = [&](const ast::Expr* op, ast::TypeKind k) -> uint32_t {
+                const uint32_t reg = gen_expr(*op);
+                if (k == common) return reg;
+                const uint32_t c = new_reg();
+                emit(IRCast{ c, reg, k, common, ast::CastKind::ValueCast });
+                return c;
+            };
+
+            const uint32_t lhs = widen_operand(node.lhs, lhs_kind);
+            const uint32_t rhs = widen_operand(node.rhs, rhs_kind);
+            const uint32_t dst = new_reg();
 
             emit(IRBinary{
                 map_op(node.op),
                 dst,
                 lhs,
                 rhs,
-                tk
+                common
             });
 
             return dst;
@@ -1360,15 +1417,17 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 ctx.errors.add("Assignment target or value is missing"); return 0;
             }
 
-            const uint32_t value = gen_expr(*node.value);
-
             if (const auto* var = std::get_if<ast::VarExpr>(&node.target->kind)) {
                 for (int i = static_cast<int>(local_scopes.size()) - 1; i >= 0; --i) {
                     auto it = local_scopes[i].find(var->name);
                     if (it != local_scopes[i].end()) {
                         const uint32_t local = it->second;
-                        emit(IRStoreLocal{ local, value });
-                        return value;
+                        const ast::Type* var_type = nullptr;
+                        auto tit = type_scopes[i].find(var->name);
+                        if (tit != type_scopes[i].end()) var_type = tit->second;
+                        const uint32_t v = gen_expr_as(*node.value, var_type);
+                        emit(IRStoreLocal{ local, v });
+                        return v;
                     }
                 }
 
@@ -1386,8 +1445,9 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 );
                 auto git = global_ids.find(qname);
                 if (git != global_ids.end()) {
-                    emit(IRStoreGlobal{ git->second, value });
-                    return value;
+                    const uint32_t v = gen_expr_as(*node.value, symbol_type(*sym));
+                    emit(IRStoreGlobal{ git->second, v });
+                    return v;
                 }
 
                 ctx.errors.add("Global assignment lowering is not implemented yet: " + var->name); return 0;
@@ -1426,15 +1486,15 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 }
 
                 const auto [offset, field_type] = resolve_struct_field(ctx, base_type, field->field);
-                (void)field_type;
 
+                const uint32_t v = gen_expr_as(*node.value, field_type);
                 emit(IRSetField{
                     base,
-                    value,
+                    v,
                     offset
                 });
 
-                return value;
+                return v;
             }
 
             if (const auto* index = std::get_if<ast::IndexExpr>(&node.target->kind)) {
@@ -1450,9 +1510,11 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                     ctx.errors.add("Invalid pointer index in assignment"); return 0;
                 }
 
-                uint32_t elem_size = type_size(base_type->pointed);
-                emit(IRStoreElement{base, idx, value, elem_size});
-                return value;
+                const ast::Type* elem_type = base_type->pointed;
+                uint32_t elem_size = type_size(elem_type);
+                const uint32_t v = gen_expr_as(*node.value, elem_type);
+                emit(IRStoreElement{base, idx, v, elem_size});
+                return v;
             }
 
             ctx.errors.add("Assignment target must be variable, field access, or index expression"); return 0;
@@ -1550,21 +1612,9 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 }
             }
 
-            std::vector<uint32_t> args;
-            args.reserve(node.args.size());
-
-            for (const auto* arg : node.args) {
-                if (!arg) {
-                    ctx.errors.add("Null call argument"); return 0;
-                }
-                args.push_back(gen_expr(*arg));
-            }
-
             if (!node.callee) {
                 ctx.errors.add("Call callee is missing"); return 0;
             }
-
-            uint32_t func_id = 0;
 
             const auto callee_path = support::flatten_path(node.callee);
 
@@ -1574,6 +1624,33 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             std::string mangled;
             if (!node.type_args.empty()) {
                 mangled = ctx.types.mangle_func_name(support::join_namespace(callee_path), node.type_args);
+            }
+
+            std::vector<uint32_t> args;
+            args.reserve(node.args.size());
+
+            for (size_t i = 0; i < node.args.size(); ++i) {
+                const auto* arg = node.args[i];
+                if (!arg) {
+                    ctx.errors.add("Null call argument"); return 0;
+                }
+                const ast::Type* param_type = nullptr;
+                if (!node.type_args.empty()) {
+                    auto it = ctx.generic_arg_types.find(mangled);
+                    if (it != ctx.generic_arg_types.end() && i < it->second.size()) {
+                        param_type = it->second[i];
+                    }
+                } else if (const auto* fn_sym = resolve_qualified(ctx, callee_path)) {
+                    if (auto* fs = std::get_if<quant::symb_t::FuncSymbol>(&fn_sym->data)) {
+                        if (i < fs->arg_types.size()) param_type = fs->arg_types[i];
+                    }
+                }
+                args.push_back(gen_expr_as(*arg, param_type));
+            }
+
+            uint32_t func_id = 0;
+
+            if (!node.type_args.empty()) {
                 func_id = resolve_function_id({mangled});
             } else {
                 func_id = resolve_function_id(callee_path);
@@ -1669,8 +1746,16 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             emit(IRAlloca{ ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0) });
 
             // Initialize each field by position
+            auto* sym = lookup_struct(ctx, struct_type->struct_name);
+            const std::vector<const ast::Type*>* field_types = nullptr;
+            if (sym) {
+                if (auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data)) {
+                    field_types = &ss->field_types;
+                }
+            }
             for (size_t i = 0; i < node.args.size(); ++i) {
-                const uint32_t val = gen_expr(*node.args[i]);
+                const ast::Type* field_type = (field_types && i < field_types->size()) ? (*field_types)[i] : nullptr;
+                const uint32_t val = gen_expr_as(*node.args[i], field_type);
                 emit(IRSetField{ ptr, val, static_cast<uint32_t>(i * 8) });
             }
 
@@ -1713,6 +1798,22 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             return dst;
         }
     }, expr.kind);
+}
+
+Reg IRGenerator::gen_expr_as(const ast::Expr& expr, const ast::Type* target) {
+    const uint32_t v = gen_expr(expr);
+    if (!target) return v;
+
+    const ast::Type* src = expr.resolved_type;
+    if (!src || src->kind == target->kind) return v;
+
+    const bool src_num = is_numeric_kind(src->kind);
+    const bool dst_num = is_numeric_kind(target->kind);
+    if (!src_num || !dst_num) return v;
+
+    const uint32_t c = new_reg();
+    emit(IRCast{ c, v, src->kind, target->kind, ast::CastKind::ValueCast });
+    return c;
 }
 
 } // namespace quant::codegen

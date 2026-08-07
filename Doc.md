@@ -313,6 +313,50 @@ str s = 42 as str;       // number -> string
 str t = 3.14 as str;     // float -> string
 ```
 
+### Implicit conversions (widening only)
+
+Most numeric conversions happen automatically as long as they are guaranteed
+to preserve the value. If a conversion could lose information, the compiler
+rejects it and you must write an explicit as cast.
+
+```
+i8  a = 42;             // the literal fits in i8
+u8  b = 200;            // the literal fits in u8
+i16 c = 30000;          // the literal fits in i16
+f32 d = 2.5;            // the literal becomes f32
+i32 e = c;              // i16 -> i32 is a safe widening conversion
+f64 f = a;              // i8 -> f64 is also safe
+```
+```
+i8 g = 300;            // ERROR: 300 does not fit in i8
+i8 h = 200;            // ERROR: literal out of range for i8
+u8 i = -1;             // ERROR: negative values cannot be assigned to u8
+```
+
+The same rules apply when passing function arguments, returning values, or
+initializing structs.
+
+Integer literals in binary expressions adapt to the other operand whenever
+possible. If both operands have different numeric types, they are promoted to
+a common type before the operation.
+
+```
+i32 a = 5;
+i64 b = 10;
+i64 s = a + b;          // a is promoted to i64
+
+f64 d = a * 1.5;        // a is promoted to f64
+
+u8  r = 250 + 5;        // both literals fit in u8, result is u8 (255)
+```
+
+Comparison operators (==, !=, <, <=, >, >=) also work with mixed
+numeric types. Both operands are converted to a common type before the
+comparison, and the result is always bool.
+
+Logical operators are stricter: && and || require bool operands, and the
+unary ! operator only works with bool.
+
 ### Bit reinterpretation (`as!`)
 
 Reinterprets the bytes of a value as a different type. Source and target must have the same size.

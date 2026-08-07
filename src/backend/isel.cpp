@@ -21,6 +21,12 @@ int64_t double_bits(double d) {
     return bits;
 }
 
+int32_t float_bits(float f) {
+    int32_t bits = 0;
+    std::memcpy(&bits, &f, sizeof(bits));
+    return bits;
+}
+
 int cast_type_size(ast::TypeKind kind) {
     switch (kind) {
         case ast::TypeKind::Bool:
@@ -481,8 +487,13 @@ void ISel::emit_inst(const IRProgram& program, const IRFunction& fn, const IRIns
             text.mov_mem_r64(temp_slot(x.dst, fn), x86::RAX);
         },
         [&](const IRLoadFloatConst& x) {
-            text.mov_r64_imm(x86::RAX, double_bits(x.value));
-            text.mov_mem_r64(temp_slot(x.dst, fn), x86::RAX);
+            if (x.kind == ast::TypeKind::F32) {
+                text.mov_r32_imm(x86::RAX, float_bits(static_cast<float>(x.value)));
+                text.mov_mem_r32(temp_slot(x.dst, fn), x86::RAX);
+            } else {
+                text.mov_r64_imm(x86::RAX, double_bits(x.value));
+                text.mov_mem_r64(temp_slot(x.dst, fn), x86::RAX);
+            }
         },
         [&](const IRLoadLocal& x) {
             text.mov_r64_mem(x86::RAX, local_slot(x.local));

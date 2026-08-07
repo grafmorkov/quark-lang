@@ -10,6 +10,12 @@ namespace {
         return bits;
     }
 
+    int32_t float_bits(float f) {
+        int32_t bits = 0;
+        std::memcpy(&bits, &f, sizeof(bits));
+        return bits;
+    }
+
     template<class... Ts>
     struct overloaded : Ts... {
         using Ts::operator()...;
@@ -352,8 +358,13 @@ namespace {
             },
 
             [&](const IRLoadFloatConst& x) {
-                emit_line("    mov rax, " + std::to_string(double_bits(x.value)));
-                emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
+                if (x.kind == ast::TypeKind::F32) {
+                    emit_line("    mov eax, " + std::to_string(float_bits(static_cast<float>(x.value))));
+                    emit_line("    mov dword " + temp_slot(x.dst, fn) + ", eax");
+                } else {
+                    emit_line("    mov rax, " + std::to_string(double_bits(x.value)));
+                    emit_line("    mov qword " + temp_slot(x.dst, fn) + ", rax");
+                }
             },
 
             [&](const IRLoadLocal& x) {

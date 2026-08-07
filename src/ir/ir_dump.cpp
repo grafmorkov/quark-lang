@@ -85,7 +85,8 @@ void dump_inst(const IRProgram& program, const IRInst& inst) {
             std::cout << "const r" << x.dst << ", " << x.value;
         },
         [&](const IRLoadFloatConst& x) {
-            std::cout << "float r" << x.dst << ", " << x.value;
+            std::cout << "float r" << x.dst << ", " << x.value
+                      << " (" << (x.kind == ast::TypeKind::F32 ? "f32" : "f64") << ")";
         },
         [&](const IRLoadString& x) {
             std::cout << "loadstr r" << x.dst << ", str_" << x.string_id;

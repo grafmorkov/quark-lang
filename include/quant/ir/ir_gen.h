@@ -85,6 +85,10 @@ struct IRGenerator {
 
     Reg gen_expr(const ast::Expr& expr);
 
+    // Generate an expression and emit an implicit widening cast to `target`
+    // when the value's type differs numerically from the destination type.
+    Reg gen_expr_as(const ast::Expr& expr, const ast::Type* target);
+
 private:
 
     // Helpers

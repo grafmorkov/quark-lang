@@ -38,6 +38,10 @@ namespace quant {
         // since the ephemeral concrete symbols are scoped per call site.
         std::unordered_map<std::string, const ast::Type*> generic_return_types;
 
+        // Mangled concrete generic function name -> its concrete argument types.
+        // Needed by IR gen to emit implicit widening casts on call arguments.
+        std::unordered_map<std::string, std::vector<const ast::Type*>> generic_arg_types;
+
         ErrorBag errors;
 
         CompilerContext()

@@ -31,7 +31,7 @@ struct Vec<T> {
 };
 
 void vec_push<T>(mut &Vec<T> v, T val) {
-    i32 elem_size = sizeof(T);
+    u64 elem_size = sizeof(T);
     if (v.capacity == 0) {
         v.data = std::heap::heap_malloc(elem_size) as! *T;
         v.capacity = 1;
@@ -50,7 +50,7 @@ T vec_get<T>(&Vec<T> v, i32 index) {
 }
 
 u64 vec_len<T>(&Vec<T> v) {
-    return v.size;
+    return v.size as u64;
 }
 
 void vec_free<T>(mut &Vec<T> v) {

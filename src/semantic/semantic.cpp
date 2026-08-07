@@ -5,6 +5,7 @@
 #include "quant/support/symbol_path.h"
 #include "quant/attributes/attributes.h"
 #include <cstdint>
+#include <cmath>
 
 #include "utils/logger.h"
 
@@ -120,18 +121,176 @@ bool types_equal(const ast::Type* a, const ast::Type* b) {
     return true;
 }
 
+bool is_numeric_kind(ast::TypeKind k) {
+    return k >= TypeKind::I8 && k <= TypeKind::F64;
+}
+
+bool is_int_kind(ast::TypeKind k) {
+    return k >= TypeKind::I8 && k <= TypeKind::U64;
+}
+
+bool is_signed_int_kind(ast::TypeKind k) {
+    return k >= TypeKind::I8 && k <= TypeKind::I64;
+}
+
+bool is_float_kind(ast::TypeKind k) {
+    return k == TypeKind::F32 || k == TypeKind::F64;
+}
+
+int numeric_size(ast::TypeKind k) {
+    switch (k) {
+        case TypeKind::I8:   case TypeKind::U8:   return 1;
+        case TypeKind::I16:  case TypeKind::U16:  return 2;
+        case TypeKind::I32:  case TypeKind::U32:
+        case TypeKind::F32:                       return 4;
+        case TypeKind::I64:  case TypeKind::U64:
+        case TypeKind::F64:                       return 8;
+        default:                                  return 0;
+    }
+}
+
+// Can `from` be converted to `to` implicitly without losing information?
+// Widening only; narrowing always requires an explicit `as` cast.
+bool is_assignable(const ast::Type* to, const ast::Type* from);
+
+bool can_widen(const ast::Type* to, const ast::Type* from) {
+    if (!to || !from) return false;
+    if (types_equal(to, from)) return true;
+
+    const auto kf = from->kind;
+    const auto kt = to->kind;
+    if (!is_numeric_kind(kf) || !is_numeric_kind(kt)) return false;
+
+    if (is_float_kind(kf) && is_float_kind(kt))
+        return numeric_size(kt) >= numeric_size(kf);
+    if (is_float_kind(kf) && is_int_kind(kt))
+        return false; // float -> int is always narrowing
+    if (is_int_kind(kf) && is_float_kind(kt))
+        return numeric_size(kt) >= numeric_size(kf); // int -> float
+    // int -> int
+    if (is_signed_int_kind(kf) && is_signed_int_kind(kt))
+        return numeric_size(kt) >= numeric_size(kf);
+    if (!is_signed_int_kind(kf) && !is_signed_int_kind(kt))
+        return numeric_size(kt) >= numeric_size(kf);
+    if (is_signed_int_kind(kf)) // signed -> unsigned loses negative values
+        return false;
+    return numeric_size(kt) > numeric_size(kf); // unsigned -> signed
+}
+
+// Usual arithmetic conversions: the common type of two numeric operands.
+const ast::Type* common_type(quant::CompilerContext& ctx, const ast::Type* a, const ast::Type* b) {
+    if (!a || !b) return a ? a : b;
+    if (a->kind == b->kind) return a;
+    if (a->kind == TypeKind::F64 || b->kind == TypeKind::F64)
+        return ctx.types.get_builtin(TypeKind::F64);
+    if (a->kind == TypeKind::F32 || b->kind == TypeKind::F32)
+        return ctx.types.get_builtin(TypeKind::F32);
+
+    const int sa = numeric_size(a->kind);
+    const int sb = numeric_size(b->kind);
+    const bool sia = is_signed_int_kind(a->kind);
+    const bool sib = is_signed_int_kind(b->kind);
+    if (sia == sib)
+        return (sa >= sb) ? a : b;
+    if (sia) // signed wins only if it can represent all unsigned values
+        return (sa > sb) ? a : b;
+    return (sb > sa) ? b : a;
+}
+
+bool int_literal_fits(int64_t value, ast::TypeKind k) {
+    switch (k) {
+        case TypeKind::I8:  return value >= INT8_MIN  && value <= INT8_MAX;
+        case TypeKind::I16: return value >= INT16_MIN && value <= INT16_MAX;
+        case TypeKind::I32: return value >= INT32_MIN && value <= INT32_MAX;
+        case TypeKind::I64: return true;
+        case TypeKind::U8:  return value >= 0 && value <= UINT8_MAX;
+        case TypeKind::U16: return value >= 0 && value <= UINT16_MAX;
+        case TypeKind::U32: return value >= 0 && value <= UINT32_MAX;
+        case TypeKind::U64: return value >= 0;
+        default:            return false;
+    }
+}
+
+// A negative integer literal (e.g. `-5`) is parsed as UnaryExpr(Neg, IntExpr).
+bool is_int_literal(const ast::Expr* e) {
+    if (!e) return false;
+    if (std::holds_alternative<ast::IntExpr>(e->kind)) return true;
+    if (const auto* ue = std::get_if<ast::UnaryExpr>(&e->kind)) {
+        return ue->op == ast::UnaryOp::Neg &&
+               ue->operand && std::holds_alternative<ast::IntExpr>(ue->operand->kind);
+    }
+    return false;
+}
+
+// Signed value of an integer literal (handles the `-x` unary form).
+std::optional<int64_t> int_literal_value(const ast::Expr* e) {
+    if (const auto* ie = std::get_if<ast::IntExpr>(&e->kind)) {
+        return ie->value;
+    }
+    if (const auto* ue = std::get_if<ast::UnaryExpr>(&e->kind)) {
+        if (ue->op == ast::UnaryOp::Neg) {
+            if (const auto* ie = std::get_if<ast::IntExpr>(&ue->operand->kind)) {
+                if (ie->value == INT64_MIN) return std::nullopt; // -INT64_MIN overflows
+                return -ie->value;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+bool is_float_literal(const ast::Expr* e) {
+    return e && std::holds_alternative<ast::FloatExpr>(e->kind);
+}
+
+// Adapt an integer/float literal to `target` when the value fits.
+// Returns true when the literal can be used as `target` (and adopts its type).
+bool try_adapt_literal(const ast::Type* target, ast::Expr* value) {
+    if (!target || !value) return false;
+    if (!is_numeric_kind(target->kind)) return false;
+
+    if (is_int_literal(value)) {
+        if (!is_int_kind(target->kind)) return false; // int->float goes through IR cast
+        auto v = int_literal_value(value);
+        if (!v) return false;
+        if (!int_literal_fits(*v, target->kind)) return false;
+        value->resolved_type = target;
+        return true;
+    }
+    if (auto* fe = std::get_if<ast::FloatExpr>(&value->kind)) {
+        if (target->kind == TypeKind::F32) {
+            if (!std::isfinite(fe->value) || std::fabs(fe->value) > 3.4028234663852886e38) return false;
+            value->resolved_type = target;
+            return true;
+        }
+        if (target->kind == TypeKind::F64) {
+            value->resolved_type = target;
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+enum class AssignCheck { Ok, LiteralOutOfRange, Mismatch };
+
+AssignCheck check_assignable_value(const ast::Type* target, ast::Expr* value) {
+    if (!target || !value) return AssignCheck::Mismatch;
+    if (value->resolved_type && try_adapt_literal(target, value)) return AssignCheck::Ok;
+    if (is_int_literal(value) && is_int_kind(target->kind)) return AssignCheck::LiteralOutOfRange;
+    if (is_float_literal(value) && target->kind == TypeKind::F32) return AssignCheck::LiteralOutOfRange;
+    if (is_assignable(target, value->resolved_type)) return AssignCheck::Ok;
+    return AssignCheck::Mismatch;
+}
+
 bool is_assignable(const ast::Type* to, const ast::Type* from) {
     if (types_equal(to, from)) return true;
 
-    auto is_numeric_type = [](TypeKind k) {
-        return k >= TypeKind::I8 && k <= TypeKind::F64;
-    };
     auto is_ptr_like = [](TypeKind k) {
         return k == TypeKind::Pointer || k == TypeKind::Reference;
     };
 
-    // Implicit numeric promotion
-    if (is_numeric_type(to->kind) && is_numeric_type(from->kind))
+    // Implicit numeric widening only (no silent narrowing)
+    if (can_widen(to, from))
         return true;
 
     // Pointer<->Reference interop (same pointed type)
@@ -846,8 +1005,12 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
         const ast::Type* value_type = analyze_expr(var.value);
         if (!value_type) return;
 
-        if (!is_assignable(resolved_type, value_type)) {
-            ctx.errors.add(var.value->loc, "Type mismatch in variable initialization: " + var.name);
+        AssignCheck chk = check_assignable_value(resolved_type, var.value);
+        if (chk != AssignCheck::Ok) {
+            if (chk == AssignCheck::LiteralOutOfRange)
+                ctx.errors.add(var.value->loc, "Literal value does not fit in type " + resolved_type->to_string(ctx) + ": " + var.name);
+            else
+                ctx.errors.add(var.value->loc, "Type mismatch in variable initialization: " + var.name);
             return;
         }
     } else if (!var.is_mut && !has_init) {
@@ -933,7 +1096,12 @@ void SemanticAnalyzer::analyze_struct_decl(const ast::StructDecl& str) {
             const ast::Type* dt = analyze_expr(field.default_value);
             if (!dt) return;
 
-            if (!is_assignable(field.type, dt)) {
+            AssignCheck chk = check_assignable_value(field.type, field.default_value);
+            if (chk == AssignCheck::LiteralOutOfRange) {
+                ctx.errors.add("Literal value does not fit in field type: " + field.name);
+                return;
+            }
+            if (chk != AssignCheck::Ok) {
                 ctx.errors.add("Type mismatch in field default value: " + field.name);
                 return;
             }
@@ -976,9 +1144,13 @@ void SemanticAnalyzer::analyze_return(const ast::ReturnStmt& ret) {
 
     if (!value_type) return;
 
-    if (!is_assignable(current_function_return_type, value_type)) {
-        ctx.errors.add(ret.value ? ret.value->loc : SourceLocation{}, std::format("Return type mismatch, expected: {}, got: {}", current_function_return_type->to_string(ctx), value_type->to_string(ctx)));
-        return;
+    if (ret.value) {
+        AssignCheck chk = check_assignable_value(current_function_return_type, ret.value);
+        if (chk == AssignCheck::LiteralOutOfRange)
+            ctx.errors.add(ret.value->loc, std::format("Literal value does not fit in return type {}", current_function_return_type->to_string(ctx)));
+        else if (chk != AssignCheck::Ok)
+            ctx.errors.add(ret.value->loc, std::format("Return type mismatch, expected: {}, got: {}", current_function_return_type->to_string(ctx), value_type->to_string(ctx)));
+        if (chk != AssignCheck::Ok) return;
     }
 }
 
@@ -1180,9 +1352,11 @@ void SemanticAnalyzer::analyze_switch(ast::SwitchStmt& stmt) {
             if (case_type && !is_switchable(case_type->kind)) {
                 ctx.errors.add(v->loc, "Case value must be an integer, bool, or char constant");
             }
-            if (case_type && !is_assignable(cond_type, case_type)) {
+            AssignCheck chk = check_assignable_value(cond_type, v);
+            if (chk == AssignCheck::LiteralOutOfRange)
+                ctx.errors.add(v->loc, "Case value does not fit in switch expression type");
+            else if (chk == AssignCheck::Mismatch)
                 ctx.errors.add(v->loc, "Case value type mismatch with switch expression");
-            }
 
             // A mutable variable is not a compile-time constant
             bool is_mutable_var = false;
@@ -1478,10 +1652,14 @@ const ast::Type* SemanticAnalyzer::analyze_assign(const ast::AssignExpr& asg) {
     const ast::Type* target_type = resolve_lvalue(asg.target);
     if (!target_type) return nullptr;
 
-    if (!is_assignable(target_type, value_type)) {
+    AssignCheck chk = check_assignable_value(target_type, asg.value);
+    if (chk != AssignCheck::Ok) {
         std::string tname = target_type ? (target_type->kind == TypeKind::Struct ? target_type->struct_name : (target_type->kind == TypeKind::Generic ? "Generic:" + target_type->struct_name : std::to_string((int)target_type->kind))) : "null";
         std::string vname = value_type ? (value_type->kind == TypeKind::Struct ? value_type->struct_name : (value_type->kind == TypeKind::Generic ? "Generic:" + value_type->struct_name : std::to_string((int)value_type->kind))) : "null";
-        ctx.errors.add("Type mismatch in assignment: " + tname + " vs " + vname);
+        if (chk == AssignCheck::LiteralOutOfRange)
+            ctx.errors.add("Literal value does not fit in assignment: " + tname + " vs " + vname);
+        else
+            ctx.errors.add("Type mismatch in assignment: " + tname + " vs " + vname);
         return nullptr;
     }
 
@@ -1536,11 +1714,28 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b, cons
 
     if (!l || !r) return nullptr;
 
-    if (is_builtin_type_kind(l->kind) && is_builtin_type_kind(r->kind)) {
-        if (!types_equal(l, r)) {
-            ctx.errors.add(expr->loc, "Type mismatch in binary expression");
+    // Logical AND / OR: bool operands only, result is bool
+    if (b.op == ast::BinaryOp::LogicAnd || b.op == ast::BinaryOp::LogicOr) {
+        if (l->kind != TypeKind::Bool || r->kind != TypeKind::Bool) {
+            ctx.errors.add(expr->loc, "Logical '&&'/'||' operands must be bool");
             return nullptr;
         }
+        return ctx.types.get_builtin(TypeKind::Bool);
+    }
+
+    // Numeric operands: use the usual arithmetic conversions
+    if (is_numeric_kind(l->kind) && is_numeric_kind(r->kind)) {
+        if (l->kind != r->kind) {
+            // Adapt a literal operand to the typed operand where the value fits
+            if (is_int_literal(b.lhs) || is_float_literal(b.lhs))
+                try_adapt_literal(r, b.lhs);
+            else if (is_int_literal(b.rhs) || is_float_literal(b.rhs))
+                try_adapt_literal(l, b.rhs);
+            l = b.lhs->resolved_type;
+            r = b.rhs->resolved_type;
+        }
+
+        const ast::Type* common = common_type(ctx, l, r);
         switch (b.op) {
             case ast::BinaryOp::Eq:
             case ast::BinaryOp::Neq:
@@ -1550,11 +1745,19 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b, cons
             case ast::BinaryOp::Gte:
                 return ctx.types.get_builtin(TypeKind::Bool);
             default:
-                return l;
+                return common;
         }
     }
 
-    ctx.errors.add("Operator overloading is not supported for these types");
+    // Non-numeric operands: only equality comparisons are supported
+    if (types_equal(l, r)) {
+        if (b.op == ast::BinaryOp::Eq || b.op == ast::BinaryOp::Neq)
+            return ctx.types.get_builtin(TypeKind::Bool);
+        ctx.errors.add(expr->loc, "Operator not supported for this type");
+        return nullptr;
+    }
+
+    ctx.errors.add(expr->loc, "Type mismatch in binary expression");
     return nullptr;
 }
 
@@ -1573,8 +1776,8 @@ const ast::Type* SemanticAnalyzer::analyze_unary(const ast::UnaryExpr& u){
 
     if (is_builtin_type_kind(operand->kind)) {
         if (u.op == ast::UnaryOp::Not) {
-            if (operand->kind != TypeKind::Bool && operand->kind != TypeKind::U32) {
-                ctx.errors.add("Unary '!' not supported for this type");
+            if (operand->kind != TypeKind::Bool) {
+                ctx.errors.add("Unary '!' is only supported for bool");
                 return nullptr;
             }
         } else {
@@ -1763,6 +1966,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
                 {}
             });
             ctx.generic_return_types[mangled] = concrete_return;
+            ctx.generic_arg_types[mangled] = concrete_arg_types;
 
             // Create a concrete FuncStmt for body analysis and IR gen
             ast::FuncStmt concrete_fn_stmt;
@@ -1834,10 +2038,12 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
 
             check_arg_guard(arg, mangled);
 
-            if (!is_assignable(concrete_fn->arg_types[i], arg_type)) {
+            AssignCheck chk = check_assignable_value(concrete_fn->arg_types[i], arg);
+            if (chk == AssignCheck::LiteralOutOfRange)
+                ctx.errors.add("Literal argument does not fit in parameter type in generic call: " + func_name);
+            else if (chk != AssignCheck::Ok)
                 ctx.errors.add("Argument type mismatch in generic call: " + func_name);
-                return nullptr;
-            }
+            if (chk != AssignCheck::Ok) return nullptr;
         }
 
         return concrete_fn->return_type;
@@ -1870,10 +2076,12 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
 
         check_arg_guard(arg, support::join_namespace(path));
 
-        if (!is_assignable(fn->arg_types[i], arg_type)) {
+        AssignCheck chk = check_assignable_value(fn->arg_types[i], arg);
+        if (chk == AssignCheck::LiteralOutOfRange)
+            ctx.errors.add("Literal argument does not fit in parameter type in call: " + support::join_namespace(path));
+        else if (chk != AssignCheck::Ok)
             ctx.errors.add("Argument type mismatch in call: " + support::join_namespace(path));
-            return nullptr;
-        }
+        if (chk != AssignCheck::Ok) return nullptr;
     }
 
     return fn->return_type;
@@ -1988,11 +2196,14 @@ const ast::Type* SemanticAnalyzer::analyze_struct_init(const ast::StructInitExpr
         const ast::Type* arg_type = analyze_expr(node.args[i]);
         if (!arg_type) return nullptr;
 
-        if (!is_assignable(ss->field_types[i], arg_type)) {
+        AssignCheck chk = check_assignable_value(ss->field_types[i], node.args[i]);
+        if (chk == AssignCheck::LiteralOutOfRange)
+            ctx.errors.add(node.args[i]->loc,
+                "Literal value does not fit in struct init field '" + ss->field_names[i] + "'");
+        else if (chk != AssignCheck::Ok)
             ctx.errors.add(node.args[i]->loc,
                 "Type mismatch in struct init field '" + ss->field_names[i] + "'");
-            return nullptr;
-        }
+        if (chk != AssignCheck::Ok) return nullptr;
     }
 
     return struct_type;

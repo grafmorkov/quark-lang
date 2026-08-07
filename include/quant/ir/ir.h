@@ -28,6 +28,7 @@ struct IRLoadConst {
 struct IRLoadFloatConst {
     Reg dst;
     double value;
+    ast::TypeKind kind;   // F32 or F64
 };
 struct IRLoadString {
     Reg dst;
