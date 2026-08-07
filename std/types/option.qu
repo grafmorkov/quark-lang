@@ -60,9 +60,9 @@ T opt_unwrap<T>(opt<T> o) {
 }
 
 // opt_unwrap_or - get the value or use default if none.
-T opt_unwrap_or<T>(opt<T> o, T default) {
+T opt_unwrap_or<T>(opt<T> o, T dflt) {
     if (o.has_value) {
         return o.value;
     }
-    return default;
+    return dflt;
 }

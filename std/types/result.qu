@@ -70,9 +70,9 @@ E result_unwrap_err<T, E>(result<T, E> r) {
 }
 
 // result_unwrap_or - get the ok value or use default if error.
-T result_unwrap_or<T, E>(result<T, E> r, T default) {
+T result_unwrap_or<T, E>(result<T, E> r, T dflt) {
     if (r.is_ok) {
         return r.ok_value;
     }
-    return default;
+    return dflt;
 }

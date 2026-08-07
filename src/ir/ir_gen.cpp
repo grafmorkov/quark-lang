@@ -513,12 +513,15 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
             // Resolve unqualified names in the generic body from its defining
             // module's namespace, not the instantiation call site's module.
             generic_module_ns = inst.module_namespace;
+            auto* saved_type_subst = current_type_subst;
+            current_type_subst = &inst.type_subst;
             auto* saved_sym_ns = ctx.symbols.get_current_namespace();
             if (!inst.module_namespace.empty()) {
                 ctx.symbols.set_current_namespace(ctx.symbols.create_namespace_path(inst.module_namespace));
             }
             gen_block(*fn.body);
             ctx.symbols.set_current_namespace(saved_sym_ns);
+            current_type_subst = saved_type_subst;
             generic_module_ns = saved_generic_ns;
         }
 
@@ -1623,8 +1626,21 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             // instantiation name (e.g. "gm::g<i32>" -> "gm::g$4").
             std::string mangled;
             if (!node.type_args.empty()) {
-                mangled = ctx.types.mangle_func_name(support::join_namespace(callee_path), node.type_args);
+                std::vector<const ast::Type*> resolved_type_args;
+                for (const auto* arg : node.type_args) {
+                    const ast::Type* a = arg;
+                    if (current_type_subst) {
+                        a = ctx.types.substitute_type(a, *current_type_subst);
+                    }
+                    resolved_type_args.push_back(a);
+                }
+                mangled = ctx.types.mangle_func_name(support::join_namespace(callee_path), resolved_type_args);
+            } else if (!node.resolved_mangled_name.empty()) {
+                // Implicit generic call: the semantic pass resolved the
+                // concrete (mangled) instantiation name for us.
+                mangled = node.resolved_mangled_name;
             }
+            const bool is_generic_call = !node.type_args.empty() || !node.resolved_mangled_name.empty();
 
             std::vector<uint32_t> args;
             args.reserve(node.args.size());
@@ -1635,7 +1651,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                     ctx.errors.add("Null call argument"); return 0;
                 }
                 const ast::Type* param_type = nullptr;
-                if (!node.type_args.empty()) {
+                if (is_generic_call) {
                     auto it = ctx.generic_arg_types.find(mangled);
                     if (it != ctx.generic_arg_types.end() && i < it->second.size()) {
                         param_type = it->second[i];
@@ -1650,7 +1666,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
 
             uint32_t func_id = 0;
 
-            if (!node.type_args.empty()) {
+            if (is_generic_call) {
                 func_id = resolve_function_id({mangled});
             } else {
                 func_id = resolve_function_id(callee_path);
@@ -1663,7 +1679,7 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             uint32_t sret_ptr = 0;
             {
                 const ast::Type* ret_type = nullptr;
-                if (!node.type_args.empty()) {
+                if (is_generic_call) {
                     auto it = ctx.generic_return_types.find(mangled);
                     if (it != ctx.generic_return_types.end()) ret_type = it->second;
                 } else if (auto* fn_sym = resolve_qualified(ctx, callee_path)) {

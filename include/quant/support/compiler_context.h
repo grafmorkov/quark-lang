@@ -30,6 +30,11 @@ namespace quant {
         struct GenericInstantiation {
             ast::FuncStmt stmt;
             std::vector<std::string> module_namespace;
+            // Substitution map of the generic function's type params, needed
+            // by IR gen to resolve nested generic calls whose explicit type
+            // args are still the generic params (e.g. opt_none<T> inside a
+            // body being instantiated as slice_at<i32>).
+            std::unordered_map<std::string, const ast::Type*> type_subst;
         };
         std::vector<GenericInstantiation> generic_instantiations;
 

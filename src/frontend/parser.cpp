@@ -1252,7 +1252,8 @@ const ast::Type* Parser::parse_type(bool allow_implicit_void, const std::vector<
         if (match(TOKEN_LT)) {
             std::vector<const ast::Type*> args;
             do {
-                args.push_back(parse_type(false, type_params));
+                const ast::Type* a = parse_type(false, type_params);
+                args.push_back(a);
             } while (match(TOKEN_COMMA));
             expect(TOKEN_GT, "Expected '>' after type arguments");
             return ctx.types.get_deferred_generic(name, args);

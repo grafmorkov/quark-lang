@@ -125,6 +125,10 @@ namespace quant::ast {
         Expr* callee;
         std::vector<Expr*> args;
         std::vector<const Type*> type_args;
+        // Set by the semantic pass when the call resolves to a concrete
+        // generic instantiation (explicit or inferred type args), so the
+        // IR generator can reference the mangled function name directly.
+        std::string resolved_mangled_name;
     };
 
     struct FieldExpr {

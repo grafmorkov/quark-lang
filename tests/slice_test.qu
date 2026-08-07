@@ -1,0 +1,78 @@
+load "std::io";
+load "std::types";
+using std::types;
+
+void main() {
+    region r {
+        *i32 buf = alloc(i32, 10);
+        slice<i32> s = slice_make<i32>(buf, 10);
+
+        // slice_len / slice_is_empty
+        u64 l = slice_len<i32>(&s);
+
+        if (l != (10 as u64)) { std::io::print("BAD len\n"); return; }
+        if (slice_is_empty<i32>(&s)) { std::io::print("BAD empty\n"); return; }
+
+        slice<i32> e = slice_empty<i32>();
+
+        if (!slice_is_empty<i32>(&e)) { std::io::print("BAD empty2\n"); return; }
+
+        // slice_set / slice_get
+        slice_set<i32>(&s, 0, 42);
+        slice_set<i32>(&s, 1, 100);
+        slice_set<i32>(&s, 2, 7);
+        slice_set<i32>(&s, 9, 7);
+
+        i32 g0 = slice_get<i32>(&s, 0);
+        if (g0 != (42 as i32)) { std::io::print("BAD get0\n"); return; }
+
+        i32 g1 = slice_get<i32>(&s, 1);
+        if (g1 != (100 as i32)) { std::io::print("BAD get1\n"); return; }
+
+        i32 g9 = slice_get<i32>(&s, 9);
+        if (g9 != (7 as i32)) { std::io::print("BAD get9\n"); return; }
+
+        // slice_in_bounds
+        if (!slice_in_bounds<i32>(&s, 0)) { std::io::print("BAD ib\n"); return; }
+        if (!slice_in_bounds<i32>(&s, 9)) { std::io::print("BAD ib9\n"); return; }
+        if (slice_in_bounds<i32>(&s, 10)) { std::io::print("BAD ib10\n"); return; }
+
+        // slice_at (bounds-checked, returns opt<T>)
+        opt<i32> a = slice_at<i32>(&s, 1);
+        if (!opt_is_some(a)) { std::io::print("BAD at1\n"); return; }
+        if (opt_unwrap(a) != (100 as i32)) { std::io::print("BAD at1v\n"); return; }
+        opt<i32> b = slice_at<i32>(&s, 20);
+        if (!opt_is_none(b)) { std::io::print("BAD at20\n"); return; }
+
+        // slice_ptr
+        *i32 p = slice_ptr<i32>(&s);
+        if (p != buf) { std::io::print("BAD ptr\n"); return; }
+
+        // slice_sub (view)
+        slice<i32> sub = slice_sub<i32>(&s, 1, 3);
+        if (slice_len<i32>(&sub) != (3 as u64)) { std::io::print("BAD sub len\n"); return; }
+        i32 sg = slice_get<i32>(&sub, 0);
+        if (sg != (100 as i32)) { std::io::print("BAD sub0\n"); return; }
+
+        // slice_sub clamping / out-of-range
+        slice<i32> sc = slice_sub<i32>(&s, 8, 100);
+        if (slice_len<i32>(&sc) != (2 as u64)) { std::io::print("BAD sub clamp\n"); return; }
+
+        slice<i32> so = slice_sub<i32>(&s, 50, 3);
+        if (!slice_is_empty<i32>(&so)) { std::io::print("BAD sub oob\n"); return; }
+
+        // slice_copy
+        *i32 buf2 = alloc(i32, 4);
+        slice<i32> dst = slice_make<i32>(buf2, 4);
+        slice_copy<i32>(&dst, &sub);
+        if (slice_len<i32>(&dst) != (4 as u64)) { std::io::print("BAD copy len\n"); return; }
+
+        i32 cg = slice_get<i32>(&dst, 0);
+        if (cg != (100 as i32)) { std::io::print("BAD copy0\n"); return; }
+
+        i32 cg1 = slice_get<i32>(&dst, 1);
+        if (cg1 != (7 as i32)) { std::io::print("BAD copy1\n"); return; }
+
+        std::io::print("slice OK\n");
+    }
+}

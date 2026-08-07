@@ -56,6 +56,11 @@ struct IRGenerator {
     // module namespace of the generic instantiation being generated (if any)
     std::vector<std::string> generic_module_ns;
 
+    // substitution map of the generic instantiation being generated (if any),
+    // used to resolve nested generic calls whose type args are still the
+    // generic params (e.g. opt_none<T> inside slice_at<i32>).
+    const std::unordered_map<std::string, const ast::Type*>* current_type_subst = nullptr;
+
     struct RegionInfo {
         Local region_local;  // local slot holding pointer to Region struct
     };
