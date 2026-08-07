@@ -1,25 +1,29 @@
 // std::string
 //
 // String functions. Pure Quant implementation.
-// str_concat, str_sub, str_copy allocate memory from the global arena
-// (std::arena). See std/arena/arena.qu for _init_global_region.
+// str_concat, str_sub, str_copy allocate memory from a caller-provided
+// region (std::arena::Region). See std/arena/arena.qu for _create/_destroy.
 //
 // Usage:
 //   load "std::string";
+//   load "std::arena";
 //
 //   i32 main() {
 //       str s = "hello";
 //       std::io::print(str_len(s) as str);        // 5
 //       std::io::print(str_eq(s, "hello") as str); // 1 (true)
 //
-//       sub: str = str_sub(s, 1, 3);              // "ell"
+//       mut std::arena::Region r = std::arena::_create(1024);
+//
+//       sub: str = str_sub(&r, s, 1, 3);          // "ell"
 //       std::io::print(sub);
 //
-//       cat: str = str_concat(s, " world");       // "hello world"
+//       cat: str = str_concat(&r, s, " world");   // "hello world"
 //       std::io::print(cat);
 //
 //       c: char = str_char_at(s, 0);              // 'h'
 //       std::io::print_char(c as i8);
+//       std::arena::_destroy(&r);
 //       return 0;
 //   }
 
@@ -72,10 +76,10 @@ u8 str_char_at(str s, u64 index) {
 }
 
 // str_concat - concatenate two strings (arena-allocated).
-str str_concat(str a, str b) {
+str str_concat(mut &std::arena::Region r, str a, str b) {
     u64 la = str_len(a);
     u64 lb = str_len(b);
-    *u8 buf = std::arena::_region_bump(std::arena::_global_region(), la + lb + (1 as u64)) as! *u8;
+    *u8 buf = std::arena::_region_bump(r, la + lb + (1 as u64)) as! *u8;
     if (buf == (0 as! *u8)) { return (0 as! *u8) as! str; }
     *u8 pa = a as! *u8;
     *u8 pb = b as! *u8;
@@ -94,8 +98,8 @@ str str_concat(str a, str b) {
 }
 
 // str_sub - extract substring from start with given length (arena-allocated).
-str str_sub(str s, u64 start, u64 len) {
-    *u8 buf = std::arena::_region_bump(std::arena::_global_region(), len + (1 as u64)) as! *u8;
+str str_sub(mut &std::arena::Region r, str s, u64 start, u64 len) {
+    *u8 buf = std::arena::_region_bump(r, len + (1 as u64)) as! *u8;
     if (buf == (0 as! *u8)) { return (0 as! *u8) as! str; }
     *u8 b = s as! *u8;
     mut u64 i = 0;
@@ -108,9 +112,9 @@ str str_sub(str s, u64 start, u64 len) {
 }
 
 // str_copy - copy a string (arena-allocated).
-str str_copy(str s) {
+str str_copy(mut &std::arena::Region r, str s) {
     u64 n = str_len(s);
-    *u8 buf = std::arena::_region_bump(std::arena::_global_region(), n + (1 as u64)) as! *u8;
+    *u8 buf = std::arena::_region_bump(r, n + (1 as u64)) as! *u8;
     if (buf == (0 as! *u8)) { return (0 as! *u8) as! str; }
     *u8 b = s as! *u8;
     mut u64 i = 0;

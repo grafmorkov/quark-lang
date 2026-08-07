@@ -14,8 +14,6 @@ struct Region {
     u64 capacity;
 };
 
-@init mut Region g_global_region;
-
 // _region_mmap - map `size` bytes of readable/writable memory.
 *void _region_mmap(u64 size) {
     return sys_virtual_alloc(0 as! *void, size, (12288 as u32), (4 as u32));
@@ -55,20 +53,4 @@ void _destroy(mut &Region reg) {
     reg.data = 0 as! *void;
     reg.offset = 0;
     reg.capacity = 0;
-}
-
-// _global_region - returns the process-wide region used by std::string.
-&Region _global_region() {
-    return &g_global_region;
-}
-
-// _init_global_region - (re)allocate the global region backing memory.
-void _init_global_region(u64 size) {
-    if (g_global_region.data != (0 as! *void)) {
-        _region_munmap(g_global_region.data, g_global_region.capacity);
-        g_global_region.data = 0 as! *void;
-    }
-    g_global_region.data = _region_mmap(size);
-    g_global_region.offset = 0;
-    g_global_region.capacity = size;
 }

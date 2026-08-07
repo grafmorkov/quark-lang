@@ -30,18 +30,19 @@ void main() {
     if (c != (101 as u8)) { std::io::print("BAD char_at\n"); return; }
 
     // Arena-allocated results
-    std::arena::_init_global_region(1024);
+    mut std::arena::Region r = std::arena::_create(1024);
 
-    str cat = str_concat(s, " world");
+    str cat = str_concat(&r, s, " world");
     if (!str_eq(cat, "hello world")) { std::io::print("BAD concat\n"); return; }
 
-    str sub = str_sub(s, 1, 3);
+    str sub = str_sub(&r, s, 1, 3);
     if (!str_eq(sub, "ell")) { std::io::print("BAD sub\n"); return; }
 
-    str cp = str_copy(s);
+    str cp = str_copy(&r, s);
     if (!str_eq(cp, "hello")) { std::io::print("BAD copy\n"); return; }
-    str cp2 = str_copy(cat);
+    str cp2 = str_copy(&r, cat);
     if (!str_eq(cp2, "hello world")) { std::io::print("BAD copy2\n"); return; }
 
+    std::arena::_destroy(&r);
     std::io::print("str OK\n");
 }
