@@ -76,7 +76,11 @@ else {
 }
 ```
 
+The `if` and `else if` conditions must be of type `bool` (a compile-time error otherwise).
+
 ### while
+
+The `while` condition must be of type `bool`.
 
 ```
 while (x > 0) {

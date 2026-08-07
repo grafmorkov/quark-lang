@@ -54,6 +54,7 @@ class SemanticAnalyzer {
         void analyze_if(const ast::IfStmt& stmt);
         void analyze_else_if(const ast::ElseIfStmt& stmt);
         void analyze_while(const ast::WhileStmt& stmt);
+        void check_condition(const ast::Expr* condition, const std::string& what);
         void analyze_switch(ast::SwitchStmt& stmt);
         void analyze_region(const ast::RegionStmt& reg);
         void analyze_using(const ast::UsingStmt& us);

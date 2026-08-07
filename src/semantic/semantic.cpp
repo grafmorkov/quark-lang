@@ -1085,9 +1085,7 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
 }
 
 void SemanticAnalyzer::analyze_if(const ast::IfStmt& stmt) {
-    if (stmt.condition) {
-        analyze_expr(stmt.condition);
-    }
+    check_condition(stmt.condition, "if");
 
     if (stmt.then_block) {
         analyze_block(stmt.then_block);
@@ -1103,9 +1101,7 @@ void SemanticAnalyzer::analyze_if(const ast::IfStmt& stmt) {
 }
 
 void SemanticAnalyzer::analyze_else_if(const ast::ElseIfStmt& stmt) {
-    if (stmt.condition) {
-        analyze_expr(stmt.condition);
-    }
+    check_condition(stmt.condition, "if");
 
     if (stmt.then_block) {
         analyze_block(stmt.then_block);
@@ -1121,9 +1117,7 @@ void SemanticAnalyzer::analyze_else_if(const ast::ElseIfStmt& stmt) {
 }
 
 void SemanticAnalyzer::analyze_while(const ast::WhileStmt& stmt) {
-    if (stmt.condition) {
-        analyze_expr(stmt.condition);
-    }
+    check_condition(stmt.condition, "while");
 
     ++loop_depth;
     ++break_depth;
@@ -1132,6 +1126,17 @@ void SemanticAnalyzer::analyze_while(const ast::WhileStmt& stmt) {
     }
     --loop_depth;
     --break_depth;
+}
+
+void SemanticAnalyzer::check_condition(const ast::Expr* condition, const std::string& what) {
+    if (!condition) return;
+
+    const ast::Type* cond_type = analyze_expr(const_cast<ast::Expr*>(condition));
+    if (!cond_type) return;
+
+    if (cond_type->kind != TypeKind::Bool) {
+        ctx.errors.add(condition->loc, what + " condition must be bool, got: " + cond_type->to_string(ctx));
+    }
 }
 
 void SemanticAnalyzer::analyze_switch(ast::SwitchStmt& stmt) {

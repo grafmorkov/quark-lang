@@ -1,0 +1,6 @@
+i32 main() {
+    i32 x = 5;
+    if (x) { return 1; }
+    while (x) { x = x - 1; }
+    return 0;
+}
