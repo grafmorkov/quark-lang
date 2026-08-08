@@ -98,8 +98,6 @@ namespace {
         std::vector<std::vector<ast::Attribute>> concrete_field_attrs;
         for (const auto& f : def_it->second.fields) {
             const Type* field_type = substitute_type(f.type, subst);
-            if (field_type && field_type->kind == TypeKind::Pointer && field_type->pointed)
-                fprintf(stderr, "[DBG] inst %s field %s = ptr(k%d)\n", mangled.c_str(), f.name.c_str(), (int)field_type->pointed->kind);
             concrete_fields.emplace_back(f.name, field_type);
             concrete_field_attrs.push_back(f.attributes);
         }
@@ -146,7 +144,6 @@ namespace {
             std::string candidate = mangle_name(base_name, type_args);
             if (candidate == mangled) {
                 // Found the matching generic — instantiate
-                fprintf(stderr, "[DBG] try_instantiate %s via base %s\n", mangled.c_str(), base_name.c_str());
                 get_generic_instantiation(base_name, type_args);
                 return true;
             }

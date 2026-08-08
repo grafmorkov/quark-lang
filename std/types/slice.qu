@@ -1,4 +1,4 @@
-// std::types - slice
+// std::types - slice<T>
 //
 // A slice is a non-owning view into contiguous memory.
 // It contains only a pointer and a length, making it a cheap way
@@ -41,7 +41,7 @@ slice<T> slice_make<T>(*T data, u64 len) {
 slice<T> slice_empty<T>() {
     @init mut slice<T> s;
     s.data = 0 as! *T;
-    s.len = 0 as u64;
+    s.len = 0;
     return s;
 }
 
@@ -52,8 +52,7 @@ u64 slice_len<T>(&slice<T> s) {
 
 // slice_is_empty - true if the slice has no elements.
 bool slice_is_empty<T>(&slice<T> s) {
-    if (s.len == (0 as u64)) { return true; }
-    return false;
+    return s.len == 0;
 }
 
 // slice_ptr - the raw backing pointer.
@@ -63,11 +62,10 @@ bool slice_is_empty<T>(&slice<T> s) {
 
 // slice_in_bounds - true if `i` is a valid index.
 bool slice_in_bounds<T>(&slice<T> s, u64 i) {
-    if (i < s.len) { return true; }
-    return false;
+    return i < s.len;
 }
 
-// slice_get - read element at `i` (unchecked, same as vec_get).
+// slice_get - read element at `i` (unchecked).
 T slice_get<T>(&slice<T> s, u64 i) {
     return s.data[i];
 }
@@ -103,9 +101,7 @@ slice<T> slice_sub<T>(&slice<T> s, u64 start, mut u64 len) {
 void slice_copy<T>(mut &slice<T> dst, &slice<T> src) {
     mut u64 n = src.len;
     if (dst.len < n) { n = dst.len; }
-    mut u64 i = 0;
-    while (i < n) {
+    for (mut u64 i = 0; i < n; i++) {
         dst.data[i] = src.data[i];
-        i = i + (1 as u64);
     }
 }

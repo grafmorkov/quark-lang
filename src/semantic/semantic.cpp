@@ -502,8 +502,6 @@ const ast::Type* resolve_struct_field(
             }
         }
     }
-    if (sym && base_type->type_args.size() == 1 && base_type->type_args[0]->kind == TypeKind::I32)
-        fprintf(stderr, "[DBG] resolve_struct_field %s.%s sym=%d\n", base_type->struct_name.c_str(), field_name.c_str(), sym ? 1 : 0);
     if (!sym) {
         ctx.errors.add("Unknown struct: " + base_type->struct_name);
         return nullptr;
@@ -978,20 +976,6 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
         resolved_type = ctx.types.substitute_type(var.type, *current_type_subst);
     }
     resolved_type = canonicalize_struct_type(resolved_type);
-    fprintf(stderr, "[DBG] vardecl %s resolved=%s(k%d) raw=%s args=%zu subst=%d",
-        var.name.c_str(),
-        resolved_type ? resolved_type->struct_name.c_str() : "?",
-        resolved_type ? (int)resolved_type->kind : -1,
-        var.type ? var.type->struct_name.c_str() : "?",
-        var.type ? var.type->type_args.size() : 0,
-        current_type_subst ? (int)current_type_subst->size() : -1);
-    if (var.type) {
-        for (const auto* a : var.type->type_args) fprintf(stderr, " arg(%s k%d)", a->struct_name.c_str(), (int)a->kind);
-    }
-    if (current_type_subst) {
-        for (const auto& [k, v] : *current_type_subst) fprintf(stderr, " subst[%s]=%s(k%d)", k.c_str(), v->struct_name.c_str(), (int)v->kind);
-    }
-    fprintf(stderr, "\n");
 
     for (const auto& attr : var.attributes) {
         analyze_attribute(attr, attrs::AttributeTarget::Variable);
@@ -1238,8 +1222,6 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
     if (!func.body) {
         return;
     }
-
-    fprintf(stderr, "[DBG] analyze_func %s subst=%d\n", func.name.c_str(), current_type_subst ? (int)current_type_subst->size() : -1);
 
     const ast::Type* prev_return_type = current_function_return_type;
     current_function_return_type = func.return_type;
@@ -1672,19 +1654,6 @@ const ast::Type* SemanticAnalyzer::analyze_assign(const ast::AssignExpr& asg) {
 
     AssignCheck chk = check_assignable_value(target_type, asg.value);
     if (chk != AssignCheck::Ok) {
-        std::string td = target_type ? (target_type->kind == TypeKind::Struct ? target_type->struct_name : std::to_string((int)target_type->kind)) : "null";
-        std::string vd = value_type ? (value_type->kind == TypeKind::Struct ? value_type->struct_name : std::to_string((int)value_type->kind)) : "null";
-        auto ptrdesc = [](const ast::Type* t) {
-            std::string s;
-            if (t && t->pointed) {
-                const ast::Type* p = t->pointed;
-                s = (p->kind == TypeKind::Struct) ? ("ptr(" + p->struct_name + ")") : ("ptr(k" + std::to_string((int)p->kind) + ")");
-            }
-            return s;
-        };
-        if (target_type && target_type->kind == TypeKind::Pointer) td = ptrdesc(target_type);
-        if (value_type && value_type->kind == TypeKind::Pointer) vd = ptrdesc(value_type);
-        fprintf(stderr, "[DBG] assign %s <- %s\n", td.c_str(), vd.c_str());
         std::string tname = target_type ? (target_type->kind == TypeKind::Struct ? target_type->struct_name : (target_type->kind == TypeKind::Generic ? "Generic:" + target_type->struct_name : std::to_string((int)target_type->kind))) : "null";
         std::string vname = value_type ? (value_type->kind == TypeKind::Struct ? value_type->struct_name : (value_type->kind == TypeKind::Generic ? "Generic:" + value_type->struct_name : std::to_string((int)value_type->kind))) : "null";
         if (chk == AssignCheck::LiteralOutOfRange)

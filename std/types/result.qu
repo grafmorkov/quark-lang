@@ -49,12 +49,12 @@ result<T, E> result_err<T, E>(E err) {
     return r;
 }
 
-// result_is_ok - check if result is ok.
+// result_is_ok - check if a result is ok.
 bool result_is_ok<T, E>(result<T, E> r) {
     return r.is_ok;
 }
 
-// result_is_err - check if result is error.
+// result_is_err - check if a result is an error.
 bool result_is_err<T, E>(result<T, E> r) {
     return !r.is_ok;
 }
@@ -69,7 +69,7 @@ E result_unwrap_err<T, E>(result<T, E> r) {
     return r.err_value;
 }
 
-// result_unwrap_or - get the ok value or use default if error.
+// result_unwrap_or - get the ok value, or use `dflt` if the result is an error.
 T result_unwrap_or<T, E>(result<T, E> r, T dflt) {
     if (r.is_ok) {
         return r.ok_value;

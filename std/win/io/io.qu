@@ -45,12 +45,10 @@ struct IoScratch { i64 v; };
 i64 strlen(str s) {
     *i8 p = s as! *i8;
     mut i32 i = 0;
-    while (true) {
-        i8 c = p[i];
-        if (c == (0 as i8)) { return i as i64; }
-        i = i + 1;
+    while (p[i] != 0) {
+        i++;
     }
-    return 0;
+    return i;
 }
 
 // print - print string to stdout.
@@ -104,8 +102,8 @@ i64 read(str buf, i64 len) {
 // read_char - read one byte from stdin.
 i64 read_char() {
     sys_read_file(g_stdin, (&g_putc_buf) as! str, 1, (&g_scratch) as! str, 0 as! *void);
-    if (g_scratch.v <= (0 as i64)) { return -1; }
-    return g_putc_buf.c as i64;
+    if (g_scratch.v <= 0) { return -1; }
+    return g_putc_buf.c;
 }
 
 struct FpScratch { i64 v; };
@@ -114,7 +112,7 @@ struct FpScratch { i64 v; };
 // open - open/create a file. flags = dwDesiredAccess (e.g. GENERIC_WRITE = 0x40000000),
 // mode = dwCreationDisposition (e.g. CREATE_ALWAYS = 2). Returns a handle, or < 0 on failure.
 i64 open(str path, i32 flags, i32 mode) {
-    return sys_create_file(path, flags as u32, 0, 0 as! *void, mode as u32, (128 as u32), 0 as! *void);
+    return sys_create_file(path, flags as u32, 0, 0 as! *void, mode as u32, 128, 0 as! *void);
 }
 
 // close - close a file handle.

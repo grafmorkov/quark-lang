@@ -8,7 +8,7 @@
 //   i32 main() {
 //       std::io::print("hello ");
 //       std::io::println("world");
-//       std::io::print_char(65 as i8);  // prints 'A'
+//       std::io::print_char(65);  // prints 'A'
 //
 //       i64 fd = std::io::open("test.txt", 65, 438);
 //       std::io::write(fd, "hello", 5);
@@ -32,37 +32,33 @@ module "std::io";
 @syscall(74) extern i64 sys_fsync(i64 fd);
 @syscall(257) extern i64 sys_openat(i64 dirfd, str path, i64 flags, i64 mode);
 
-// strlen - get string length (without \0).
+// strlen - length of a string (without the terminating \0).
 i64 strlen(str s) {
     *i8 p = s as! *i8;
     mut i32 i = 0;
-    while (true) {
-        i8 c = p[i];
-        if (c == (0 as i8)) { return i as i64; }
-        i = i + 1;
+    while (p[i] != 0) {
+        i++;
     }
-    return 0;
+    return i;
 }
 
-// print - print string to stdout.
+// print - print a string to stdout.
 void print(str text) {
-    i64 n = strlen(text);
-    sys_write(1, text, n);
+    sys_write(1, text, strlen(text));
 }
 
-// println - print string + newline to stdout.
+// println - print a string followed by a newline to stdout.
 void println(str text) {
     print(text);
     print_char(10);
 }
 
-// eprint - print string to stderr.
+// eprint - print a string to stderr.
 void eprint(str text) {
-    i64 n = strlen(text);
-    sys_write(2, text, n);
+    sys_write(2, text, strlen(text));
 }
 
-// print_char - print one byte to stdout.
+// print_char - print a single byte to stdout.
 struct PutcBuf { i8 c; };
 @init mut PutcBuf g_putc_buf;
 
@@ -71,63 +67,64 @@ void print_char(i8 c) {
     sys_write(1, (&g_putc_buf) as! str, 1);
 }
 
-// exit - exit program with the given code.
+// exit - terminate the program with the given exit code.
 void exit(i32 code) {
-    sys_exit(code as i64);
+    sys_exit(code);
 }
 
-// open - open file, returns fd. flags: 65 = O_RDWR|O_CREAT, mode: 438 = 0666.
+// open - open a file and return its fd.
+// flags: 65 = O_RDWR|O_CREAT, mode: 438 = 0666.
 i64 open(str path, i32 flags, i32 mode) {
-    i64 r = sys_openat(-100, path, flags as i64, mode as i64);
-    if (r < (0 as i64)) { return (0 as i64) - r; }
+    i64 r = sys_openat(-100, path, flags, mode);
+    if (r < 0) { return -r; }
     return r;
 }
 
-// close - close file descriptor.
+// close - close a file descriptor.
 i64 close(i64 fd) {
     i64 r = sys_close(fd);
-    if (r < (0 as i64)) { return (0 as i64) - r; }
+    if (r < 0) { return -r; }
     return r;
 }
 
-// seek - seek in file.
+// seek - reposition the file offset of a descriptor.
 i64 seek(i64 fd, i64 offset, i32 whence) {
-    i64 r = sys_lseek(fd, offset, whence as i64);
-    if (r < (0 as i64)) { return (0 as i64) - r; }
+    i64 r = sys_lseek(fd, offset, whence);
+    if (r < 0) { return -r; }
     return r;
 }
 
-// flush - flush file.
+// flush - flush file buffers to disk.
 i64 flush(i64 fd) {
     i64 r = sys_fsync(fd);
-    if (r < (0 as i64)) { return (0 as i64) - r; }
+    if (r < 0) { return -r; }
     return r;
 }
 
-// write - write bytes to fd.
+// write - write `len` bytes to a descriptor. Returns bytes written.
 i64 write(i64 fd, str buf, i64 len) {
     i64 r = sys_write(fd, buf, len);
-    if (r < (0 as i64)) { return (0 as i64) - r; }
+    if (r < 0) { return -r; }
     return r;
 }
 
-// read_fd - read bytes from fd.
+// read_fd - read up to `len` bytes from a descriptor.
 i64 read_fd(i64 fd, str buf, i64 len) {
     i64 r = sys_read(fd, buf, len);
-    if (r < (0 as i64)) { return (0 as i64) - r; }
+    if (r < 0) { return -r; }
     return r;
 }
 
-// read - read from stdin.
+// read - read up to `len` bytes from stdin.
 i64 read(str buf, i64 len) {
     i64 r = sys_read(0, buf, len);
-    if (r < (0 as i64)) { return (0 as i64) - r; }
+    if (r < 0) { return -r; }
     return r;
 }
 
-// read_char - read one byte from stdin.
+// read_char - read a single byte from stdin.
 i64 read_char() {
     i64 n = sys_read(0, (&g_putc_buf) as! str, 1);
-    if (n <= (0 as i64)) { return -1; }
-    return g_putc_buf.c as i64;
+    if (n <= 0) { return -1; }
+    return g_putc_buf.c;
 }

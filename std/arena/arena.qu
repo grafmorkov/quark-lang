@@ -24,21 +24,21 @@ struct Region {
 
 // _region_mmap - map `size` bytes of anonymous read/write memory.
 *void _region_mmap(u64 size) {
-    mut i64 r = sys_mmap(0 as u64, size, 3 as i64, (34 as i64), (-1 as i64), 0 as i64);
-    if (r < (0 as i64)) { return 0 as! *void; }
+    i64 r = sys_mmap(0, size, 3, 34, -1, 0);
+    if (r < 0) { return 0 as! *void; }
     return (r as u64) as! *void;
 }
 
 // _region_munmap - unmap `size` bytes previously returned by _region_mmap.
 void _region_munmap(*void ptr, u64 size) {
     if (ptr == (0 as! *void)) { return; }
-    sys_munmap((ptr as! u64), size);
+    sys_munmap(ptr as! u64, size);
 }
 
 // _region_bump - allocate `size` bytes from a region (16-byte aligned).
 // Returns NULL if the region has no space left.
 *void _region_bump(mut &Region reg, u64 size) {
-    mut u64 a = size + (15 as u64);
+    mut u64 a = size + 15;
     a = a & ((-16 as i64) as u64);
     u64 off = reg.offset;
     u64 end = off + a;

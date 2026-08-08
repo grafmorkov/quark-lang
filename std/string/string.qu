@@ -15,14 +15,14 @@
 //
 //       mut std::arena::Region r = std::arena::_create(1024);
 //
-//       sub: str = str_sub(&r, s, 1, 3);          // "ell"
+//       str sub = str_sub(&r, s, 1, 3);           // "ell"
 //       std::io::print(sub);
 //
-//       cat: str = str_concat(&r, s, " world");   // "hello world"
+//       str cat = str_concat(&r, s, " world");    // "hello world"
 //       std::io::print(cat);
 //
-//       c: char = str_char_at(s, 0);              // 'h'
-//       std::io::print_char(c as i8);
+//       u8 c = str_char_at(s, 0);                 // 'h'
+//       std::io::print_char(c);
 //       std::arena::_destroy(&r);
 //       return 0;
 //   }
@@ -31,12 +31,12 @@ module "std::string";
 
 load "std::arena";
 
-// str_len - length of string (without terminating \0).
+// str_len - length of a string (without the terminating \0).
 u64 str_len(str s) {
     *u8 b = s as! *u8;
     mut u64 i = 0;
-    while (b[i] != (0 as u8)) {
-        i = i + (1 as u64);
+    while (b[i] != 0) {
+        i++;
     }
     return i;
 }
@@ -50,26 +50,24 @@ bool str_eq(str a, str b) {
         u8 ca = pa[i];
         u8 cb = pb[i];
         if (ca != cb) { return false; }
-        if (ca == (0 as u8)) { return true; }
-        i = i + (1 as u64);
+        if (ca == 0) { return true; }
+        i++;
     }
     return false;
 }
 
 // str_neq - check if two strings are different.
 bool str_neq(str a, str b) {
-    if (str_eq(a, b)) { return false; }
-    return true;
+    return !str_eq(a, b);
 }
 
-// str_empty - check if string is empty.
+// str_empty - check if a string is empty.
 bool str_empty(str s) {
     *u8 b = s as! *u8;
-    if (b[0] == (0 as u8)) { return true; }
-    return false;
+    return b[0] == 0;
 }
 
-// str_char_at - get byte at index.
+// str_char_at - get the byte at `index`.
 u8 str_char_at(str s, u64 index) {
     *u8 b = s as! *u8;
     return b[index];
@@ -79,48 +77,40 @@ u8 str_char_at(str s, u64 index) {
 str str_concat(mut &std::arena::Region r, str a, str b) {
     u64 la = str_len(a);
     u64 lb = str_len(b);
-    *u8 buf = std::arena::_region_bump(r, la + lb + (1 as u64)) as! *u8;
+    *u8 buf = std::arena::_region_bump(r, la + lb + 1) as! *u8;
     if (buf == (0 as! *u8)) { return (0 as! *u8) as! str; }
     *u8 pa = a as! *u8;
     *u8 pb = b as! *u8;
-    mut u64 i = 0;
-    while (i < la) {
+    for (mut u64 i = 0; i < la; i++) {
         buf[i] = pa[i];
-        i = i + (1 as u64);
     }
-    // Copy b including its trailing \0
-    mut u64 j = 0;
-    while (j <= lb) {
+    // Copy b including its trailing \0.
+    for (mut u64 j = 0; j <= lb; j++) {
         buf[la + j] = pb[j];
-        j = j + (1 as u64);
     }
     return buf as! str;
 }
 
-// str_sub - extract substring from start with given length (arena-allocated).
+// str_sub - extract a substring starting at `start` with length `len`.
 str str_sub(mut &std::arena::Region r, str s, u64 start, u64 len) {
-    *u8 buf = std::arena::_region_bump(r, len + (1 as u64)) as! *u8;
+    *u8 buf = std::arena::_region_bump(r, len + 1) as! *u8;
     if (buf == (0 as! *u8)) { return (0 as! *u8) as! str; }
     *u8 b = s as! *u8;
-    mut u64 i = 0;
-    while (i < len) {
+    for (mut u64 i = 0; i < len; i++) {
         buf[i] = b[start + i];
-        i = i + (1 as u64);
     }
-    buf[len] = 0 as u8;
+    buf[len] = 0;
     return buf as! str;
 }
 
 // str_copy - copy a string (arena-allocated).
 str str_copy(mut &std::arena::Region r, str s) {
     u64 n = str_len(s);
-    *u8 buf = std::arena::_region_bump(r, n + (1 as u64)) as! *u8;
+    *u8 buf = std::arena::_region_bump(r, n + 1) as! *u8;
     if (buf == (0 as! *u8)) { return (0 as! *u8) as! str; }
     *u8 b = s as! *u8;
-    mut u64 i = 0;
-    while (i <= n) {
+    for (mut u64 i = 0; i <= n; i++) {
         buf[i] = b[i];
-        i = i + (1 as u64);
     }
     return buf as! str;
 }

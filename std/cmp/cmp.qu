@@ -22,65 +22,63 @@
 
 module "std::cmp";
 
-// A simple struct that holds comparison result.
-//   tag == -1 means less
-//   tag == 0  means equal
-//   tag == 1  means greater
+// Holds a comparison result:
+//   tag == -1 means less, 0 means equal, 1 means greater
 struct ordering {
     i32 tag = 0;
 };
 
-// cmp_less - create "less" ordering value.
+// cmp_less - create a "less" ordering value.
 ordering cmp_less() {
     @init mut ordering o;
     o.tag = -1;
     return o;
 }
 
-// cmp_equal - create "equal" ordering value.
+// cmp_equal - create an "equal" ordering value.
 ordering cmp_equal() {
     @init mut ordering o;
     o.tag = 0;
     return o;
 }
 
-// cmp_greater - create "greater" ordering value.
+// cmp_greater - create a "greater" ordering value.
 ordering cmp_greater() {
     @init mut ordering o;
     o.tag = 1;
     return o;
 }
 
-// cmp_is_less - check if ordering is "less".
+// cmp_is_less - check if an ordering is "less".
 bool cmp_is_less(ordering o) {
     return o.tag == -1;
 }
 
-// cmp_is_equal - check if ordering is "equal".
+// cmp_is_equal - check if an ordering is "equal".
 bool cmp_is_equal(ordering o) {
     return o.tag == 0;
 }
 
-// cmp_is_greater - check if ordering is "greater".
+// cmp_is_greater - check if an ordering is "greater".
 bool cmp_is_greater(ordering o) {
     return o.tag == 1;
 }
 
-// cmp<T> - compare two values of any type, returns ordering.
+// cmp<T> - compare two values of any type, returns an ordering.
 ordering cmp<T>(T a, T b) {
     if (a < b) { return cmp_less(); }
     if (a > b) { return cmp_greater(); }
     return cmp_equal();
 }
 
-// cmp_reverse - flip the ordering (less <-> greater, equal stays).
+// cmp_reverse - flip an ordering (less <-> greater, equal stays).
 ordering cmp_reverse(ordering o) {
     if (o.tag == -1) { return cmp_greater(); }
     if (o.tag == 1) { return cmp_less(); }
     return cmp_equal();
 }
 
-// cmp_then - if `a` is equal, use `b` as tiebreaker.
+// cmp_then - if `a` is equal, use `b` as a tiebreaker.
 ordering cmp_then(ordering a, ordering b) {
     if (a.tag != 0) { return a; }
     return b;

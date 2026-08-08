@@ -61,7 +61,7 @@ R either_unwrap_right<L, R>(either<L, R> e) {
     return e.right_val;
 }
 
-// either_unwrap_left_or - get the left value or use default.
+// either_unwrap_left_or - get the left value, or use `dflt` if it's a right value.
 L either_unwrap_left_or<L, R>(either<L, R> e, L dflt) {
     if (e.is_left) {
         return e.left_val;
@@ -69,7 +69,7 @@ L either_unwrap_left_or<L, R>(either<L, R> e, L dflt) {
     return dflt;
 }
 
-// either_unwrap_right_or - get the right value or use default.
+// either_unwrap_right_or - get the right value, or use `dflt` if it's a left value.
 R either_unwrap_right_or<L, R>(either<L, R> e, R dflt) {
     if (e.is_left) {
         return dflt;

@@ -7,10 +7,10 @@
 //   load "std::math";
 //
 //   i32 main() {
-//       a: i32 = min<i32>(3, 7);       // 3
-//       b: i32 = max<i32>(3, 7);       // 7
-//       c: i32 = clamp<i32>(15, 0, 10); // 10
-//       d: i32 = abs_i32(-42);         // 42
+//       i32 a = min<i32>(3, 7);       // 3
+//       i32 b = max<i32>(3, 7);       // 7
+//       i32 c = clamp<i32>(15, 0, 10); // 10
+//       i32 d = abs_i32(-42);         // 42
 //       return 0;
 //   }
 
@@ -18,30 +18,35 @@ module "std::math";
 
 // min<T> - return the smaller of two values.
 T min<T>(T a, T b) {
-    if (a < b) { return a; } else { return b; }
+    if (a < b) { return a; }
+    return b;
 }
 
 // max<T> - return the larger of two values.
 T max<T>(T a, T b) {
-    if (a > b) { return a; } else { return b; }
+    if (a > b) { return a; }
+    return b;
 }
 
 // abs_i32 - absolute value for i32.
 i32 abs_i32(i32 x) {
-    if (x < 0) { return -x; } else { return x; }
+    if (x < 0) { return -x; }
+    return x;
 }
 
 // abs_i64 - absolute value for i64.
 i64 abs_i64(i64 x) {
-    if (x < (0 as i64)) { return -x; } else { return x; }
+    if (x < 0) { return -x; }
+    return x;
 }
 
 // abs_f64 - absolute value for f64.
 f64 abs_f64(f64 x) {
-    if (x < 0.0) { return -x; } else { return x; }
+    if (x < 0.0) { return -x; }
+    return x;
 }
 
-// clamp<T> - limit value to range [lo, hi].
+// clamp<T> - limit `x` to the range [lo, hi].
 T clamp<T>(T x, T lo, T hi) {
     if (x < lo) { return lo; }
     if (x > hi) { return hi; }
