@@ -101,10 +101,11 @@ int main(int argc, char **argv)
             utils::logger::info("asm:");
             utils::logger::info(asm_code);
         }
-
         // Build
-        if (opts.has_output) {
-            std::filesystem::path exe_path = opts.output_file;
+        std::filesystem::path exe_path = "out";
+
+        if(opts.has_output) exe_path = opts.output_file;
+
         #ifdef _WIN32
             if (!exe_path.has_extension()) {
                 exe_path += ".exe";
@@ -141,7 +142,6 @@ int main(int argc, char **argv)
 
             std::filesystem::remove(obj_path);
         #endif
-        }
 
         auto end = std::chrono::high_resolution_clock::now();
 
