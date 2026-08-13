@@ -120,6 +120,7 @@ bool is_declaration_stmt(const ast::Stmt& stmt) {
     return std::holds_alternative<ast::FuncStmt>(stmt.kind) ||
            std::holds_alternative<ast::NamespaceStmt>(stmt.kind) ||
            std::holds_alternative<ast::StructDecl>(stmt.kind) ||
+           std::holds_alternative<ast::ClassDecl>(stmt.kind) ||
            std::holds_alternative<ast::EnumDecl>(stmt.kind) ||
            std::holds_alternative<ast::UsingStmt>(stmt.kind) ||
            std::holds_alternative<ast::VarDecl>(stmt.kind);
@@ -1069,6 +1070,10 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
         },
 
         [&](const ast::StructDecl&) {
+            // Compile-time only.
+        },
+
+        [&](const ast::ClassDecl&) {
             // Compile-time only.
         },
 

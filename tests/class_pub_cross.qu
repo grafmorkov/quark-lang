@@ -1,0 +1,6 @@
+load "tests::lib_class";
+
+@entry i32 main() {
+    tests::lib_class::Counter c = { 1, 2, 3 };
+    return c.shown;
+}

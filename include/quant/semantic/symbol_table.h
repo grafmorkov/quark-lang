@@ -76,6 +76,7 @@ namespace quant::symb_t {
         bool declare(const ast::FuncArg& arg);
         bool declare(const ast::FuncStmt& fn);
         bool declare(const ast::StructDecl& str);
+        bool declare(const ast::ClassDecl& cls);
         bool declare_struct(const std::string& name,
             const std::vector<std::pair<std::string, const ast::Type*>>& fields,
             const std::vector<ast::Attribute>& attrs = {},
