@@ -362,6 +362,11 @@ ast::Stmt Parser::parse_statement() {
         decl.attributes = std::move(attrs);
         return ast::Stmt{ std::move(decl) };
     }
+    if (match(TOKEN_CLASS)) {
+        auto decl = parse_class_decl();
+        decl.attributes = std::move(attrs);
+        return ast::Stmt{ std::move(decl) };
+    }
 
     if (match(TOKEN_NAMESPACE)) {
         return ast::Stmt{ ast::NamespaceStmt{ parse_namespace_stmt() } };
@@ -486,11 +491,31 @@ ast::VarDecl Parser::parse_var_decl() {
 
     return ret;
 }
-
 ast::StructDecl Parser::parse_struct_decl() {
-    ast::StructDecl ret;
+    auto parsed = parse_aggregate();
 
-    ret.name = std::string(expect(TOKEN_IDENT, "Expected struct name").text);
+    ast::StructDecl ret;
+    ret.name = std::move(parsed.name);
+    ret.type_params = std::move(parsed.type_params);
+    ret.fields = std::move(parsed.fields);
+
+    return ret;
+}
+ast::ClassDecl Parser::parse_class_decl() {
+    auto parsed = parse_aggregate();
+
+    ast::ClassDecl ret;
+    ret.name = std::move(parsed.name);
+    ret.type_params = std::move(parsed.type_params);
+    ret.fields = std::move(parsed.fields);
+
+    return ret;
+}
+
+ast::Aggregate Parser::parse_aggregate() {
+    ast::Aggregate ret;
+
+    ret.name = std::string(expect(TOKEN_IDENT, "Expected name").text);
 
     if(match(TOKEN_LT)){
         do{
@@ -499,10 +524,10 @@ ast::StructDecl Parser::parse_struct_decl() {
         } while(match(TOKEN_COMMA));
         expect(TOKEN_GT, "Expected '>' after type parameters");
     }
-    expect(TOKEN_LBRACE, "Expected '{' after struct name");
+    expect(TOKEN_LBRACE, "Expected '{' after name");
 
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
-        ast::StructField field;
+        ast::Field field;
 
         field.attributes = parse_attributes();
         field.is_mut = match(TOKEN_MUT);
@@ -522,8 +547,8 @@ ast::StructDecl Parser::parse_struct_decl() {
         ret.fields.push_back(std::move(field));
     }
 
-    expect(TOKEN_RBRACE, "Expected '}' after struct body");
-    expect(TOKEN_SEMICOLON, "Expected ';' after struct body");
+    expect(TOKEN_RBRACE, "Expected '}' after body");
+    expect(TOKEN_SEMICOLON, "Expected ';' after body");
 
     return ret;
 }

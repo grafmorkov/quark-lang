@@ -57,7 +57,7 @@ namespace quant::ast {
         std::string struct_name; // struct only
         const Type* pointed; // ptr/reference only
         std::vector<const Type*> type_args;
-        
+
         std::string to_string(CompilerContext& ctx) const;
     };
 
@@ -249,7 +249,7 @@ namespace quant::ast {
         const Type* type;
         bool is_mut;
     };
-    struct StructField {
+    struct Field {
         std::string name;
         const Type* type;
         bool is_mut = false;
@@ -264,10 +264,21 @@ namespace quant::ast {
         bool is_mut = false;
         std::vector<Attribute> attributes;
     };
-
+    // Either class or struct parsing
+    struct Aggregate {
+        std::string name;
+        std::vector<std::string> type_params;
+        std::vector<ast::Field> fields;
+    };
     struct StructDecl {
         std::string name;
-        std::vector<StructField> fields;
+        std::vector<Field> fields;
+        std::vector<Attribute> attributes;
+	    std::vector<std::string> type_params;
+    };
+    struct ClassDecl {
+        std::string name;
+        std::vector<Field> fields;
         std::vector<Attribute> attributes;
 	    std::vector<std::string> type_params;
     };
@@ -326,6 +337,7 @@ namespace quant::ast {
         SwitchStmt,
         VarDecl,
         StructDecl,
+        ClassDecl,
         FuncStmt,
         NamespaceStmt,
         RegionStmt,

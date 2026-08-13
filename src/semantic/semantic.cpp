@@ -515,6 +515,19 @@ const ast::Type* resolve_struct_field(
 
     for (size_t i = 0; i < ss->field_names.size(); ++i) {
         if (ss->field_names[i] == field_name) {
+            // @private fields are only accessible from the module that defines them.
+            if (i < ss->field_attributes.size()) {
+                bool is_private = false;
+                for (const auto& fa : ss->field_attributes[i]) {
+                    if (fa.name == "private") { is_private = true; break; }
+                }
+                if (is_private && sym->owning_module != ctx.symbols.get_current_module_ns()) {
+                    ctx.errors.add("Cannot access private field '" + field_name
+                        + "' of '" + base_type->struct_name + "' from '"
+                        + quant::support::join_namespace(ctx.symbols.get_current_module_ns()) + "'");
+                    return nullptr;
+                }
+            }
             return ss->field_types[i];
         }
     }
@@ -579,6 +592,16 @@ void SemanticAnalyzer::analyze(const std::vector<ast::Stmt*>& stmts, modules::Mo
                         }
                     }
                 },
+                [&](ast::ClassDecl& cls) {
+                    for (auto it = cls.attributes.begin(); it != cls.attributes.end(); ) {
+                        if (it->name == "hide") {
+                            current_module->attributes.push_back(std::move(*it));
+                            it = cls.attributes.erase(it);
+                        } else {
+                            ++it;
+                        }
+                    }
+                },
                 [&](ast::VarDecl& var) {
                     for (auto it = var.attributes.begin(); it != var.attributes.end(); ) {
                         if (it->name == "hide") {
@@ -636,6 +659,13 @@ void SemanticAnalyzer::analyze(const std::vector<ast::Stmt*>& stmts, modules::Mo
                     if (!str.type_params.empty()) return; // generic — no symbol
                     if (!has_attr(str.attributes, "public")) {
                         auto* sym = ctx.symbols.lookup(str.name);
+                        if (sym) sym->attributes.push_back({"private", {}});
+                    }
+                },
+                [&](const ast::ClassDecl& cls) {
+                    if (!cls.type_params.empty()) return; // generic — no symbol
+                    if (!has_attr(cls.attributes, "public")) {
+                        auto* sym = ctx.symbols.lookup(cls.name);
                         if (sym) sym->attributes.push_back({"private", {}});
                     }
                 },
@@ -798,6 +828,45 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                     }
                 }
             },
+            [&](const ast::ClassDecl& cls) {
+                if (!cls.type_params.empty()) {
+                    types::GenericStructDef def;
+                    def.params = cls.type_params;
+                    def.fields = cls.fields;
+                    ctx.types.register_generic_struct(cls.name, def);
+                    std::string qualified = generic_key(namespace_path, cls.name);
+                    if (qualified != cls.name) {
+                        ctx.types.register_generic_struct(qualified, def);
+                    }
+                    std::string full_q = full_qualified(module_namespace, namespace_path, cls.name);
+                    if (full_q != qualified && full_q != cls.name) {
+                        ctx.types.register_generic_struct(full_q, def);
+                    }
+                } else {
+                    if (!ctx.symbols.declare(cls)) {
+                        ctx.errors.add("Class redeclaration: " + cls.name);
+                        return;
+                    }
+                    // Also register in TypeContext so type_size can find fields cross-module
+                    std::vector<std::pair<std::string, const ast::Type*>> fields;
+                    for (const auto& f : cls.fields) {
+                        fields.emplace_back(f.name, f.type);
+                    }
+                    std::vector<std::vector<ast::Attribute>> field_attrs;
+                    for (const auto& f : cls.fields) {
+                        field_attrs.push_back(f.attributes);
+                    }
+                    ctx.types.register_struct(cls.name, fields, field_attrs);
+                    std::string qualified = generic_key(namespace_path, cls.name);
+                    if (qualified != cls.name) {
+                        ctx.types.register_struct(qualified, fields, field_attrs);
+                    }
+                    std::string full_q = full_qualified(module_namespace, namespace_path, cls.name);
+                    if (full_q != qualified && full_q != cls.name) {
+                        ctx.types.register_struct(full_q, fields, field_attrs);
+                    }
+                }
+            },
             [&](const ast::NamespaceStmt& ns) {
                 NamespaceGuard guard(ctx.symbols, ns.name);
                 NamespacePathGuard path_guard(namespace_path, ns.name);
@@ -837,6 +906,7 @@ void SemanticAnalyzer::analyze_stmt(ast::Stmt* stmt) {
     std::visit(overloaded{
         [&](const ast::VarDecl& n) { analyze_var_decl(n); },
         [&](const ast::StructDecl& n) { analyze_struct_decl(n); },
+        [&](const ast::ClassDecl& n) { analyze_class_decl(n); },
         [&](const ast::EnumDecl& n) { analyze_enum_decl(n); },
         [&](const ast::NamespaceStmt& n) { analyze_namespace_stmt(n); },
         [&](const ast::ExprStmt& n) { analyze_expr_stmt(n); },
@@ -1078,6 +1148,47 @@ void SemanticAnalyzer::analyze_struct_decl(const ast::StructDecl& str) {
     std::unordered_set<std::string> seen;
 
     for (const auto& field : str.fields) {
+        if (!seen.insert(field.name).second) {
+            ctx.errors.add("Duplicate field: " + field.name);
+            return;
+        }
+
+        if (!field.type) {
+            ctx.errors.add("Field missing type: " + field.name);
+            return;
+        }
+
+        for (const auto& attr : field.attributes) {
+            analyze_attribute(attr, attrs::AttributeTarget::Field);
+        }
+
+        if (field.default_value) {
+            const ast::Type* dt = analyze_expr(field.default_value);
+            if (!dt) return;
+
+            AssignCheck chk = check_assignable_value(field.type, field.default_value);
+            if (chk == AssignCheck::LiteralOutOfRange) {
+                ctx.errors.add("Literal value does not fit in field type: " + field.name);
+                return;
+            }
+            if (chk != AssignCheck::Ok) {
+                ctx.errors.add("Type mismatch in field default value: " + field.name);
+                return;
+            }
+        }
+    }
+}
+
+void SemanticAnalyzer::analyze_class_decl(const ast::ClassDecl& cls) {
+    if (!cls.type_params.empty()) {
+        // Generic class - fields may reference type params;
+        // skip deep analysis, concrete instances are checked at instantiation.
+        return;
+    }
+
+    std::unordered_set<std::string> seen;
+
+    for (const auto& field : cls.fields) {
         if (!seen.insert(field.name).second) {
             ctx.errors.add("Duplicate field: " + field.name);
             return;

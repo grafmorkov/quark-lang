@@ -12,7 +12,7 @@ namespace quant::types {
 
 struct GenericStructDef {
     std::vector<std::string> params;
-    std::vector<ast::StructField> fields;
+    std::vector<ast::Field> fields;
 };
 
 struct GenericFuncDef {
