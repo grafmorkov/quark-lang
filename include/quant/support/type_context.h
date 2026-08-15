@@ -13,6 +13,12 @@ namespace quant::types {
 struct GenericStructDef {
     std::vector<std::string> params;
     std::vector<ast::StructField> fields;
+    // Method declarations of the generic struct, kept so concrete
+    // instantiations can be monomorphized together with the fields.
+    std::vector<ast::FuncStmt> methods;
+    // Namespace in which the struct was declared (for resolving unqualified
+    // references inside instantiated method bodies and for symbol layout).
+    std::vector<std::string> module_namespace;
 };
 
 struct GenericFuncDef {
@@ -45,6 +51,7 @@ public:
     void register_generic_func(const std::string& name, const GenericFuncDef& def);
     const GenericFuncDef* get_generic_func(const std::string& name) const;
     const std::unordered_map<std::string, GenericFuncDef>& get_all_generic_funcs() const { return generic_func_defs; }
+    const GenericStructDef* get_generic_struct(const std::string& name) const;
 
     const Type* substitute_type(const Type* type, const std::unordered_map<std::string, const Type*>& subst) const;
     ast::FuncArg substitute_func_arg(const ast::FuncArg& arg, const std::unordered_map<std::string, const Type*>& subst) const;

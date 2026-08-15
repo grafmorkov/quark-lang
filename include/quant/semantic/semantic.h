@@ -31,6 +31,12 @@ class SemanticAnalyzer {
         int break_depth = 0;          // nesting depth of loops and switches ('break' targets)
         const std::unordered_map<std::string, const ast::Type*>* current_type_subst = nullptr;
 
+        // Struct that the currently analyzed function is a method of (empty
+        // for free functions). Its fields are implicitly in scope inside the
+        // method body, so bare field names read/write through the receiver.
+        std::string current_method_struct;
+        const symb_t::StructSymbol* current_method_sym = nullptr;
+
         void analyze_stmt(ast::Stmt* stmt);
         const ast::Type* analyze_expr(ast::Expr* expr);
         const ast::Type* analyze_block(const ast::Block* block);
@@ -61,6 +67,18 @@ class SemanticAnalyzer {
         void analyze_attribute(const ast::Attribute& attribute, const attrs::AttributeTarget target);
         void check_visibility(const symb_t::Symbol& sym, const std::string& context);
         void check_arg_guard(const ast::Expr* arg, const std::string& call_name);
+        const ast::Type* analyze_method_call(const ast::CallExpr& call,
+                                             const std::string& struct_name,
+                                             const std::string& method_name);
+        const ast::Type* method_field_type(const std::string& name) const;
+
+        // Materialize a concrete generic struct instantiation: declares the
+        // struct symbol (fields) and monomorphizes its methods. Idempotent.
+        void ensure_generic_struct_instantiated(const ast::Type* struct_type);
+        void instantiate_generic_methods(const std::string& struct_name,
+                                         const std::vector<const Type*>& type_args,
+                                         const std::string& base_name,
+                                         const types::GenericStructDef* def);
 
         const ast::Type* analyze_int(const ast::IntExpr&);
         const ast::Type* analyze_string(const ast::StringExpr&);

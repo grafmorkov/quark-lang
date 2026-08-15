@@ -59,7 +59,8 @@ namespace quant::ps {
             ast::WhileStmt parse_while();
             ast::Stmt parse_for();
             ast::ReturnStmt parse_return();
-            ast::FuncStmt parse_func(bool is_extern);
+            ast::FuncStmt parse_func(bool is_extern, const char* struct_name = nullptr,
+                                     const std::vector<std::string>* outer_type_params = nullptr);
             ast::RegionStmt parse_region();
             ast::EnumDecl parse_enum_decl();
             std::vector<ast::FuncArg> parse_func_args(const std::vector<std::string>* type_params = nullptr);

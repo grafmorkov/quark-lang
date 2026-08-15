@@ -501,25 +501,47 @@ ast::StructDecl Parser::parse_struct_decl() {
     }
     expect(TOKEN_LBRACE, "Expected '{' after struct name");
 
+    // Methods declared inside the struct are bound to it through `struct_name`.
+    // Keep the name in the arena so the pointer stays valid for the whole
+    // compilation (the StructDecl itself may be moved while being lowered).
+    auto* struct_name = memory::make<std::string>(ctx.ast_arena, ret.name);
+
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
-        ast::StructField field;
+        std::vector<ast::Attribute> member_attrs = parse_attributes();
 
-        field.attributes = parse_attributes();
-        field.is_mut = match(TOKEN_MUT);
+        switch (declaration_kind()) {
+            case DeclKind::Var: {
+                ast::StructField field;
 
-        field.type = parse_type(false, &ret.type_params);
+                field.attributes = std::move(member_attrs);
+                field.is_mut = match(TOKEN_MUT);
 
-        Token field_name = expect(TOKEN_IDENT, "Expected field name");
-        field.name = field_name.text;
+                field.type = parse_type(false, &ret.type_params);
 
-        field.default_value = nullptr;
-        if (match(TOKEN_EQ)) {
-            field.default_value = parse_expr(0);
+                Token field_name = expect(TOKEN_IDENT, "Expected field name");
+                field.name = field_name.text;
+
+                field.default_value = nullptr;
+                if (match(TOKEN_EQ)) {
+                    field.default_value = parse_expr(0);
+                }
+
+                expect(TOKEN_SEMICOLON, "Expected ';' after field");
+
+                ret.fields.push_back(std::move(field));
+                break;
+            }
+            case DeclKind::Func: {
+                ast::FuncStmt fn = parse_func(false, struct_name->c_str(), &ret.type_params);
+                fn.attributes = std::move(member_attrs);
+                ret.fields.push_back(std::move(fn));
+                break;
+            }
+            case quant::ps::DeclKind::None:
+                ctx.errors.add(current.loc, current.text.length(), "Unexpected Declaration");
+                advance();
+                break;
         }
-
-        expect(TOKEN_SEMICOLON, "Expected ';' after field");
-
-        ret.fields.push_back(std::move(field));
     }
 
     expect(TOKEN_RBRACE, "Expected '}' after struct body");
@@ -735,10 +757,21 @@ ast::ReturnStmt Parser::parse_return() {
     return ret;
 }
 
-ast::FuncStmt Parser::parse_func(bool is_extern) {
+ast::FuncStmt Parser::parse_func(bool is_extern, const char* struct_name,
+                                 const std::vector<std::string>* outer_type_params) {
     ast::FuncStmt ret;
 
-    ret.return_type = parse_type(false, current_type_params);
+    // Method return types may reference the enclosing generic struct's type
+    // params (e.g. `T get()` inside `struct Box<T>`); combine those with the
+    // function's own type params so they bind to Generic types.
+    std::vector<std::string> combined_params;
+    const std::vector<std::string>* eff_params = nullptr;
+    if (outer_type_params) {
+        combined_params = *outer_type_params;
+        eff_params = &combined_params;
+    }
+
+    ret.return_type = parse_type(false, eff_params ? eff_params : current_type_params);
 
     Token name = expect(TOKEN_IDENT, "Expected function name");
     ret.name = name.text;
@@ -753,14 +786,21 @@ ast::FuncStmt Parser::parse_func(bool is_extern) {
 
     if (!ret.type_params.empty()) {
         ret.return_type = bind_type_params(ctx, ret.return_type, ret.type_params);
+        combined_params.insert(combined_params.end(), ret.type_params.begin(), ret.type_params.end());
+        eff_params = &combined_params;
+    }
+
+    if (!eff_params) {
+        eff_params = current_type_params;
     }
 
     ret.is_extern = is_extern;
     ret.has_body = false;
     ret.body = nullptr;
+    ret.struct_name = std::move(struct_name);
 
     const auto* saved_type_params = current_type_params;
-    current_type_params = ret.type_params.empty() ? nullptr : &ret.type_params;
+    current_type_params = eff_params;
 
     expect(TOKEN_LPAREN, "Expected '('");
     ret.args = parse_func_args(current_type_params);

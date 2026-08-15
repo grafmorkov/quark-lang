@@ -186,6 +186,13 @@ namespace {
         return &it->second;
     }
 
+    const GenericStructDef* TypeContext::get_generic_struct(const std::string& name) const {
+        auto it = generic_defs.find(name);
+        if (it == generic_defs.end())
+            return nullptr;
+        return &it->second;
+    }
+
     std::string TypeContext::mangle_func_name(const std::string& name, const std::vector<const Type*>& args) const {
         return mangle_name(name, args);
     }

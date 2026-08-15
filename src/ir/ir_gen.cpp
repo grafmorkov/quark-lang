@@ -198,6 +198,45 @@ std::pair<uint32_t, const ast::Type*> resolve_struct_field(
     ctx.errors.add("Unknown field: " + field_name); return {};
 }
 
+// Resolve a struct's field directly by struct name (used for implicit
+// receiver field access in methods). Returns {offset, field_type}.
+std::pair<uint32_t, const ast::Type*> resolve_struct_field_by_name(
+    CompilerContext& ctx,
+    const std::string& struct_name,
+    const std::string& field_name
+) {
+    auto* sym = lookup_struct(ctx, struct_name);
+    if (!sym) return {};
+
+    auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data);
+    if (!ss) return {};
+
+    for (size_t i = 0; i < ss->field_names.size(); ++i) {
+        if (ss->field_names[i] == field_name) {
+            return {
+                static_cast<uint32_t>(i * 8u),
+                ss->field_types[i]
+            };
+        }
+    }
+
+    return {};
+}
+
+// True if `method_name` is declared as a method of `struct_name`.
+bool struct_has_method(CompilerContext& ctx,
+                       const std::string& struct_name,
+                       const std::string& method_name) {
+    auto* sym = lookup_struct(ctx, struct_name);
+    if (!sym) return false;
+
+    auto* ss = std::get_if<quant::symb_t::StructSymbol>(&sym->data);
+    if (!ss) return false;
+
+    return std::find(ss->method_names.begin(), ss->method_names.end(), method_name)
+        != ss->method_names.end();
+}
+
 bool is_signed_int_kind(ast::TypeKind k) {
     return k >= ast::TypeKind::I8 && k <= ast::TypeKind::I64;
 }
@@ -351,6 +390,24 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
                         )
                     );
                 },
+                [&](const ast::StructDecl& str) {
+                    // Register the struct's methods under
+                    // <struct>::<method>; generic structs are skipped.
+                    if (!str.type_params.empty()) {
+                        return;
+                    }
+                    for (const auto& value : str.fields) {
+                        const auto* fn = std::get_if<ast::FuncStmt>(&value);
+                        if (!fn || !fn->type_params.empty()) continue;
+                        register_function(
+                            support::qualify_name(
+                                module->namespace_path,
+                                namespace_stack,
+                                str.name + "::" + fn->name
+                            )
+                        );
+                    }
+                },
                 [&](const ast::NamespaceStmt& ns) {
                     namespace_stack.push_back(ns.name);
                     if (ns.body) {
@@ -370,7 +427,11 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
 
     // Register concrete generic function instantiations
     for (const auto& inst : ctx.generic_instantiations) {
-        register_function(inst.stmt.name);
+        const auto& fn = inst.stmt;
+        const std::string fkey = fn.struct_name
+            ? std::string(fn.struct_name) + "::" + fn.name
+            : fn.name;
+        register_function(fkey);
     }
 
     auto register_global = [&](const std::string& qname, const ast::Type* type) -> uint32_t {
@@ -449,9 +510,12 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
     // Generate IR for concrete generic instantiations
     for (const auto& inst : ctx.generic_instantiations) {
         const auto& fn = inst.stmt;
-        auto it = function_ids.find(fn.name);
+        const std::string fkey = fn.struct_name
+            ? std::string(fn.struct_name) + "::" + fn.name
+            : fn.name;
+        auto it = function_ids.find(fkey);
         if (it == function_ids.end()) {
-            ctx.errors.add("Generic instantiation not registered: " + fn.name); return;
+            ctx.errors.add("Generic instantiation not registered: " + fkey); return;
         }
 
         IRFunction* saved_func = current_func;
@@ -472,11 +536,19 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
         current_func->is_entry = false;
         current_func_return_type = fn.return_type;
 
+        // Methods of generic structs are generated through the same path; they
+        // carry struct_name and receive a pointer to the struct instance as
+        // their first argument (like non-generic methods).
+        const bool is_method = fn.struct_name != nullptr;
+        std::string saved_method_struct_name = std::move(current_method_struct_name);
+        current_method_struct_name = is_method ? std::string(fn.struct_name) : std::string();
+
         // Sret: return struct via hidden pointer arg
         const bool is_sret = fn.return_type &&
                              fn.return_type->kind == ast::TypeKind::Struct;
         current_func->sret = is_sret;
-        current_func->arg_count = static_cast<uint32_t>(fn.args.size()) + (is_sret ? 1 : 0);
+        current_func->arg_count = static_cast<uint32_t>(fn.args.size())
+            + (is_sret ? 1 : 0) + (is_method ? 1 : 0);
 
     next_reg = 0;
     next_local = 0;
@@ -486,6 +558,12 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
         type_scopes.clear();
         local_scopes.emplace_back();
         type_scopes.emplace_back();
+
+        if (is_method) {
+            const uint32_t self_local = new_local();
+            local_scopes.back()["self"] = self_local;
+            type_scopes.back()["self"] = nullptr;
+        }
 
         if (is_sret) {
             const uint32_t sret_local = new_local();
@@ -506,6 +584,7 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
             current_terminated = saved_terminated;
             local_scopes = std::move(saved_locals);
             type_scopes = std::move(saved_types);
+            current_method_struct_name = std::move(saved_method_struct_name);
             continue;
         }
 
@@ -545,6 +624,7 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
         current_terminated = saved_terminated;
         local_scopes = std::move(saved_locals);
         type_scopes = std::move(saved_types);
+        current_method_struct_name = std::move(saved_method_struct_name);
     }
 }
 void IRGenerator::gen_module(const quant::modules::Module& mod) {
@@ -585,7 +665,8 @@ void IRGenerator::gen_module(const quant::modules::Module& mod) {
 }
 
 void IRGenerator::gen_function(const ast::FuncStmt& func) {
-    const std::string qname = support::qualify_name(current_module->namespace_path, namespace_stack, func.name);
+    const std::string fn_key = func.struct_name ? std::string(func.struct_name) + "::" + func.name : func.name;
+    const std::string qname = support::qualify_name(current_module->namespace_path, namespace_stack, fn_key);
 
     auto it = function_ids.find(qname);
     if (it == function_ids.end()) {
@@ -597,6 +678,8 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
         return;
     }
 
+    const bool is_method = func.struct_name != nullptr;
+
     IRFunction* saved_func = current_func;
     uint32_t saved_next_reg = next_reg;
     uint32_t saved_next_local = next_local;
@@ -604,6 +687,8 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
     auto saved_namespace = namespace_stack;
     auto saved_locals = local_scopes;
     auto saved_types = type_scopes;
+    std::string saved_method_struct_name = std::move(current_method_struct_name);
+    current_method_struct_name = is_method ? std::string(func.struct_name) : std::string();
 
     current_func = &program.functions[it->second];
     current_func->body.clear();
@@ -644,7 +729,7 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
     const bool is_sret = func.return_type &&
                          func.return_type->kind == ast::TypeKind::Struct;
     current_func->sret = is_sret;
-    current_func->arg_count = static_cast<uint32_t>(func.args.size()) + (is_sret ? 1 : 0);
+    current_func->arg_count = static_cast<uint32_t>(func.args.size()) + (is_sret ? 1 : 0) + (is_method ? 1 : 0);
 
     next_reg = 0;
     next_local = 0;
@@ -654,6 +739,14 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
     type_scopes.clear();
     local_scopes.emplace_back();
     type_scopes.emplace_back();
+
+    // Methods receive a pointer to the struct instance as their first
+    // argument (arg slot 0), before any user arguments or the sret pointer.
+    if (is_method) {
+        const uint32_t self_local = new_local();
+        local_scopes.back()["self"] = self_local;
+        type_scopes.back()["self"] = nullptr;
+    }
 
     if (is_sret) {
         const uint32_t sret_local = new_local();
@@ -675,6 +768,7 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
         namespace_stack = std::move(saved_namespace);
         local_scopes = std::move(saved_locals);
         type_scopes = std::move(saved_types);
+        current_method_struct_name = std::move(saved_method_struct_name);
         return;
     }
 
@@ -703,6 +797,7 @@ void IRGenerator::gen_function(const ast::FuncStmt& func) {
     namespace_stack = std::move(saved_namespace);
     local_scopes = std::move(saved_locals);
     type_scopes = std::move(saved_types);
+    current_method_struct_name = std::move(saved_method_struct_name);
 }
 
 void IRGenerator::gen_block(const ast::Block& block) {
@@ -1068,8 +1163,18 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
             break_labels.pop_back();
         },
 
-        [&](const ast::StructDecl&) {
-            // Compile-time only.
+        [&](const ast::StructDecl& str) {
+            // Compile-time only, except the struct's methods. Generic structs
+            // are skipped here: their methods are monomorphized per concrete
+            // instantiation and generated from ctx.generic_instantiations.
+            if (!str.type_params.empty()) {
+                return;
+            }
+            for (const auto& value : str.fields) {
+                if (const auto* fn = std::get_if<ast::FuncStmt>(&value)) {
+                    gen_function(*fn);
+                }
+            }
         },
 
         [&](const ast::EnumDecl&) {
@@ -1279,6 +1384,22 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 return dst;
             }
 
+            // Bare field read inside a method: <self>.<field>.
+            if (!current_method_struct_name.empty()) {
+                const auto field = resolve_struct_field_by_name(ctx, current_method_struct_name, node.name);
+                if (field.second) {
+                    uint32_t self_local = 0;
+                    const ast::Type* self_type = nullptr;
+                    if (lookup_local("self", self_local, self_type)) {
+                        const uint32_t self_ptr = new_reg();
+                        emit(IRLoadLocal{ self_ptr, self_local });
+                        const uint32_t dst = new_reg();
+                        emit(IRGetField{ dst, self_ptr, field.first });
+                        return dst;
+                    }
+                }
+            }
+
             auto* sym = ctx.symbols.lookup(node.name);
             if (!sym) {
                 ctx.errors.add("Undefined variable: " + node.name); return 0;
@@ -1434,6 +1555,22 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                     }
                 }
 
+                // Bare field write inside a method: <self>.<field> = value.
+                if (!current_method_struct_name.empty()) {
+                    const auto field = resolve_struct_field_by_name(ctx, current_method_struct_name, var->name);
+                    if (field.second) {
+                        uint32_t self_local = 0;
+                        const ast::Type* self_type = nullptr;
+                        if (lookup_local("self", self_local, self_type)) {
+                            const uint32_t self_ptr = new_reg();
+                            emit(IRLoadLocal{ self_ptr, self_local });
+                            const uint32_t v = gen_expr_as(*node.value, field.second);
+                            emit(IRSetField{ self_ptr, v, field.first });
+                            return v;
+                        }
+                    }
+                }
+
                 auto* sym = ctx.symbols.lookup(var->name);
                 if (!sym) {
                     ctx.errors.add("Undefined variable: " + var->name); return 0;
@@ -1579,6 +1716,84 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
         },
 
         [&](const ast::CallExpr& node) -> uint32_t {
+            // Lower a method call: resolve <struct>::<method>, pass the receiver
+            // (the struct's address) as the first argument, honor sret, and
+            // coerce the user arguments to the declared parameter types.
+            auto emit_method_call = [&](const std::string& struct_name,
+                                        const std::string& method_name,
+                                        uint32_t self_reg,
+                                        bool have_self) -> uint32_t {
+                std::vector<std::string> method_path = support::split_path(struct_name);
+                method_path.back() = method_path.back() + "::" + method_name;
+
+                const uint32_t func_id = resolve_function_id(method_path);
+
+                std::vector<uint32_t> args;
+                args.reserve(node.args.size() + 2);
+                if (have_self) {
+                    args.push_back(self_reg);
+                }
+
+                bool is_sret_call = false;
+                uint32_t sret_ptr = 0;
+                {
+                    const ast::Type* ret_type = nullptr;
+                    if (auto* fn_sym = resolve_qualified(ctx, method_path)) {
+                        if (auto* fs = std::get_if<quant::symb_t::FuncSymbol>(&fn_sym->data)) {
+                            ret_type = fs->return_type;
+                        }
+                    }
+                    if (ret_type && ret_type->kind == ast::TypeKind::Struct) {
+                        is_sret_call = true;
+                        int sz = type_size(ret_type, &ctx);
+                        if (current_func) current_func->extra_stack += sz;
+                        sret_ptr = new_reg();
+                        emit(IRAlloca{ sret_ptr, static_cast<uint32_t>(current_func ? current_func->extra_stack : 0) });
+                        args.push_back(sret_ptr);
+                    }
+                }
+
+                for (size_t i = 0; i < node.args.size(); ++i) {
+                    const auto* arg = node.args[i];
+                    if (!arg) {
+                        ctx.errors.add("Null call argument"); return 0;
+                    }
+                    const ast::Type* param_type = nullptr;
+                    if (auto* fn_sym = resolve_qualified(ctx, method_path)) {
+                        if (auto* fs = std::get_if<quant::symb_t::FuncSymbol>(&fn_sym->data)) {
+                            if (i < fs->arg_types.size()) param_type = fs->arg_types[i];
+                        }
+                    }
+                    args.push_back(gen_expr_as(*arg, param_type));
+                }
+
+                const uint32_t dst = new_reg();
+                emit(IRCall{ dst, func_id, args, is_sret_call });
+                return is_sret_call ? sret_ptr : dst;
+            };
+
+            // Method call: <struct expr>.<method>(args).
+            if (node.callee) {
+                if (const auto* mf = std::get_if<ast::FieldExpr>(&node.callee->kind)) {
+                    const ast::Type* base_type = mf->base ? mf->base->resolved_type : nullptr;
+                    if (base_type) {
+                        if (base_type->kind == ast::TypeKind::Reference && base_type->pointed) {
+                            base_type = base_type->pointed;
+                        }
+                        if (base_type->kind == ast::TypeKind::Pointer && base_type->pointed) {
+                            base_type = base_type->pointed;
+                        }
+                    }
+
+                    if (!base_type || base_type->kind != ast::TypeKind::Struct) {
+                        ctx.errors.add("Method call on non-struct type: " + mf->field); return 0;
+                    }
+
+                    const uint32_t self_reg = gen_expr(*mf->base);
+                    return emit_method_call(base_type->struct_name, mf->field, self_reg, true);
+                }
+            }
+
             if (!region_stack.empty() && node.callee) {
                 auto callee_path = support::flatten_path(node.callee);
                 if (callee_path.size() == 1 && callee_path[0] == "alloc") {
@@ -1620,6 +1835,28 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             }
 
             const auto callee_path = support::flatten_path(node.callee);
+
+            // A bare call inside a method body with no matching free function
+            // is a call to a sibling method of the current struct (implicit
+            // receiver). Mirrors the semantic pass.
+            if (!current_method_struct_name.empty()
+                    && node.type_args.empty()
+                    && node.resolved_mangled_name.empty()
+                    && callee_path.size() == 1) {
+                const auto* existing = resolve_qualified(ctx, callee_path);
+                const bool is_free_func = existing
+                    && std::get_if<quant::symb_t::FuncSymbol>(&existing->data);
+                if (!is_free_func
+                        && struct_has_method(ctx, current_method_struct_name, callee_path[0])) {
+                    uint32_t self_local = 0;
+                    const ast::Type* self_type = nullptr;
+                    if (lookup_local("self", self_local, self_type)) {
+                        const uint32_t self_ptr = new_reg();
+                        emit(IRLoadLocal{ self_ptr, self_local });
+                        return emit_method_call(current_method_struct_name, callee_path[0], self_ptr, true);
+                    }
+                }
+            }
 
             // Handle generic function calls: use mangled name. The mangling
             // must include the full module path to match the semantic pass's

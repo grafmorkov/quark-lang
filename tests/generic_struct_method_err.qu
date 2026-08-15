@@ -1,0 +1,15 @@
+// Compilation must fail: the concrete instantiation Box<i32> has a method
+// whose parameter type is i32, so passing a String must be rejected.
+struct Box<T> {
+    T value;
+
+    void set(T v) {
+        value = v;
+    }
+};
+
+@entry i32 main() {
+    @init mut Box<i32> b;
+    b.set("nope");
+    return 0;
+}

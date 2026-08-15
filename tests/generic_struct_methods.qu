@@ -1,0 +1,109 @@
+// Methods declared inside generic structs are monomorphized per concrete
+// instantiation: field reads/writes through the implicit receiver, calls of
+// sibling methods by bare name, struct-returning (sret) methods, methods
+// taking the generic struct by value, pointer receivers and nested generics.
+// Returns 0 when everything checks out.
+
+struct Box<T> {
+    T value;
+
+    void set(T v) {
+        value = v;
+    }
+
+    T get() {
+        return value;
+    }
+};
+
+struct Wrapper<T> {
+    T value;
+
+    void set(T v) { value = v; }
+    T get() { return value; }
+
+    Wrapper<T> clone() {
+        @init mut Wrapper<T> c;
+        c.value = value;
+        return c;
+    }
+
+    void copy_from(Wrapper<T> other) {
+        value = other.value;
+    }
+};
+
+struct Pair<A, B> {
+    A first;
+    B second;
+
+    void set(A a, B b) {
+        first = a;
+        second = b;
+    }
+
+    A fst() { return first; }
+    B snd() { return second; }
+
+    i32 sum() { return (first as i32) + (second as i32); }
+};
+
+namespace lib {
+    struct Counter<T> {
+        T count;
+
+        void inc() {
+            add(1);
+        }
+
+        void add(T v) {
+            count = count + v;
+        }
+
+        T get() { return count; }
+    };
+}
+
+struct Outer<T> {
+    T item;
+
+    void store(T v) { item = v; }
+    T fetch() { return item; }
+};
+
+@entry i32 main() {
+    @init mut Box<i32> b;
+    b.set(42);
+    if (b.get() != 42) { return 1; }
+
+    *Box<i32> p = &b;
+    p.set(7);
+    if (p.get() != 7) { return 2; }
+
+    @init mut Wrapper<i32> w;
+    w.set(9);
+    Wrapper<i32> c = w.clone();
+    if (c.get() != 9) { return 3; }
+
+    @init mut Wrapper<i32> w2;
+    w2.set(100);
+    w.copy_from(w2);
+    if (w.get() != 100) { return 4; }
+
+    @init mut Pair<i32, i32> pair;
+    pair.set(30, 12);
+    if (pair.fst() != 30 || pair.snd() != 12 || pair.sum() != 42) { return 5; }
+
+    @init mut lib::Counter<i32> cnt;
+    cnt.inc();
+    cnt.inc();
+    cnt.add(5);
+    if (cnt.get() != 7) { return 6; }
+
+    @init mut Outer<Box<i32>> o;
+    o.store(Box<i32>{ 42 });
+    Box<i32> nb = o.fetch();
+    if (nb.get() != 42) { return 7; }
+
+    return 0;
+}

@@ -1,0 +1,11 @@
+struct Bad {
+    i32 f() {
+        return 1;
+    }
+    i32 f() {
+        return 2;
+    }
+};
+
+void main() {
+}

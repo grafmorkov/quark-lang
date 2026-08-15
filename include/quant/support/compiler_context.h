@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <string>
 
@@ -47,11 +48,17 @@ namespace quant {
         // Needed by IR gen to emit implicit widening casts on call arguments.
         std::unordered_map<std::string, std::vector<const ast::Type*>> generic_arg_types;
 
+        // Concrete generic struct names whose methods were already monomorphized
+        // (e.g. "Box$4"), so lazy method instantiation is idempotent.
+        std::unordered_set<std::string> instantiated_generic_methods;
+
         ErrorBag errors;
 
         CompilerContext()
             : symbols(symbol_arena)
-        {}
+        {
+            symbols.set_error_bag(&errors);
+        }
     };
 
 }

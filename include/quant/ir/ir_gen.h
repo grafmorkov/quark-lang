@@ -23,6 +23,10 @@ struct IRGenerator {
     const ast::Type* current_func_return_type = nullptr;
     const modules::Module* current_module = nullptr;
 
+    // Struct name of the method currently being generated (empty for free
+    // functions). Used to resolve bare field names to the receiver.
+    std::string current_method_struct_name;
+
     Reg next_reg = 0;
     Local next_local = 0;
     Label next_label = 0;

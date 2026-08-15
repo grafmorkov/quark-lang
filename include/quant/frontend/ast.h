@@ -57,7 +57,7 @@ namespace quant::ast {
         std::string struct_name; // struct only
         const Type* pointed; // ptr/reference only
         std::vector<const Type*> type_args;
-        
+
         std::string to_string(CompilerContext& ctx) const;
     };
 
@@ -256,6 +256,8 @@ namespace quant::ast {
         Expr* default_value = nullptr;
         std::vector<Attribute> attributes;
     };
+    struct FuncStmt;
+    using StructValue = std::variant<StructField, FuncStmt>;
 
     struct VarDecl {
         std::string name;
@@ -267,7 +269,7 @@ namespace quant::ast {
 
     struct StructDecl {
         std::string name;
-        std::vector<StructField> fields;
+        std::vector<StructValue> fields;
         std::vector<Attribute> attributes;
 	    std::vector<std::string> type_params;
     };
@@ -282,6 +284,8 @@ namespace quant::ast {
         bool is_forward;
         bool is_entry;
         bool has_body;
+
+        const char* struct_name = nullptr;
 
         Block* body;
         std::vector<Attribute> attributes;
