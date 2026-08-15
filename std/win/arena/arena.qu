@@ -12,6 +12,27 @@ struct Region {
     *void data;
     u64 offset;
     u64 capacity;
+
+    // bump - allocate `size` bytes from this region (16-byte aligned).
+    // Returns NULL if the region has no space left.
+    *void bump(u64 size) {
+        mut u64 a = size + 15;
+        a = a & ((-16 as i64) as u64);
+        u64 off = offset;
+        u64 end = off + a;
+        if (end > capacity) { return 0 as! *void; }
+        u64 res = (data as! u64) + off;
+        offset = end;
+        return res as! *void;
+    }
+
+    // destroy - release the backing memory of this region.
+    void destroy() {
+        _region_munmap(data, capacity);
+        data = 0 as! *void;
+        offset = 0;
+        capacity = 0;
+    }
 };
 
 // _region_mmap - map `size` bytes of readable/writable memory.
@@ -47,10 +68,15 @@ Region _create(u64 size) {
     return r;
 }
 
+// --- Deprecated free-function wrappers. Prefer the Region methods. ---
+
+// _region_bump - allocate `size` bytes from a region (16-byte aligned).
+// Returns NULL if the region has no space left.
+*void _region_bump(mut &Region reg, u64 size) {
+    return reg.bump(size);
+}
+
 // _destroy - release the backing memory of a region.
 void _destroy(mut &Region reg) {
-    _region_munmap(reg.data, reg.capacity);
-    reg.data = 0 as! *void;
-    reg.offset = 0;
-    reg.capacity = 0;
+    reg.destroy();
 }

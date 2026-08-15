@@ -6,25 +6,25 @@ using std::vector;
 void main() {
     @init mut Vec<i32> v;
 
-    vec_push<i32>(&v, 10);
-    vec_push<i32>(&v, 20);
-    vec_push<i32>(&v, 30);
+    v.push(10);
+    v.push(20);
+    v.push(30);
 
     std::io::print("len: ");
-    std::io::print(vec_len<i32>(&v) as str);
+    std::io::print(v.len() as str);
     std::io::print("\n");
 
     std::io::print("get[0]: ");
-    std::io::print(vec_get<i32>(&v, 0) as str);
+    std::io::print(v.get(0) as str);
     std::io::print("\n");
 
     std::io::print("get[1]: ");
-    std::io::print(vec_get<i32>(&v, 1) as str);
+    std::io::print(v.get(1) as str);
     std::io::print("\n");
 
     std::io::print("get[2]: ");
-    std::io::print(vec_get<i32>(&v, 2) as str);
+    std::io::print(v.get(2) as str);
     std::io::print("\n");
 
-    vec_free<i32>(&v);
+    v.free();
 }

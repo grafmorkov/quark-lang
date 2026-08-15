@@ -15,8 +15,8 @@
 //
 //   i32 main() {
 //       result<i32, str> r = divide(10, 3);
-//       if (result_is_ok(r)) {
-//           std::io::print(result_unwrap_ok(r) as str);
+//       if (r.is_ok()) {
+//           std::io::print(r.unwrap() as str);
 //       }
 //       return 0;
 //   }
@@ -31,6 +31,34 @@ struct result<T, E> {
 
     @init @guard(!is_ok)
     E err_value;
+
+    // is_ok - true if this result holds an ok value.
+    bool is_ok() {
+        return is_ok;
+    }
+
+    // is_err - true if this result holds an error.
+    bool is_err() {
+        return !is_ok;
+    }
+
+    // unwrap - get the ok value (undefined behaviour when it's an error).
+    T unwrap() {
+        return ok_value;
+    }
+
+    // unwrap_err - get the error value (undefined behaviour when it's ok).
+    E unwrap_err() {
+        return err_value;
+    }
+
+    // unwrap_or - get the ok value, or `dflt` when it's an error.
+    T unwrap_or(T dflt) {
+        if (is_ok) {
+            return ok_value;
+        }
+        return dflt;
+    }
 };
 
 // result_ok - create an ok result with a value.
@@ -49,30 +77,29 @@ result<T, E> result_err<T, E>(E err) {
     return r;
 }
 
+// --- Deprecated free-function wrappers. Prefer the result<T, E> methods. ---
+
 // result_is_ok - check if a result is ok.
 bool result_is_ok<T, E>(result<T, E> r) {
-    return r.is_ok;
+    return r.is_ok();
 }
 
 // result_is_err - check if a result is an error.
 bool result_is_err<T, E>(result<T, E> r) {
-    return !r.is_ok;
+    return r.is_err();
 }
 
 // result_unwrap_ok - get the ok value.
 T result_unwrap_ok<T, E>(result<T, E> r) {
-    return r.ok_value;
+    return r.unwrap();
 }
 
 // result_unwrap_err - get the error value.
 E result_unwrap_err<T, E>(result<T, E> r) {
-    return r.err_value;
+    return r.unwrap_err();
 }
 
 // result_unwrap_or - get the ok value, or use `dflt` if the result is an error.
 T result_unwrap_or<T, E>(result<T, E> r, T dflt) {
-    if (r.is_ok) {
-        return r.ok_value;
-    }
-    return dflt;
+    return r.unwrap_or(dflt);
 }

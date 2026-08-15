@@ -43,6 +43,5 @@ void main() {
     str cp2 = str_copy(&r, cat);
     if (!str_eq(cp2, "hello world")) { std::io::print("BAD copy2\n"); return; }
 
-    std::arena::_destroy(&r);
-    std::io::print("str OK\n");
-}
+    r.destroy();
+    std::io::print("str OK\n");}
