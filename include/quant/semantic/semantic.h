@@ -44,7 +44,6 @@ class SemanticAnalyzer {
 
         void analyze_var_decl(const ast::VarDecl& var);
         void analyze_struct_decl(const ast::StructDecl& str);
-        void analyze_class_decl(const ast::ClassDecl& cls);
         void analyze_enum_decl(const ast::EnumDecl& enm);
         void analyze_namespace_stmt(const ast::NamespaceStmt& stmt);
         void analyze_expr_stmt(const ast::ExprStmt& expr);

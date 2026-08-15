@@ -206,26 +206,6 @@ namespace quant::symb_t {
         });
     }
 
-    bool SymbolTable::declare(const ast::ClassDecl& cls) {
-        StructSymbol sym;
-
-        sym.field_names.reserve(cls.fields.size());
-        sym.field_types.reserve(cls.fields.size());
-        sym.field_attributes.reserve(cls.fields.size());
-
-        for (const auto& field : cls.fields) {
-            sym.field_names.push_back(field.name);
-            sym.field_types.push_back(field.type);
-            sym.field_attributes.push_back(field.attributes);
-        }
-
-        return declare_symbol(cls.name, Symbol{
-            cls.name,
-            sym,
-            cls.attributes
-        });
-    }
-
     bool SymbolTable::declare_struct(
         const std::string& name,
         const std::vector<std::pair<std::string, const ast::Type*>>& fields,

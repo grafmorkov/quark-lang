@@ -1,7 +1,0 @@
-module "tests::lib_class";
-
-class Counter {
-    i32 count;
-    @private i32 hidden;
-    @public i32 shown;
-};
