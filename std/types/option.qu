@@ -14,8 +14,8 @@
 //
 //   i32 main() {
 //       opt<i32> r = find(5);
-//       if (opt_is_some(r)) {
-//           std::io::print(opt_unwrap(r) as str);
+//       if (r.is_some()) {
+//           std::io::print(r.unwrap() as str);
 //       }
 //       return 0;
 //   }
@@ -27,6 +27,29 @@ struct opt<T> {
 
     @init @guard(has_value)
     T value;
+
+    // is_some - true if this option holds a value.
+    bool is_some() {
+        return has_value;
+    }
+
+    // is_none - true if this option is empty.
+    bool is_none() {
+        return !has_value;
+    }
+
+    // unwrap - get the value (undefined behaviour when empty).
+    T unwrap() {
+        return value;
+    }
+
+    // unwrap_or - get the value, or `dflt` when empty.
+    T unwrap_or(T dflt) {
+        if (has_value) {
+            return value;
+        }
+        return dflt;
+    }
 };
 
 // opt_some - create an option with a value.
@@ -44,25 +67,24 @@ opt<T> opt_none<T>() {
     return o;
 }
 
+// --- Deprecated free-function wrappers. Prefer the opt<T> methods. ---
+
 // opt_is_some - check if it has a value.
 bool opt_is_some<T>(opt<T> o) {
-    return o.has_value;
+    return o.is_some();
 }
 
 // opt_is_none - check if it's empty.
 bool opt_is_none<T>(opt<T> o) {
-    return !o.has_value;
+    return o.is_none();
 }
 
 // opt_unwrap - get the value (panics if none).
 T opt_unwrap<T>(opt<T> o) {
-    return o.value;
+    return o.unwrap();
 }
 
 // opt_unwrap_or - get the value, or use `dflt` if it's none.
 T opt_unwrap_or<T>(opt<T> o, T dflt) {
-    if (o.has_value) {
-        return o.value;
-    }
-    return dflt;
+    return o.unwrap_or(dflt);
 }

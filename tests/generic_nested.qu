@@ -9,6 +9,6 @@ struct Token {
 void main() {
     @init mut Vec<Vec<Token>> tokens;
 
-    vec_free<Vec<Token>>(tokens);
+    tokens.free();
     std::io::print("ok\n");
 }

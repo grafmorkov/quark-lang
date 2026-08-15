@@ -1,0 +1,78 @@
+// Method-style stdlib API: opt<T>, result<T, E>, either<L, R>, ordering and
+// std::arena::Region all expose methods in addition to the deprecated free
+// functions. Returns 0 when everything checks out.
+
+load "std::io";
+load "std::types";
+load "std::cmp";
+load "std::arena";
+using std::types;
+using std::cmp;
+
+@entry i32 main() {
+    // opt<T> methods
+    opt<i32> o = opt_some<i32>(42);
+    if (!o.is_some()) { return 1; }
+    if (o.is_none()) { return 2; }
+    if (o.unwrap() != 42) { return 3; }
+    if (o.unwrap_or(7) != 42) { return 4; }
+
+    opt<i32> n = opt_none<i32>();
+    if (!n.is_none()) { return 5; }
+    if (n.unwrap_or(9) != 9) { return 6; }
+
+    // deprecated free-function wrappers still work
+    if (!opt_is_some(o)) { return 7; }
+    if (opt_unwrap_or(n, 3) != 3) { return 8; }
+
+    // result<T, E> methods
+    result<i32, str> ok = result_ok<i32, str>(10);
+    if (!ok.is_ok()) { return 9; }
+    if (ok.is_err()) { return 10; }
+    if (ok.unwrap() != 10) { return 11; }
+    if (ok.unwrap_or(5) != 10) { return 12; }
+
+    result<i32, str> err = result_err<i32, str>("boom");
+    if (!err.is_err()) { return 13; }
+    str msg = err.unwrap_err();
+    if ((msg as! *i8)[0] as i32 != 98) { return 14; }
+    if (err.unwrap_or(5) != 5) { return 15; }
+    if (!result_is_ok(ok)) { return 16; }
+
+    // either<L, R> methods
+    either<i32, str> le = either_left<i32, str>(7);
+    if (!le.is_left()) { return 17; }
+    if (le.is_right()) { return 18; }
+    if (le.unwrap_left() != 7) { return 19; }
+    if (le.unwrap_left_or(3) != 7) { return 20; }
+
+    either<i32, str> re = either_right<i32, str>("hi");
+    if (!re.is_right()) { return 21; }
+    str rv = re.unwrap_right();
+    if ((rv as! *i8)[0] as i32 != 104) { return 22; }
+    if ((re.unwrap_right_or("xx") as! *i8)[0] as i32 != 104) { return 23; }
+    if ((le.unwrap_right_or("zz") as! *i8)[0] as i32 != 122) { return 24; }
+
+    // ordering methods + cmp<T>
+    ordering less = cmp<i32>(3, 8);
+    if (!less.is_less()) { return 25; }
+    if (less.is_equal()) { return 26; }
+    ordering gt = less.reverse();
+    if (!gt.is_greater()) { return 27; }
+    ordering eq = cmp<i32>(5, 5);
+    if (!eq.is_equal()) { return 28; }
+    ordering t = eq.then(less);
+    if (!t.is_less()) { return 29; }
+    if (!cmp_then(eq, less).is_less()) { return 30; }
+
+    // std::arena::Region methods
+    mut std::arena::Region reg = std::arena::_create(128);
+    *i32 p = reg.bump(4) as! *i32;
+    p[0] = 123;
+    *i32 q = reg.bump(8) as! *i32;
+    q[0] = 456;
+    if (p[0] != 123 || q[0] != 456) { return 31; }
+    reg.destroy();
+
+    return 0;
+}

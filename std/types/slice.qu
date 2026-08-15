@@ -12,14 +12,14 @@
 //       region r {
 //           *i32 buf = alloc(i32, 10);
 //           slice<i32> s = slice_make<i32>(buf, 10);
-//           slice_set<i32>(&s, 0, 42);
-//           std::io::print(slice_get<i32>(&s, 0) as str);  // 42
+//           s.set(0, 42);
+//           std::io::print(s.get(0) as str);  // 42
 //       }
 //   }
 //
 // Notes:
-//   - slice_get and slice_set are unchecked.
-//   - Use slice_at for checked access.
+//   - get and set are unchecked.
+//   - Use at for checked access.
 //   - A slice must not outlive the memory it points to.
 
 module "std::types";
@@ -27,6 +27,67 @@ module "std::types";
 struct slice<T> {
     mut *T data;
     mut u64 len;
+
+    // len - number of elements in the slice.
+    u64 len() {
+        return len;
+    }
+
+    // is_empty - true if the slice has no elements.
+    bool is_empty() {
+        return len == 0;
+    }
+
+    // ptr - the raw backing pointer.
+    *T ptr() {
+        return data;
+    }
+
+    // in_bounds - true if `i` is a valid index.
+    bool in_bounds(u64 i) {
+        return i < len;
+    }
+
+    // get - read element at `i` (unchecked).
+    T get(u64 i) {
+        return data[i];
+    }
+
+    // set - write element at `i` (unchecked).
+    void set(u64 i, T val) {
+        data[i] = val;
+    }
+
+    // at - read element at `i`, returning opt<T>.
+    // Returns opt_none<T>() when the index is out of bounds.
+    opt<T> at(u64 i) {
+        if (i < len) { return opt_some<T>(data[i]); }
+        return opt_none<T>();
+    }
+
+    // sub - a view of elements [start, start + len).
+    // Out-of-range starts yield an empty slice; len is clamped to
+    // the remaining elements.
+    slice<T> sub(u64 start, mut u64 count) {
+        if (start >= len) { return slice_empty<T>(); }
+        u64 avail = len - start;
+        if (count > avail) { count = avail; }
+        *T p = ((data as! u64) + start * sizeof(T)) as! *T;
+        @init mut slice<T> sub;
+        sub.data = p;
+        sub.len = count;
+        return sub;
+    }
+
+    // copy_from - copy up to self.len elements from `src` into self.
+    // Copies min(dst.len, src.len) elements.
+    void copy_from(&slice<T> src) {
+        mut u64 n = src.len;
+        if (len < n) { n = len; }
+        for (mut u64 i = 0; i < n; i++) {
+            data[i] = src.data[i];
+        }
+    }
 };
 
 // slice_make - build a slice from a pointer and a length.
@@ -45,63 +106,53 @@ slice<T> slice_empty<T>() {
     return s;
 }
 
+// --- Deprecated free-function wrappers. Prefer the slice<T> methods. ---
+
 // slice_len - number of elements in the slice.
 u64 slice_len<T>(&slice<T> s) {
-    return s.len;
+    return s.len();
 }
 
 // slice_is_empty - true if the slice has no elements.
 bool slice_is_empty<T>(&slice<T> s) {
-    return s.len == 0;
+    return s.is_empty();
 }
 
 // slice_ptr - the raw backing pointer.
 *T slice_ptr<T>(&slice<T> s) {
-    return s.data;
+    return s.ptr();
 }
 
 // slice_in_bounds - true if `i` is a valid index.
 bool slice_in_bounds<T>(&slice<T> s, u64 i) {
-    return i < s.len;
+    return s.in_bounds(i);
 }
 
 // slice_get - read element at `i` (unchecked).
 T slice_get<T>(&slice<T> s, u64 i) {
-    return s.data[i];
+    return s.get(i);
 }
 
 // slice_set - write element at `i` (unchecked).
 void slice_set<T>(mut &slice<T> s, u64 i, T val) {
-    s.data[i] = val;
+    s.set(i, val);
 }
 
 // slice_at - read element at `i`, returning opt<T>.
 // Returns opt_none<T>() when the index is out of bounds.
 opt<T> slice_at<T>(&slice<T> s, u64 i) {
-    if (i < s.len) { return opt_some<T>(s.data[i]); }
-    return opt_none<T>();
+    return s.at(i);
 }
 
 // slice_sub - a view of elements [start, start + len).
 // Out-of-range starts yield an empty slice; len is clamped to
 // the remaining elements.
 slice<T> slice_sub<T>(&slice<T> s, u64 start, mut u64 len) {
-    if (start >= s.len) { return slice_empty<T>(); }
-    u64 avail = s.len - start;
-    if (len > avail) { len = avail; }
-    *T p = ((s.data as! u64) + start * sizeof(T)) as! *T;
-    @init mut slice<T> sub;
-    sub.data = p;
-    sub.len = len;
-    return sub;
+    return s.sub(start, len);
 }
 
 // slice_copy - copy up to dst.len elements from src into dst.
 // Copies min(dst.len, src.len) elements.
 void slice_copy<T>(mut &slice<T> dst, &slice<T> src) {
-    mut u64 n = src.len;
-    if (dst.len < n) { n = dst.len; }
-    for (mut u64 i = 0; i < n; i++) {
-        dst.data[i] = src.data[i];
-    }
+    dst.copy_from(src);
 }

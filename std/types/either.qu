@@ -7,8 +7,8 @@
 //
 //   i32 main() {
 //       either<i32, str> e = either_left<i32, str>(42);
-//       if (either_is_left(e)) {
-//           std::io::print(either_unwrap_left(e) as str);
+//       if (e.is_left()) {
+//           std::io::print(e.unwrap_left() as str);
 //       }
 //       return 0;
 //   }
@@ -23,6 +23,42 @@ struct either<L, R> {
 
     @init @guard(!is_left)
     R right_val;
+
+    // is_left - true if this value is a left value.
+    bool is_left() {
+        return is_left;
+    }
+
+    // is_right - true if this value is a right value.
+    bool is_right() {
+        return !is_left;
+    }
+
+    // unwrap_left - get the left value (undefined behaviour when it's right).
+    L unwrap_left() {
+        return left_val;
+    }
+
+    // unwrap_right - get the right value (undefined behaviour when it's left).
+    R unwrap_right() {
+        return right_val;
+    }
+
+    // unwrap_left_or - get the left value, or `dflt` when it's a right value.
+    L unwrap_left_or(L dflt) {
+        if (is_left) {
+            return left_val;
+        }
+        return dflt;
+    }
+
+    // unwrap_right_or - get the right value, or `dflt` when it's a left value.
+    R unwrap_right_or(R dflt) {
+        if (is_left) {
+            return dflt;
+        }
+        return right_val;
+    }
 };
 
 // either_left - create a left value.
@@ -41,38 +77,34 @@ either<L, R> either_right<L, R>(R val) {
     return e;
 }
 
+// --- Deprecated free-function wrappers. Prefer the either<L, R> methods. ---
+
 // either_is_left - check if it's a left value.
 bool either_is_left<L, R>(either<L, R> e) {
-    return e.is_left;
+    return e.is_left();
 }
 
 // either_is_right - check if it's a right value.
 bool either_is_right<L, R>(either<L, R> e) {
-    return !e.is_left;
+    return e.is_right();
 }
 
 // either_unwrap_left - get the left value.
 L either_unwrap_left<L, R>(either<L, R> e) {
-    return e.left_val;
+    return e.unwrap_left();
 }
 
 // either_unwrap_right - get the right value.
 R either_unwrap_right<L, R>(either<L, R> e) {
-    return e.right_val;
+    return e.unwrap_right();
 }
 
 // either_unwrap_left_or - get the left value, or use `dflt` if it's a right value.
 L either_unwrap_left_or<L, R>(either<L, R> e, L dflt) {
-    if (e.is_left) {
-        return e.left_val;
-    }
-    return dflt;
+    return e.unwrap_left_or(dflt);
 }
 
 // either_unwrap_right_or - get the right value, or use `dflt` if it's a left value.
 R either_unwrap_right_or<L, R>(either<L, R> e, R dflt) {
-    if (e.is_left) {
-        return dflt;
-    }
-    return e.right_val;
+    return e.unwrap_right_or(dflt);
 }

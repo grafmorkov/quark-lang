@@ -801,10 +801,18 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                     // Methods' parameter/return types are stored in the symbol
                     // table as written in the source; canonicalize them so
                     // method calls compare against the same qualified types
-                    // that free functions and variables use.
+                    // that free functions and variables use. The AST types are
+                    // canonicalized as well so the method body analysis sees
+                    // consistent types (e.g. returning another struct from the
+                    // same module).
                     for (const auto& value : str.fields) {
                         const auto* fn = std::get_if<ast::FuncStmt>(&value);
                         if (!fn) continue;
+                        auto& f = const_cast<ast::FuncStmt&>(*fn);
+                        f.return_type = canonicalize_struct_type(f.return_type);
+                        for (auto& arg : f.args) {
+                            arg.type = canonicalize_struct_type(arg.type);
+                        }
                         auto* msym = ctx.symbols.lookup(str.name + "::" + fn->name);
                         if (!msym) continue;
                         auto* fs = std::get_if<symb_t::FuncSymbol>(&msym->data);
@@ -2582,7 +2590,7 @@ const ast::Type* SemanticAnalyzer::analyze_struct_init(const ast::StructInitExpr
         if (chk != AssignCheck::Ok) return nullptr;
     }
 
-    return struct_type;
+    return canonicalize_struct_type(struct_type);
 }
 
 const ast::Type* SemanticAnalyzer::analyze_block(const ast::Block* block) {
