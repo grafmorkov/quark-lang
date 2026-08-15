@@ -1,0 +1,22 @@
+struct Vec2 {
+    i32 x;
+    i32 y;
+
+    i32 dot(Vec2 other) {
+        return 42;
+    }
+};
+
+struct Rect {
+    i32 w;
+    i32 h;
+
+    i32 area() {
+        return 0;
+    }
+};
+
+void main() {
+    @init Vec2 v;
+    @init Rect r;
+}

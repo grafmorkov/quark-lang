@@ -1,0 +1,78 @@
+struct Counter {
+    i32 count;
+
+    void bump() {
+        count = count + 1;
+    }
+
+    void double_bump() {
+        bump();
+        bump();
+    }
+
+    i32 value() {
+        return count;
+    }
+};
+
+struct Rect {
+    i32 w;
+    i32 h;
+
+    i32 area() {
+        return w * h;
+    }
+
+    Rect scaled(i32 factor) {
+        w = w * factor;
+        h = h * factor;
+        return Rect{ w, h };
+    }
+};
+
+struct Pair {
+    i32 a;
+    i32 b;
+
+    i32 combine(Pair other) {
+        return a * other.a + b * other.b;
+    }
+};
+
+@entry i32 main() {
+    @init mut Counter c;
+    c.double_bump();
+    c.double_bump();
+    if (c.value() != 4) {
+        return 1;
+    }
+
+    *Counter p = &c;
+    p.bump();
+    if (p.value() != 5) {
+        return 2;
+    }
+
+    @init mut Rect r;
+    r.w = 3;
+    r.h = 4;
+    if (r.area() != 12) {
+        return 3;
+    }
+    Rect scaled = r.scaled(2);
+    if (scaled.w != 6 || scaled.h != 8 || r.w != 6) {
+        return 4;
+    }
+
+    @init mut Pair p1;
+    p1.a = 2;
+    p1.b = 3;
+    @init mut Pair p2;
+    p2.a = 4;
+    p2.b = 5;
+    if (p1.combine(p2) != 23) {
+        return 5;
+    }
+
+    return 0;
+}

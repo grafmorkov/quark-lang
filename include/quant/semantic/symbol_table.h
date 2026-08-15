@@ -7,6 +7,7 @@
 
 #include "quant/frontend/ast.h"
 #include "quant/support/alloc.h"
+#include "utils/errors.h"
 
 namespace quant::symb_t {
 
@@ -34,6 +35,7 @@ namespace quant::symb_t {
         std::vector<std::string> field_names;
         std::vector<const ast::Type*> field_types;
         std::vector<std::vector<ast::Attribute>> field_attributes;
+        std::vector<std::string> method_names;
     };
     struct EnumSymbol {
         std::vector<std::string> variant_names;
@@ -76,6 +78,7 @@ namespace quant::symb_t {
         bool declare(const ast::FuncArg& arg);
         bool declare(const ast::FuncStmt& fn);
         bool declare(const ast::StructDecl& str);
+        bool declare_method(const std::string& struct_name, const ast::FuncStmt& fn);
         bool declare_struct(const std::string& name,
             const std::vector<std::pair<std::string, const ast::Type*>>& fields,
             const std::vector<ast::Attribute>& attrs = {},
@@ -92,6 +95,11 @@ namespace quant::symb_t {
         bool declare(const ast::RegionStmt& reg);
 
         bool declare_symbol(const std::string& name, Symbol symbol, bool preserve_owning_module = false);
+        // Declare a symbol directly in the given namespace (created if needed),
+        // bypassing any active lexical scopes. Used for lazily instantiated
+        // generic struct methods so they stay resolvable from any call site.
+        bool declare_symbol_in_namespace(const std::vector<std::string>& ns_path,
+                                         const std::string& name, Symbol symbol);
 
         Symbol* lookup(const std::string& name);
         Symbol* lookup_qualified(const std::vector<std::string>& path);
@@ -105,8 +113,13 @@ namespace quant::symb_t {
         void set_current_module_ns(const std::vector<std::string>& ns);
         const std::vector<std::string>& get_current_module_ns() const;
 
+        // Error sink used to report declaration-level errors (e.g. duplicate
+        // methods); the compiler's ErrorBag counts them and aborts compilation.
+        void set_error_bag(ErrorBag* bag) { error_bag = bag; }
+
     private:
         memory::Arena& arena;
+        ErrorBag* error_bag = nullptr;
         Namespace* global_namespace;
         Namespace* current_namespace = nullptr;
 

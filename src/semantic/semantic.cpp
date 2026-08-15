@@ -6,6 +6,7 @@
 #include "quant/attributes/attributes.h"
 #include <cstdint>
 #include <cmath>
+#include <algorithm>
 
 #include "utils/logger.h"
 
@@ -699,7 +700,6 @@ const ast::Type* SemanticAnalyzer::canonicalize_struct_type(const ast::Type* typ
         auto dollar = base.find('$');
         if (dollar != std::string::npos) base = base.substr(0, dollar);
     }
-
     if (base.find("::") != std::string::npos) {
         if (args_changed) return ctx.types.get_deferred_generic(base, new_args);
         return type;
@@ -760,10 +760,30 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                 }
             },
             [&](const ast::StructDecl& str) {
+                // Only struct fields (not methods) participate in layout and
+                // generic substitution; methods are bound to the struct symbol.
+                auto collect_fields = [](const std::vector<ast::StructValue>& values) {
+                    std::vector<ast::StructField> fields;
+                    for (const auto& value : values) {
+                        if (const auto* field = std::get_if<ast::StructField>(&value)) {
+                            fields.push_back(*field);
+                        }
+                    }
+                    return fields;
+                };
+
                 if (!str.type_params.empty()) {
                     types::GenericStructDef def;
                     def.params = str.type_params;
-                    def.fields = str.fields;
+                    def.fields = collect_fields(str.fields);
+                    for (const auto& value : str.fields) {
+                        if (const auto* fn = std::get_if<ast::FuncStmt>(&value)) {
+                            def.methods.push_back(*fn);
+                        }
+                    }
+                    def.module_namespace = module_namespace;
+                    def.module_namespace.insert(
+                        def.module_namespace.end(), namespace_path.begin(), namespace_path.end());
                     ctx.types.register_generic_struct(str.name, def);
                     std::string qualified = generic_key(namespace_path, str.name);
                     if (qualified != str.name) {
@@ -778,23 +798,40 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                         ctx.errors.add("Struct redeclaration: " + str.name);
                         return;
                     }
+                    // Methods' parameter/return types are stored in the symbol
+                    // table as written in the source; canonicalize them so
+                    // method calls compare against the same qualified types
+                    // that free functions and variables use.
+                    for (const auto& value : str.fields) {
+                        const auto* fn = std::get_if<ast::FuncStmt>(&value);
+                        if (!fn) continue;
+                        auto* msym = ctx.symbols.lookup(str.name + "::" + fn->name);
+                        if (!msym) continue;
+                        auto* fs = std::get_if<symb_t::FuncSymbol>(&msym->data);
+                        if (!fs) continue;
+                        fs->return_type = canonicalize_struct_type(fn->return_type);
+                        for (auto& at : fs->arg_types) {
+                            at = canonicalize_struct_type(at);
+                        }
+                    }
                     // Also register in TypeContext so type_size can find fields cross-module
-                    std::vector<std::pair<std::string, const ast::Type*>> fields;
-                    for (const auto& f : str.fields) {
-                        fields.emplace_back(f.name, f.type);
+                    std::vector<ast::StructField> fields = collect_fields(str.fields);
+                    std::vector<std::pair<std::string, const ast::Type*>> field_pairs;
+                    for (const auto& f : fields) {
+                        field_pairs.emplace_back(f.name, f.type);
                     }
                     std::vector<std::vector<ast::Attribute>> field_attrs;
-                    for (const auto& f : str.fields) {
+                    for (const auto& f : fields) {
                         field_attrs.push_back(f.attributes);
                     }
-                    ctx.types.register_struct(str.name, fields, field_attrs);
+                    ctx.types.register_struct(str.name, field_pairs, field_attrs);
                     std::string qualified = generic_key(namespace_path, str.name);
                     if (qualified != str.name) {
-                        ctx.types.register_struct(qualified, fields, field_attrs);
+                        ctx.types.register_struct(qualified, field_pairs, field_attrs);
                     }
                     std::string full_q = full_qualified(module_namespace, namespace_path, str.name);
                     if (full_q != qualified && full_q != str.name) {
-                        ctx.types.register_struct(full_q, fields, field_attrs);
+                        ctx.types.register_struct(full_q, field_pairs, field_attrs);
                     }
                 }
             },
@@ -1077,7 +1114,16 @@ void SemanticAnalyzer::analyze_struct_decl(const ast::StructDecl& str) {
 
     std::unordered_set<std::string> seen;
 
-    for (const auto& field : str.fields) {
+    for (const auto& value : str.fields) {
+        // Methods declared inside the struct are full functions: analyze them
+        // the usual way (their `struct_name` binds them to this struct).
+        if (const auto* fn = std::get_if<ast::FuncStmt>(&value)) {
+            analyze_func(*fn);
+            continue;
+        }
+
+        const auto& field = std::get<ast::StructField>(value);
+
         if (!seen.insert(field.name).second) {
             ctx.errors.add("Duplicate field: " + field.name);
             return;
@@ -1167,6 +1213,29 @@ void SemanticAnalyzer::analyze_continue(const ast::ContinueStmt&) {
 }
 
 void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
+    // Functions declared inside a struct carry the owning struct's name.
+    // Resolve the struct and make sure this function is actually bound to it.
+    const symb_t::StructSymbol* method_sym = nullptr;
+    if (func.struct_name) {
+        auto* sym = lookup_struct(ctx, func.struct_name);
+        if (!sym) {
+            ctx.errors.add("Unknown struct: " + std::string(func.struct_name));
+            return;
+        }
+        auto* ss = std::get_if<symb_t::StructSymbol>(&sym->data);
+        if (!ss) {
+            ctx.errors.add("Invalid struct symbol: " + std::string(func.struct_name));
+            return;
+        }
+        method_sym = ss;
+        if (std::find(ss->method_names.begin(), ss->method_names.end(), func.name)
+                == ss->method_names.end()) {
+            ctx.errors.add("Struct '" + std::string(func.struct_name)
+                + "' has no method '" + func.name + "'");
+            return;
+        }
+    }
+
     if (func.is_extern && func.body) {
         ctx.errors.add("Extern function cannot have a body: " + func.name);
         return;
@@ -1226,12 +1295,19 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
     const ast::Type* prev_return_type = current_function_return_type;
     current_function_return_type = func.return_type;
 
+    const std::string saved_method_struct = std::move(current_method_struct);
+    const symb_t::StructSymbol* saved_method_sym = current_method_sym;
+    current_method_struct = func.struct_name ? std::string(func.struct_name) : std::string();
+    current_method_sym = func.struct_name ? method_sym : nullptr;
+
     ScopeGuard scope(ctx.symbols);
 
     for (const auto& arg : func.args) {
         if (!ctx.symbols.declare(arg)) {
             ctx.errors.add("Duplicate function argument: " + arg.name);
             current_function_return_type = prev_return_type;
+            current_method_struct = saved_method_struct;
+            current_method_sym = saved_method_sym;
             return;
         }
     }
@@ -1247,6 +1323,8 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
         if (!ctx.symbols.declare(out_var)) {
             ctx.errors.add("Failed to declare implicit 'out' variable");
             current_function_return_type = prev_return_type;
+            current_method_struct = saved_method_struct;
+            current_method_sym = saved_method_sym;
             return;
         }
     }
@@ -1254,6 +1332,8 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
     analyze_block(func.body);
 
     current_function_return_type = prev_return_type;
+    current_method_struct = saved_method_struct;
+    current_method_sym = saved_method_sym;
 }
 
 void SemanticAnalyzer::analyze_if(const ast::IfStmt& stmt) {
@@ -1545,6 +1625,10 @@ const ast::Type* SemanticAnalyzer::analyze_var(const ast::VarExpr& var, const as
     auto* sym = ctx.symbols.lookup(var.name);
 
     if (!sym) {
+        // Inside a method body the struct's fields are implicitly in scope.
+        if (const ast::Type* field_type = method_field_type(var.name)) {
+            return field_type;
+        }
         ctx.errors.add(expr->loc, "Undefined variable: " + var.name);
         return nullptr;
     }
@@ -1565,6 +1649,216 @@ const ast::Type* SemanticAnalyzer::analyze_var(const ast::VarExpr& var, const as
     return type;
 }
 
+const ast::Type* SemanticAnalyzer::method_field_type(const std::string& name) const {
+    if (!current_method_sym) {
+        return nullptr;
+    }
+    for (size_t i = 0; i < current_method_sym->field_names.size(); ++i) {
+        if (current_method_sym->field_names[i] == name) {
+            return current_method_sym->field_types[i];
+        }
+    }
+    return nullptr;
+}
+
+void SemanticAnalyzer::ensure_generic_struct_instantiated(const ast::Type* struct_type) {
+    if (!struct_type || struct_type->kind != TypeKind::Struct) {
+        return;
+    }
+    if (struct_type->type_args.empty()) {
+        return;
+    }
+
+    const std::string& mangled = struct_type->struct_name;
+    std::string base;
+    if (!ctx.types.is_mangled_name(mangled, base)) {
+        return;
+    }
+    const auto* def = ctx.types.get_generic_struct(base);
+    if (!def) {
+        return;
+    }
+
+    if (!ctx.types.try_instantiate(mangled, struct_type->type_args)) {
+        return;
+    }
+
+    const auto* fields = ctx.types.get_struct_fields(mangled);
+    if (!fields) {
+        return;
+    }
+    const auto* field_attrs = ctx.types.get_struct_field_attrs(mangled);
+    ctx.symbols.declare_struct_global(
+        mangled, *fields, {},
+        field_attrs ? *field_attrs : std::vector<std::vector<ast::Attribute>>{}
+    );
+
+    instantiate_generic_methods(mangled, struct_type->type_args, base, def);
+}
+
+void SemanticAnalyzer::instantiate_generic_methods(
+    const std::string& struct_name,
+    const std::vector<const Type*>& type_args,
+    const std::string& base_name,
+    const types::GenericStructDef* def
+) {
+    if (!def || def->methods.empty()) {
+        return;
+    }
+    if (ctx.instantiated_generic_methods.count(struct_name)) {
+        return;
+    }
+    ctx.instantiated_generic_methods.insert(struct_name);
+
+    // Substitution map: generic param -> concrete type arg. Canonicalize each
+    // arg so struct types are qualified the same way declaration types are.
+    std::unordered_map<std::string, const Type*> subst;
+    for (size_t i = 0; i < def->params.size() && i < type_args.size(); ++i) {
+        subst[def->params[i]] = canonicalize_struct_type(type_args[i]);
+    }
+
+    // Substitute generic params in a type and canonicalize the result, so the
+    // concrete signature matches the types used by callers (e.g. a Box<i32>
+    // argument resolves to the same mangled "Box$4" the caller uses).
+    auto qualify_struct = [&](const Type* type) -> const Type* {
+        if (!type) return nullptr;
+        return canonicalize_struct_type(ctx.types.substitute_type(type, subst));
+    };
+
+    // Pass 1: declare concrete method symbols and register the method names on
+    // the concrete struct symbol (needed for sibling bare-name calls).
+    std::vector<ast::FuncStmt> concrete_methods;
+    for (const auto& method : def->methods) {
+        // Generic methods (with their own type params) are not supported.
+        if (!method.type_params.empty() || !method.body) {
+            continue;
+        }
+
+        const std::string mkey = struct_name + "::" + method.name;
+
+        std::vector<std::string> mpath = support::split_path(struct_name);
+        mpath.back() = mpath.back() + "::" + method.name;
+        std::vector<std::string> ns_path(mpath.begin(), mpath.end() - 1);
+
+        std::vector<const Type*> arg_types;
+        for (const auto& arg : method.args) {
+            arg_types.push_back(qualify_struct(arg.type));
+        }
+        const Type* ret = qualify_struct(method.return_type);
+
+        symb_t::FuncSymbol fs;
+        fs.arg_types = arg_types;
+        fs.return_type = ret;
+        fs.is_extern = false;
+        fs.is_defined = true;
+        fs.is_entry = false;
+        ctx.symbols.declare_symbol_in_namespace(
+            ns_path, mpath.back(), symb_t::Symbol{ mpath.back(), fs, method.attributes }
+        );
+
+        if (auto* s_sym = lookup_struct(ctx, struct_name)) {
+            if (auto* ss = std::get_if<symb_t::StructSymbol>(&s_sym->data)) {
+                if (std::find(ss->method_names.begin(), ss->method_names.end(), method.name)
+                        == ss->method_names.end()) {
+                    ss->method_names.push_back(method.name);
+                }
+            }
+        }
+
+        // Build the concrete FuncStmt for body analysis and IR generation.
+        // The name is the bare method name (analyze_func verifies it against
+        // the struct's method_names); IR gen keys it as <struct>::<name>.
+        ast::FuncStmt cf;
+        cf.name = method.name;
+        cf.args = method.args;
+        for (auto& arg : cf.args) {
+            arg.type = qualify_struct(arg.type);
+        }
+        cf.return_type = ret;
+        cf.type_params = {};
+        cf.is_extern = false;
+        cf.is_forward = false;
+        cf.is_entry = false;
+        auto* struct_name_str = memory::make<std::string>(ctx.ast_arena, struct_name);
+        cf.struct_name = struct_name_str->c_str();
+        cf.has_body = method.body != nullptr;
+        cf.body = method.body;
+        cf.attributes = method.attributes;
+
+        concrete_methods.push_back(std::move(cf));
+    }
+
+    // Pass 2: analyze the concrete bodies (type-check with concrete types) in
+    // the generic struct's defining namespace, with the substitution map live
+    // so nested generic references resolve (same as generic functions).
+    for (auto& cf : concrete_methods) {
+        if (cf.body) {
+            auto* prev_subst = current_type_subst;
+            current_type_subst = &subst;
+            auto* saved_ns = ctx.symbols.get_current_namespace();
+            ctx.symbols.set_current_namespace(ctx.symbols.create_namespace_path(def->module_namespace));
+            analyze_func(cf);
+            ctx.symbols.set_current_namespace(saved_ns);
+            current_type_subst = prev_subst;
+        }
+
+        ctx.generic_instantiations.push_back(decltype(ctx.generic_instantiations)::value_type{
+            std::move(cf),
+            def->module_namespace,
+            subst
+        });
+    }
+}
+
+
+const ast::Type* SemanticAnalyzer::analyze_method_call(const ast::CallExpr& call,
+                                                       const std::string& struct_name,
+                                                       const std::string& method_name) {
+    // `struct_name` may be module-canonicalized. Method symbols live in the
+    // struct's module namespace under "<struct>::<method>", so resolve the
+    // qualified path with the method name appended to the last component.
+    std::vector<std::string> path = support::split_path(struct_name);
+    path.back() = path.back() + "::" + method_name;
+    std::string qualified = support::join_namespace(path);
+
+    auto* sym = resolve_qualified(ctx.symbols, path);
+    if (!sym) {
+        ctx.errors.add("Struct '" + struct_name + "' has no method '" + method_name + "'");
+        return nullptr;
+    }
+
+    check_visibility(*sym, module_namespace.empty() ? "::" : support::join_namespace(module_namespace));
+
+    auto* fn = std::get_if<symb_t::FuncSymbol>(&sym->data);
+    if (!fn) {
+        ctx.errors.add("Callee is not a function: " + qualified);
+        return nullptr;
+    }
+
+    // The receiver is implicit; arg_types holds only the explicit arguments.
+    if (fn->arg_types.size() != call.args.size()) {
+        ctx.errors.add("Argument count mismatch in method call: " + qualified);
+        return nullptr;
+    }
+
+    for (size_t i = 0; i < call.args.size(); ++i) {
+        ast::Expr* arg = call.args[i];
+        const ast::Type* arg_type = arg ? analyze_expr(arg) : nullptr;
+        if (!arg_type) return nullptr;
+
+        check_arg_guard(arg, qualified);
+
+        AssignCheck chk = check_assignable_value(fn->arg_types[i], arg);
+        if (chk == AssignCheck::LiteralOutOfRange)
+            ctx.errors.add("Literal argument does not fit in parameter type in method call: " + qualified);
+        else if (chk != AssignCheck::Ok)
+            ctx.errors.add("Argument type mismatch in method call: " + qualified);
+        if (chk != AssignCheck::Ok) return nullptr;
+    }
+
+    return fn->return_type;
+}
+
 const ast::Type* SemanticAnalyzer::resolve_lvalue(const ast::Expr* expr) {
     if (!expr) {
         ctx.errors.add("Invalid lvalue");
@@ -1574,6 +1868,10 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(const ast::Expr* expr) {
     if (const auto* var = std::get_if<ast::VarExpr>(&expr->kind)) {
         auto* sym = ctx.symbols.lookup(var->name);
         if (!sym) {
+            // Inside a method body the struct's fields are implicitly in scope.
+            if (const ast::Type* field_type = method_field_type(var->name)) {
+                return field_type;
+            }
             // Check for implicit 'out' struct field access
             if (current_function_return_type && current_function_return_type->kind == TypeKind::Struct) {
                 if (!current_function_return_type->type_args.empty()) {
@@ -1842,6 +2140,32 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
         return nullptr;
     }
 
+    // Method call: <struct expr>.<method>(args). The parser produces a
+    // FieldExpr callee for this, which flatten_path cannot handle.
+    if (const auto* field_callee = std::get_if<ast::FieldExpr>(&call.callee->kind)) {
+        const ast::Type* base_type = analyze_expr(field_callee->base);
+        if (!base_type) return nullptr;
+
+        // Auto-deref references and pointers for the receiver.
+        if (base_type->kind == TypeKind::Reference && base_type->pointed) {
+            base_type = base_type->pointed;
+        }
+        if (base_type->kind == TypeKind::Pointer && base_type->pointed) {
+            base_type = base_type->pointed;
+        }
+
+        if (base_type->kind != TypeKind::Struct) {
+            ctx.errors.add("Method call on non-struct type: " + field_callee->field);
+            return nullptr;
+        }
+
+        // Concrete generic structs instantiate their methods lazily; make sure
+        // they are materialized before the method symbol lookup.
+        ensure_generic_struct_instantiated(base_type);
+
+        return analyze_method_call(call, base_type->struct_name, field_callee->field);
+    }
+
     auto path = support::flatten_path(call.callee);
 
     if (is_in_region && path.size() == 1 && path[0] == "alloc") {
@@ -2027,6 +2351,7 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
             concrete_fn_stmt.is_extern = generic_def->body == nullptr;
             concrete_fn_stmt.is_forward = false;
             concrete_fn_stmt.is_entry = false;
+            concrete_fn_stmt.struct_name = nullptr;
             concrete_fn_stmt.has_body = generic_def->body != nullptr;
             concrete_fn_stmt.body = const_cast<ast::Block*>(generic_def->body);
             concrete_fn_stmt.attributes = generic_def->attributes;
@@ -2103,6 +2428,15 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
     // Non-generic function lookup
     auto* sym = resolve_qualified(ctx.symbols, path);
     if (!sym) {
+        // Inside a method body a bare call with no matching symbol may be a
+        // call to a sibling method of the current struct (implicit receiver).
+        if (!current_method_struct.empty() && path.size() == 1) {
+            auto it = std::find(current_method_sym->method_names.begin(),
+                                current_method_sym->method_names.end(), path[0]);
+            if (it != current_method_sym->method_names.end()) {
+                return analyze_method_call(call, current_method_struct, path[0]);
+            }
+        }
         ctx.errors.add("Undefined function: " + support::join_namespace(path));
         return nullptr;
     }
@@ -2208,16 +2542,7 @@ const ast::Type* SemanticAnalyzer::analyze_struct_init(const ast::StructInitExpr
 
     // Resolve generic struct if needed
     if (!struct_type->type_args.empty()) {
-        if (ctx.types.try_instantiate(struct_type->struct_name, struct_type->type_args)) {
-            const auto* fields = ctx.types.get_struct_fields(struct_type->struct_name);
-            if (fields) {
-                const auto* field_attrs = ctx.types.get_struct_field_attrs(struct_type->struct_name);
-                ctx.symbols.declare_struct_global(
-                    struct_type->struct_name, *fields, {},
-                    field_attrs ? *field_attrs : std::vector<std::vector<ast::Attribute>>{}
-                );
-            }
-        }
+        ensure_generic_struct_instantiated(struct_type);
     }
 
     // Look up struct symbol

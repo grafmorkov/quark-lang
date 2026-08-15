@@ -192,17 +192,65 @@ namespace quant::symb_t {
         sym.field_names.reserve(str.fields.size());
         sym.field_types.reserve(str.fields.size());
         sym.field_attributes.reserve(str.fields.size());
+        sym.method_names.reserve(str.fields.size());
 
-        for (const auto& field : str.fields) {
-            sym.field_names.push_back(field.name);
-            sym.field_types.push_back(field.type);
-            sym.field_attributes.push_back(field.attributes);
+        for (const auto& value : str.fields) {
+            if (const auto* field = std::get_if<ast::StructField>(&value)) {
+                sym.field_names.push_back(field->name);
+                sym.field_types.push_back(field->type);
+                sym.field_attributes.push_back(field->attributes);
+            } else if (const auto* fn = std::get_if<ast::FuncStmt>(&value)) {
+                sym.method_names.push_back(fn->name);
+            }
         }
 
-        return declare_symbol(str.name, Symbol{
+        if (!declare_symbol(str.name, Symbol{
             str.name,
             sym,
             str.attributes
+        })) {
+            return false;
+        }
+
+        // Bind the struct's methods: register each one as a function under the
+        // qualified name "<struct>::<method>" so it stays resolvable without
+        // colliding with free functions of the same name.
+        for (const auto& value : str.fields) {
+            const auto* fn = std::get_if<ast::FuncStmt>(&value);
+            if (!fn) continue;
+
+            if (!declare_method(str.name, *fn)) {
+                std::string msg = "Method redeclaration: " + str.name + "::" + fn->name;
+                error(msg);
+                if (error_bag) {
+                    error_bag->add(msg);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    bool SymbolTable::declare_method(const std::string& struct_name, const ast::FuncStmt& fn) {
+        FuncSymbol sym;
+
+        sym.return_type = fn.return_type;
+        sym.is_extern = fn.is_extern;
+        sym.is_defined = fn.body != nullptr;
+        sym.is_entry = fn.is_entry;
+
+        sym.arg_types.reserve(fn.args.size());
+
+        for (const auto& arg : fn.args) {
+            sym.arg_types.push_back(arg.type);
+        }
+
+        std::string qualified = struct_name + "::" + fn.name;
+
+        return declare_symbol(qualified, Symbol{
+            qualified,
+            sym,
+            fn.attributes
         });
     }
 
@@ -348,6 +396,21 @@ namespace quant::symb_t {
         }
 
         return it->second;
+    }
+
+    bool SymbolTable::declare_symbol_in_namespace(const std::vector<std::string>& ns_path,
+                                                   const std::string& name, Symbol symbol) {
+        symbol.owning_module = current_module_ns;
+
+        Namespace* ns = create_namespace_path(ns_path);
+
+        if (ns->symbols.contains(name)) {
+            return false;
+        }
+
+        auto* sym = memory::make<Symbol>(arena, std::move(symbol));
+        ns->symbols.emplace(name, sym);
+        return true;
     }
 
     void SymbolTable::mark_initialized(const std::string& name) {

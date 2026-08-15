@@ -1,0 +1,20 @@
+struct Counter {
+    i32 count;
+
+    void inc() {
+        mut i32 c = 0;
+        c = c + 1;
+    }
+
+    i32 get() {
+        return 7;
+    }
+};
+
+i32 free_add(i32 a, i32 b) {
+    return a + b;
+}
+
+void main() {
+    @init Counter c;
+}

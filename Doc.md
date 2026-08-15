@@ -373,7 +373,7 @@ u32 x = -1 as i32 as! u32;   // reinterpret i32 bytes as u32
 struct Point {
     i32 x;
     i32 y;
-}
+};
 
 i32 main() {
     Point p = { 10, 20 };
@@ -385,7 +385,33 @@ Fields can be mutable:
 ```
 struct Counter {
     mut i32 val;
-}
+};
+```
+Methods are also supported
+```
+struct Point {
+    i32 x;
+    i32 y;
+
+    void set(i32 _x, i32 _y) {
+        x = _x;
+        y = _y;
+    }
+};
+```
+And generic methods
+```
+struct Box<T> {
+    T value;
+
+    void set(T v) {
+        value = v;
+    }
+
+    T get() {
+        return value;
+    }
+};
 ```
 
 ---

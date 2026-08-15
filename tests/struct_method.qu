@@ -1,0 +1,12 @@
+struct Point {
+    i32 x;
+    i32 y;
+
+    i32 sum(i32 a, i32 b) {
+        return a + b;
+    }
+};
+
+void main() {
+    @init Point p;
+}
