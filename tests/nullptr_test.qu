@@ -1,0 +1,50 @@
+load "std::io";
+
+bool check_ptr(*i32 p) {
+    return p == nullptr;
+}
+
+bool check_neq(*i32 p) {
+    return p != nullptr;
+}
+
+*void returns_null() {
+    return nullptr;
+}
+
+i32 main() {
+    *i32 p = nullptr;
+    if (p == nullptr) {
+        std::io::print_char(65 as i8);
+    } else {
+        std::io::print_char(66 as i8);
+    }
+    if (p != nullptr) {
+        std::io::print_char(66 as i8);
+    } else {
+        std::io::print_char(65 as i8);
+    }
+
+    mut *i32 q = nullptr;
+    q = q;
+    if (check_ptr(q)) {
+        std::io::print_char(65 as i8);
+    } else {
+        std::io::print_char(66 as i8);
+    }
+    if (check_neq(q)) {
+        std::io::print_char(66 as i8);
+    } else {
+        std::io::print_char(65 as i8);
+    }
+
+    *void v = returns_null();
+    if (v == nullptr) {
+        std::io::print_char(65 as i8);
+    } else {
+        std::io::print_char(66 as i8);
+    }
+
+    std::io::print_char(10 as i8);
+    return 0;
+}

@@ -17,6 +17,8 @@ namespace quant::symb_t {
         bool is_initialized;
         std::optional<int64_t> const_value;
         ast::Expr* guard_cond = nullptr;
+        // True if this pointer may be null at runtime.
+        bool may_be_null = false;
     };
 
     struct FuncArgSymbol {

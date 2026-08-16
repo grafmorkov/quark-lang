@@ -272,14 +272,89 @@ bool try_adapt_literal(const ast::Type* target, ast::Expr* value) {
     return false;
 }
 
-enum class AssignCheck { Ok, LiteralOutOfRange, Mismatch };
+// Conservative nullability analysis: can the given pointer expression hold a
+// null value at runtime? Anything not proven non-null is treated as nullable.
+bool may_be_null(quant::CompilerContext& ctx, const ast::Expr* expr) {
+    if (!expr) return true;
 
-AssignCheck check_assignable_value(const ast::Type* target, ast::Expr* value) {
+    if (std::holds_alternative<ast::NullPtrExpr>(expr->kind)) return true;
+
+    if (const auto* ve = std::get_if<ast::VarExpr>(&expr->kind)) {
+        if (auto* sym = ctx.symbols.lookup(ve->name)) {
+            if (const auto* vs = std::get_if<quant::symb_t::VarSymbol>(&sym->data)) {
+                return vs->may_be_null;
+            }
+            if (std::get_if<quant::symb_t::FuncArgSymbol>(&sym->data)) {
+                // Pointer parameters may be null: callers can pass nullptr.
+                return true;
+            }
+        }
+        return true;
+    }
+
+    if (const auto* ne = std::get_if<ast::NamespaceExpr>(&expr->kind)) {
+        ast::Expr tmp{*ne};
+        if (auto* sym = resolve_qualified(ctx.symbols, quant::support::flatten_path(&tmp))) {
+            if (const auto* vs = std::get_if<quant::symb_t::VarSymbol>(&sym->data)) {
+                return vs->may_be_null;
+            }
+        }
+        return true;
+    }
+
+    // &x never produces a null address.
+    if (const auto* ue = std::get_if<ast::UnaryExpr>(&expr->kind)) {
+        if (ue->op == ast::UnaryOp::AddrOf) return false;
+    }
+
+    if (const auto* ce = std::get_if<ast::CallExpr>(&expr->kind)) {
+        // flatten_path only accepts VarExpr/NamespaceExpr callees; method
+        // calls (FieldExpr callee) return an empty path and are unknown.
+        std::vector<std::string> path;
+        if (ce->callee && (std::holds_alternative<ast::VarExpr>(ce->callee->kind) ||
+                           std::holds_alternative<ast::NamespaceExpr>(ce->callee->kind))) {
+            path = quant::support::flatten_path(ce->callee);
+        }
+        // alloc() in a region and heap allocations never return null.
+        if (path.size() == 1 && path[0] == "alloc") return false;
+        if (path.size() == 3 && path[0] == "std" && path[1] == "heap" &&
+            (path[2] == "heap_malloc" || path[2] == "heap_realloc")) return false;
+        return true;
+    }
+
+    // Pointer-typed values we cannot reason about (struct fields, p[i],
+    // casts, binary results) are treated as nullable.
+    if (expr->resolved_type && expr->resolved_type->kind == TypeKind::Pointer) {
+        if (std::holds_alternative<ast::FieldExpr>(expr->kind) ||
+            std::holds_alternative<ast::IndexExpr>(expr->kind) ||
+            std::holds_alternative<ast::CastExpr>(expr->kind) ||
+            std::holds_alternative<ast::BinaryExpr>(expr->kind)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+enum class AssignCheck { Ok, LiteralOutOfRange, NullPtrToReference, Mismatch };
+
+AssignCheck check_assignable_value(quant::CompilerContext& ctx, const ast::Type* target, ast::Expr* value) {
     if (!target || !value) return AssignCheck::Mismatch;
     if (value->resolved_type && try_adapt_literal(target, value)) return AssignCheck::Ok;
     if (is_int_literal(value) && is_int_kind(target->kind)) return AssignCheck::LiteralOutOfRange;
     if (is_float_literal(value) && target->kind == TypeKind::F32) return AssignCheck::LiteralOutOfRange;
-    if (is_assignable(target, value->resolved_type)) return AssignCheck::Ok;
+    if (is_assignable(target, value->resolved_type)) {
+        // Safe references: the *T -> &T interop conversion is type-legal, but
+        // a pointer that can be null cannot be turned into a reference.
+        if (target->kind == TypeKind::Reference
+            && value->resolved_type
+            && value->resolved_type->kind == TypeKind::Pointer
+            && may_be_null(ctx, value)) {
+            ctx.errors.add(value->loc, "Cannot convert a pointer that may be null to a reference");
+            return AssignCheck::NullPtrToReference;
+        }
+        return AssignCheck::Ok;
+    }
     return AssignCheck::Mismatch;
 }
 
@@ -289,6 +364,14 @@ bool is_assignable(const ast::Type* to, const ast::Type* from) {
     auto is_ptr_like = [](TypeKind k) {
         return k == TypeKind::Pointer || k == TypeKind::Reference;
     };
+
+    // nullptr is only assignable to pointers (never to references).
+    if (from->kind == TypeKind::NullPtr) {
+        return to->kind == TypeKind::Pointer;
+    }
+    if (to->kind == TypeKind::NullPtr) {
+        return false;
+    }
 
     // Implicit numeric widening only (no silent narrowing)
     if (can_widen(to, from))
@@ -538,6 +621,26 @@ const ast::VarExpr* get_root_var(const ast::Expr* expr) {
     }
 
     return nullptr;
+}
+
+// Mark the variable as nullable if a null value is assigned to it.
+void mark_may_be_null(quant::CompilerContext& ctx, const ast::Expr* target, const ast::Expr* value) {
+    if (!target || !value) return;
+
+    quant::symb_t::Symbol* sym = nullptr;
+    if (const auto* var = std::get_if<ast::VarExpr>(&target->kind)) {
+        sym = ctx.symbols.lookup(var->name);
+    } else if (const auto* ne = std::get_if<ast::NamespaceExpr>(&target->kind)) {
+        ast::Expr tmp{*ne};
+        sym = resolve_qualified(ctx.symbols, quant::support::flatten_path(&tmp));
+    }
+    if (!sym) return;
+
+    auto* vs = std::get_if<quant::symb_t::VarSymbol>(&sym->data);
+    if (!vs || !vs->type) return;
+    if (vs->type->kind == TypeKind::Pointer && may_be_null(ctx, value)) {
+        vs->may_be_null = true;
+    }
 }
 
 } // namespace
@@ -1050,8 +1153,9 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
         const ast::Type* value_type = analyze_expr(var.value);
         if (!value_type) return;
 
-        AssignCheck chk = check_assignable_value(resolved_type, var.value);
+        AssignCheck chk = check_assignable_value(ctx, resolved_type, var.value);
         if (chk != AssignCheck::Ok) {
+            if (chk == AssignCheck::NullPtrToReference) return; // already reported
             if (chk == AssignCheck::LiteralOutOfRange)
                 ctx.errors.add(var.value->loc, "Literal value does not fit in type " + resolved_type->to_string(ctx) + ": " + var.name);
             else
@@ -1064,9 +1168,11 @@ void SemanticAnalyzer::analyze_var_decl(const ast::VarDecl& var) {
     }
 
     // Declare with resolved type
+    const bool var_may_be_null = resolved_type && resolved_type->kind == TypeKind::Pointer
+        && (!var.value || may_be_null(ctx, var.value));
     if (!ctx.symbols.declare_symbol(var.name, symb_t::Symbol{
         var.name,
-        symb_t::VarSymbol{resolved_type, var.is_mut, var.value != nullptr},
+        symb_t::VarSymbol{resolved_type, var.is_mut, var.value != nullptr, {}, nullptr, var_may_be_null},
         var.attributes
     })) {
         ctx.errors.add("Variable already declared: " + var.name);
@@ -1150,7 +1256,8 @@ void SemanticAnalyzer::analyze_struct_decl(const ast::StructDecl& str) {
             const ast::Type* dt = analyze_expr(field.default_value);
             if (!dt) return;
 
-            AssignCheck chk = check_assignable_value(field.type, field.default_value);
+            AssignCheck chk = check_assignable_value(ctx, field.type, field.default_value);
+            if (chk == AssignCheck::NullPtrToReference) return; // already reported
             if (chk == AssignCheck::LiteralOutOfRange) {
                 ctx.errors.add("Literal value does not fit in field type: " + field.name);
                 return;
@@ -1199,7 +1306,8 @@ void SemanticAnalyzer::analyze_return(const ast::ReturnStmt& ret) {
     if (!value_type) return;
 
     if (ret.value) {
-        AssignCheck chk = check_assignable_value(current_function_return_type, ret.value);
+        AssignCheck chk = check_assignable_value(ctx, current_function_return_type, ret.value);
+        if (chk == AssignCheck::NullPtrToReference) return; // already reported
         if (chk == AssignCheck::LiteralOutOfRange)
             ctx.errors.add(ret.value->loc, std::format("Literal value does not fit in return type {}", current_function_return_type->to_string(ctx)));
         else if (chk != AssignCheck::Ok)
@@ -1440,7 +1548,7 @@ void SemanticAnalyzer::analyze_switch(ast::SwitchStmt& stmt) {
             if (case_type && !is_switchable(case_type->kind)) {
                 ctx.errors.add(v->loc, "Case value must be an integer, bool, or char constant");
             }
-            AssignCheck chk = check_assignable_value(cond_type, v);
+            AssignCheck chk = check_assignable_value(ctx, cond_type, v);
             if (chk == AssignCheck::LiteralOutOfRange)
                 ctx.errors.add(v->loc, "Case value does not fit in switch expression type");
             else if (chk == AssignCheck::Mismatch)
@@ -1562,6 +1670,9 @@ const ast::Type* SemanticAnalyzer::analyze_expr(ast::Expr* expr) {
         },
         [&](const ast::BoolExpr&) -> const ast::Type* {
             return ctx.types.get_builtin(TypeKind::Bool);
+        },
+        [&](const ast::NullPtrExpr&) -> const ast::Type* {
+            return ctx.types.get_builtin(TypeKind::NullPtr);
         },
         [&](const ast::FloatExpr&) -> const ast::Type* {
             return ctx.types.get_builtin(TypeKind::F64);
@@ -1725,16 +1836,11 @@ void SemanticAnalyzer::instantiate_generic_methods(
         subst[def->params[i]] = canonicalize_struct_type(type_args[i]);
     }
 
-    // Substitute generic params in a type and canonicalize the result, so the
-    // concrete signature matches the types used by callers (e.g. a Box<i32>
-    // argument resolves to the same mangled "Box$4" the caller uses).
     auto qualify_struct = [&](const Type* type) -> const Type* {
         if (!type) return nullptr;
         return canonicalize_struct_type(ctx.types.substitute_type(type, subst));
     };
 
-    // Pass 1: declare concrete method symbols and register the method names on
-    // the concrete struct symbol (needed for sibling bare-name calls).
     std::vector<ast::FuncStmt> concrete_methods;
     for (const auto& method : def->methods) {
         // Generic methods (with their own type params) are not supported.
@@ -1796,9 +1902,6 @@ void SemanticAnalyzer::instantiate_generic_methods(
         concrete_methods.push_back(std::move(cf));
     }
 
-    // Pass 2: analyze the concrete bodies (type-check with concrete types) in
-    // the generic struct's defining namespace, with the substitution map live
-    // so nested generic references resolve (same as generic functions).
     for (auto& cf : concrete_methods) {
         if (cf.body) {
             auto* prev_subst = current_type_subst;
@@ -1856,7 +1959,8 @@ const ast::Type* SemanticAnalyzer::analyze_method_call(const ast::CallExpr& call
 
         check_arg_guard(arg, qualified);
 
-        AssignCheck chk = check_assignable_value(fn->arg_types[i], arg);
+        AssignCheck chk = check_assignable_value(ctx, fn->arg_types[i], arg);
+        if (chk == AssignCheck::NullPtrToReference) return nullptr; // already reported
         if (chk == AssignCheck::LiteralOutOfRange)
             ctx.errors.add("Literal argument does not fit in parameter type in method call: " + qualified);
         else if (chk != AssignCheck::Ok)
@@ -1958,7 +2062,8 @@ const ast::Type* SemanticAnalyzer::analyze_assign(const ast::AssignExpr& asg) {
     const ast::Type* target_type = resolve_lvalue(asg.target);
     if (!target_type) return nullptr;
 
-    AssignCheck chk = check_assignable_value(target_type, asg.value);
+    AssignCheck chk = check_assignable_value(ctx, target_type, asg.value);
+    if (chk == AssignCheck::NullPtrToReference) return nullptr; // already reported
     if (chk != AssignCheck::Ok) {
         std::string tname = target_type ? (target_type->kind == TypeKind::Struct ? target_type->struct_name : (target_type->kind == TypeKind::Generic ? "Generic:" + target_type->struct_name : std::to_string((int)target_type->kind))) : "null";
         std::string vname = value_type ? (value_type->kind == TypeKind::Struct ? value_type->struct_name : (value_type->kind == TypeKind::Generic ? "Generic:" + value_type->struct_name : std::to_string((int)value_type->kind))) : "null";
@@ -1974,6 +2079,10 @@ const ast::Type* SemanticAnalyzer::analyze_assign(const ast::AssignExpr& asg) {
             mark_symbol_initialized(*sym);
         }
     }
+
+    // Track nullability so a later pointer -> reference conversion can be
+    // rejected when the pointer can be null.
+    mark_may_be_null(ctx, asg.target, asg.value);
 
     return target_type;
 }
@@ -2055,6 +2164,15 @@ const ast::Type* SemanticAnalyzer::analyze_binary(const ast::BinaryExpr& b, cons
         }
     }
 
+    // Pointer vs nullptr: only equality comparisons are supported
+    if ((l->kind == TypeKind::NullPtr && r->kind == TypeKind::Pointer) ||
+        (r->kind == TypeKind::NullPtr && l->kind == TypeKind::Pointer)) {
+        if (b.op == ast::BinaryOp::Eq || b.op == ast::BinaryOp::Neq)
+            return ctx.types.get_builtin(TypeKind::Bool);
+        ctx.errors.add(expr->loc, "Operator not supported for pointer/nullptr comparison");
+        return nullptr;
+    }
+
     // Non-numeric operands: only equality comparisons are supported
     if (types_equal(l, r)) {
         if (b.op == ast::BinaryOp::Eq || b.op == ast::BinaryOp::Neq)
@@ -2073,6 +2191,7 @@ const ast::Type* SemanticAnalyzer::analyze_unary(const ast::UnaryExpr& u){
 
     if (u.op == ast::UnaryOp::AddrOf) {
         if (operand->kind == TypeKind::Bool ||
+            operand->kind == TypeKind::NullPtr ||
             (operand->kind >= TypeKind::I8 && operand->kind <= TypeKind::F64)) {
             ctx.errors.add("Cannot take address of a value type");
             return nullptr;
@@ -2422,7 +2541,8 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
 
             check_arg_guard(arg, mangled);
 
-            AssignCheck chk = check_assignable_value(concrete_fn->arg_types[i], arg);
+            AssignCheck chk = check_assignable_value(ctx, concrete_fn->arg_types[i], arg);
+            if (chk == AssignCheck::NullPtrToReference) return nullptr; // already reported
             if (chk == AssignCheck::LiteralOutOfRange)
                 ctx.errors.add("Literal argument does not fit in parameter type in generic call: " + func_name);
             else if (chk != AssignCheck::Ok)
@@ -2469,7 +2589,8 @@ const ast::Type* SemanticAnalyzer::analyze_call(const ast::CallExpr& call) {
 
         check_arg_guard(arg, support::join_namespace(path));
 
-        AssignCheck chk = check_assignable_value(fn->arg_types[i], arg);
+        AssignCheck chk = check_assignable_value(ctx, fn->arg_types[i], arg);
+        if (chk == AssignCheck::NullPtrToReference) return nullptr; // already reported
         if (chk == AssignCheck::LiteralOutOfRange)
             ctx.errors.add("Literal argument does not fit in parameter type in call: " + support::join_namespace(path));
         else if (chk != AssignCheck::Ok)
@@ -2580,7 +2701,8 @@ const ast::Type* SemanticAnalyzer::analyze_struct_init(const ast::StructInitExpr
         const ast::Type* arg_type = analyze_expr(node.args[i]);
         if (!arg_type) return nullptr;
 
-        AssignCheck chk = check_assignable_value(ss->field_types[i], node.args[i]);
+        AssignCheck chk = check_assignable_value(ctx, ss->field_types[i], node.args[i]);
+        if (chk == AssignCheck::NullPtrToReference) return nullptr; // already reported
         if (chk == AssignCheck::LiteralOutOfRange)
             ctx.errors.add(node.args[i]->loc,
                 "Literal value does not fit in struct init field '" + ss->field_names[i] + "'");
@@ -2661,6 +2783,7 @@ int type_size(const ast::Type* t) {
         case ast::TypeKind::U64:  return 8;
         case ast::TypeKind::Pointer: return 8;
         case ast::TypeKind::Reference: return 8;
+        case ast::TypeKind::NullPtr: return 8;
         default: return 0;
     }
 }

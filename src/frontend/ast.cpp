@@ -60,6 +60,7 @@ std::string Type::to_string(quant::CompilerContext& ctx) const
 
         case TypeKind::Pointer:   return "*" + pointed->to_string(ctx);
         case TypeKind::Reference: return "&" + pointed->to_string(ctx);
+        case TypeKind::NullPtr:   return "nullptr";
         case TypeKind::Generic:   return "generic";
     
         case TypeKind::Count:     return "count";

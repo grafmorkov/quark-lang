@@ -37,6 +37,7 @@ namespace {
         builtin_types[(size_t)TypeKind::F64].kind = TypeKind::F64;
 
         builtin_types[(size_t)TypeKind::String].kind = TypeKind::String;
+        builtin_types[(size_t)TypeKind::NullPtr].kind = TypeKind::NullPtr;
     }
 
     const Type* TypeContext::get_builtin(TypeKind kind) {
@@ -296,7 +297,8 @@ namespace {
             case TypeKind::I64:
             case TypeKind::U64:  return 8;
             case TypeKind::Pointer:
-            case TypeKind::Reference: return 8;
+            case TypeKind::Reference:
+            case TypeKind::NullPtr: return 8;
             case TypeKind::Struct: {
                 auto it = structs.find(t->struct_name);
                 if (it != structs.end()) {

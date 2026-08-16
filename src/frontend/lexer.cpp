@@ -228,6 +228,7 @@ namespace quant::lx {
             case str_hash("enum"): return make_token(TOKEN_ENUM);
             case str_hash("true"): return make_token(TOKEN_TRUE);
             case str_hash("false"): return make_token(TOKEN_FALSE);
+            case str_hash("nullptr"): return make_token(TOKEN_NULLPTR);
         }
         return make_token(TOKEN_IDENT);
     }

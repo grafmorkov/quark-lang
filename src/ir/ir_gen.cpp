@@ -67,6 +67,7 @@ int type_size(const ast::Type* t, CompilerContext* ctx = nullptr) {
         case ast::TypeKind::U64:  return 8;
         case ast::TypeKind::Pointer: return 8;
         case ast::TypeKind::Reference: return 8;
+        case ast::TypeKind::NullPtr: return 8;
         case ast::TypeKind::Struct: {
             if (!ctx) return 0;
             auto* sym = lookup_struct(*ctx, t->struct_name);
@@ -1341,6 +1342,12 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
             return dst;
         },
 
+        [&](const ast::NullPtrExpr&) -> uint32_t {
+            const uint32_t dst = new_reg();
+            emit(IRLoadConst{ dst, 0 });
+            return dst;
+        },
+
         [&](const ast::FloatExpr& node) -> uint32_t {
             const uint32_t dst = new_reg();
             ast::TypeKind kind = ast::TypeKind::F64;
@@ -1441,10 +1448,12 @@ uint32_t IRGenerator::gen_expr(const ast::Expr& expr) {
                 ? node.rhs->resolved_type->kind : lhs_kind;
             const ast::TypeKind common = binary_common_kind(lhs_kind, rhs_kind);
 
-            // Widen each operand to the common type before the operation
+            // Widen each operand to the common type before the operation.
+            // nullptr is a pointer-sized zero, so it needs no cast (the
+            // comparison just works as a plain 8-byte compare).
             auto widen_operand = [&](const ast::Expr* op, ast::TypeKind k) -> uint32_t {
                 const uint32_t reg = gen_expr(*op);
-                if (k == common) return reg;
+                if (k == common || k == ast::TypeKind::NullPtr) return reg;
                 const uint32_t c = new_reg();
                 emit(IRCast{ c, reg, k, common, ast::CastKind::ValueCast });
                 return c;

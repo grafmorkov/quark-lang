@@ -1,0 +1,4 @@
+void main() {
+    *i32 p = nullptr; // pointer may be null
+    &i32 r = p;       // error: cannot convert a possibly-null pointer to a reference
+}

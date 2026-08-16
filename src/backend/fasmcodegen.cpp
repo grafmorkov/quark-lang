@@ -101,7 +101,8 @@ namespace {
             case ast::TypeKind::I64:
             case ast::TypeKind::U64:
             case ast::TypeKind::Pointer:
-            case ast::TypeKind::Reference: return 8;
+            case ast::TypeKind::Reference:
+            case ast::TypeKind::NullPtr: return 8;
             default: return 0;
         }
     }

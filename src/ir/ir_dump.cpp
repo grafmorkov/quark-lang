@@ -32,6 +32,7 @@ const char* type_name(ast::TypeKind kind) {
         case ast::TypeKind::Struct:    return "struct";
         case ast::TypeKind::Pointer:   return "ptr";
         case ast::TypeKind::Reference: return "ref";
+        case ast::TypeKind::NullPtr:   return "nullptr";
         case ast::TypeKind::Generic:   return "generic";
         default:                       return "?";
     }

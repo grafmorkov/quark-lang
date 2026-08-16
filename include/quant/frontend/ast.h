@@ -47,6 +47,8 @@ namespace quant::ast {
         Pointer,
         Reference,
 
+        NullPtr,
+
         Generic,
 
         Count
@@ -70,6 +72,8 @@ namespace quant::ast {
     struct BoolExpr {
         bool value;
     };
+
+    struct NullPtrExpr {};
 
     struct FloatExpr {
         double value;
@@ -172,6 +176,7 @@ namespace quant::ast {
     using ExprKind = std::variant<
         IntExpr,
         BoolExpr,
+        NullPtrExpr,
         FloatExpr,
         StringExpr,
         CharExpr,

@@ -1014,6 +1014,9 @@ ast::Expr* Parser::parse_prefix() {
     if (match(TOKEN_FALSE)) {
         return make_expr(ctx, ast::BoolExpr{ false }, previous.loc);
     }
+    if (match(TOKEN_NULLPTR)) {
+        return make_expr(ctx, ast::NullPtrExpr{}, previous.loc);
+    }
     if (match(TOKEN_SIZEOF)) {
         expect(TOKEN_LPAREN, "Expected '(' after sizeof");
         const ast::Type* type = parse_type(false, current_type_params);

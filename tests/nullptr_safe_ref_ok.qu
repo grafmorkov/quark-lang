@@ -1,0 +1,11 @@
+i32 main() {
+    region r {
+        *i32 p = alloc(i32, 10); // alloc() is known non-null
+        &i32 q = p;              // ok: pointer proven non-null
+        p[0] = 7;
+        if (p[0] == 7) {
+            return 0;
+        }
+        return 1;
+    }
+}

@@ -1,0 +1,4 @@
+void main() {
+    i32 x = 1;
+    &i32 r = nullptr; // error: nullptr is only assignable to pointers
+}

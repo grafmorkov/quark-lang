@@ -45,6 +45,7 @@ namespace quant{
         TOKEN_ENUM,
         TOKEN_TRUE,
         TOKEN_FALSE,
+        TOKEN_NULLPTR,
 
         // types
         TOKEN_VOID,

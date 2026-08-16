@@ -17,10 +17,31 @@
 | f32  | 4    | float              |
 | f64  | 8    | double             |
 | str  | 8    | string (pointer)   |
-| *T   | 8    | pointer to T       |
-| &T   | 8    | reference to T     |
+| *T     | 8 | pointer to T       |
+| &T     | 8 | reference to T     |
+| nullptr | 8 | "no pointer" value |
 
 Integer literals are i32 by default. Float literals are f64 by default. Boolean literals `true` and `false` are `bool`.
+
+## `nullptr`
+
+`nullptr` means "there is no value to point to". You can only store it in a pointer variable:
+
+```qu
+*i32 p = nullptr;
+```
+
+You cannot use `nullptr` for references or other values.
+
+Once a pointer may hold `nullptr`, the compiler treats it as "maybe null" forever, even if you put a real value into it later:
+
+```qu
+*i32 p = nullptr;
+
+p = alloc(i32, 1); // p is still "maybe null"
+```
+
+This rule keeps things safe: a pointer that may be null cannot be turned into a reference. If you try, you get a compile error.
 
 ---
 
@@ -98,7 +119,7 @@ for (init; cond; step) {
 }
 ```
 
-is desugared at parse time into:
+is rewritten at parse time into:
 
 ```
 {
@@ -205,7 +226,7 @@ Rules:
 
 ### References
 
-References (`&T`) are non-owning aliases to existing variables. They have the same size as pointers (8 bytes) but provide compile-time safety.
+References (`&T`) are another name for an existing variable. They take 8 bytes, like pointers.
 
 Field access and indexing through a reference are automatically dereferenced:
 
@@ -260,7 +281,7 @@ Note: a reference cannot be taken to a builtin value type (`i32`, `bool`, `f64`,
 +   -   *   /
 ```
 
-### Comparison (result is i32, 0 or 1)
+### Comparison (result is `bool`)
 ```
 ==   !=   <   <=   >   >=
 ```
@@ -271,10 +292,10 @@ Note: a reference cannot be taken to a builtin value type (`i32`, `bool`, `f64`,
 |    (bitwise OR)
 ```
 
-### Logical (result is i32, 0 or 1)
+### Logical (result is `bool`)
 ```
-&&   (logical AND - both operands non-zero -> 1)
-||   (logical OR  - at least one non-zero -> 1)
+&&   (and - both operands true -> true)
+||   (or  - at least one true -> true)
 ```
 
 ### Compound Assignment
@@ -497,7 +518,7 @@ A swap<A, B>(A a, B b) {
 }
 ```
 
-Generic function bodies are compiled separately for each set of type arguments you actually use (monomorphization). For example, `identity<i32>` and `identity<bool>` become two independent functions.
+Generic functions are compiled separately for each type you actually use. For example, `identity<i32>` and `identity<bool>` become two independent functions.
 
 ---
 
