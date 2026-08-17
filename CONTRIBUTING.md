@@ -171,8 +171,6 @@ You can also use LLMs to generate tests.
 
 ## NOTE
 
-## NOTE
-
 > Some tests are expected to fail. These tests are used to verify compiler error reporting and are part of the `error_testing` system.
 >
 > If you create a test that is expected to produce a compiler error, add the `_err` suffix to its filename.
