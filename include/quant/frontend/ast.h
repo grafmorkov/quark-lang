@@ -258,6 +258,7 @@ namespace quant::ast {
         std::string name;
         const Type* type;
         bool is_mut = false;
+        bool is_private = false;
         Expr* default_value = nullptr;
         std::vector<Attribute> attributes;
     };
@@ -289,6 +290,7 @@ namespace quant::ast {
         bool is_forward;
         bool is_entry;
         bool has_body;
+        bool is_private = false;
 
         const char* struct_name = nullptr;
 

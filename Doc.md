@@ -583,7 +583,8 @@ Supported attributes:
 | `@guard`   | variable / field                      | 1    | Compile-time check: validate condition on use        |
 | `@public`  | function / variable / field / struct | 0    | Make symbol visible outside the module               |
 | `@private` | function / variable / field / struct | 0    | Hide symbol from other modules                       |
-| `@hide`    | module                               | 0    | Make all module symbols private by default           |
+| `@hide`    | any top-level declaration            | 0    | Make all following declarations private by default   |
+| `@unhide`  | any top-level declaration            | 0    | Reset @hide — following declarations are public      |
 | `@syscall` | function (extern only)               | 1    | Lower function to Linux syscall `N`                  |
 | `@export`  | function                             | 1    | Use `name` as the function symbol in the object file |
 | `@import`  | function (extern only)               | 1-2  | Import a function from a Windows DLL                 |
@@ -647,31 +648,61 @@ struct X {
 
 ### `@private`
 
-Restricts access to the declaring module. Other modules cannot call or reference the symbol.
+Restricts access to the declaring module. Other modules cannot call or reference the symbol. Works on functions, variables, struct fields, and struct methods.
 
 ```
 @private i32 helper() {
     return 42;
 }
 
+struct Config {
+    @private i32 secret;
+    i32 value;
+
+    @private void internal() { ... }
+};
+
 i32 public_fn() {
     return helper();     // ok - same module
 }
 ```
 
-Access from another module produces: `Cannot access private symbol`.
+Access from another module produces: `Cannot access private symbol` or `Cannot access private field`.
 
 ### `@public`
 
-Explicitly marks a symbol as accessible from other modules. Useful inside `@hide` modules.
+Explicitly marks a symbol as accessible from other modules. Works on functions, variables, struct fields, and struct methods. Useful inside `@hide` blocks.
 
 ### `@hide`
 
-Applied to a module (place `@hide` on any top-level declaration). Makes all symbols in the module private by default; only symbols with `@public` remain accessible from outside.
+Makes all following declarations private by default. Works as a switch — stays active until `@unhide`.
 
 ```
 @hide i32 internal() { return 1; }
-@public i32 api()    { return 2; }
+i32 also_internal()  { return 2; }   // private
+@public i32 api()    { return 3; }   // public (explicit override)
+i32 still_private()  { return 4; }   // private
+@unhide i32 open()   { return 5; }   // public again
+```
+
+Works on struct fields and methods too:
+
+```
+@hide struct Config {
+    i32 a;        // private
+    i32 b;        // private
+    @public i32 c; // public (explicit override)
+};
+```
+
+### `@unhide`
+
+Resets `@hide`. Following declarations are public by default.
+
+```
+@hide i32 a = 1;     // private
+@unhide i32 b = 2;   // public
+i32 c = 3;           // public
 ```
 
 ### `@syscall`

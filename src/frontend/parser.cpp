@@ -506,6 +506,13 @@ ast::StructDecl Parser::parse_struct_decl() {
     // compilation (the StructDecl itself may be moved while being lowered).
     auto* struct_name = memory::make<std::string>(ctx.ast_arena, ret.name);
 
+    auto is_priv = [](const std::vector<ast::Attribute>& attrs) {
+        for (const auto& a : attrs) {
+            if (a.name == "private") return true;
+        }
+        return false;
+    };
+
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
         std::vector<ast::Attribute> member_attrs = parse_attributes();
 
@@ -515,6 +522,7 @@ ast::StructDecl Parser::parse_struct_decl() {
 
                 field.attributes = std::move(member_attrs);
                 field.is_mut = match(TOKEN_MUT);
+                field.is_private = is_priv(field.attributes);
 
                 field.type = parse_type(false, &ret.type_params);
 
@@ -534,6 +542,7 @@ ast::StructDecl Parser::parse_struct_decl() {
             case DeclKind::Func: {
                 ast::FuncStmt fn = parse_func(false, struct_name->c_str(), &ret.type_params);
                 fn.attributes = std::move(member_attrs);
+                fn.is_private = is_priv(fn.attributes);
                 ret.fields.push_back(std::move(fn));
                 break;
             }

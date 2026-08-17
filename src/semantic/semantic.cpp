@@ -556,7 +556,8 @@ void mark_symbol_initialized(quant::symb_t::Symbol& sym) {
 const ast::Type* resolve_struct_field(
     CompilerContext& ctx,
     const ast::Type* base_type,
-    const std::string& field_name
+    const std::string& field_name,
+    const std::vector<std::string>& module_namespace
 ) {
     if (!base_type) {
         return nullptr;
@@ -599,6 +600,19 @@ const ast::Type* resolve_struct_field(
 
     for (size_t i = 0; i < ss->field_names.size(); ++i) {
         if (ss->field_names[i] == field_name) {
+            // Field visibility check
+            bool field_private = false;
+            for (const auto& fa : ss->field_attributes[i]) {
+                if (fa.name == "private") {
+                    field_private = true;
+                    break;
+                }
+            }
+            if (field_private && sym->owning_module != module_namespace) {
+                ctx.errors.add("Cannot access private field '" + field_name + "' of struct '"
+                    + base_type->struct_name + "' from outside its module");
+                return nullptr;
+            }
             return ss->field_types[i];
         }
     }
@@ -658,56 +672,122 @@ void SemanticAnalyzer::analyze(const std::vector<ast::Stmt*>& stmts, modules::Mo
     current_module = mod;
     ctx.symbols.set_current_module_ns(module_namespace);
 
-    // Extract module-level attributes (like @hide) from top-level statements
+    // Process @hide / @unhide toggles and apply visibility.
+    // @hide makes all subsequent declarations private by default;
+    // @unhide reverts to public by default.
+    // Individual @public / @private override the current mode.
     if (current_module) {
+        bool hidden = false;
+
         for (auto* stmt : stmts) {
             if (!stmt) continue;
             std::visit(overloaded{
                 [&](ast::FuncStmt& fn) {
                     for (auto it = fn.attributes.begin(); it != fn.attributes.end(); ) {
                         if (it->name == "hide") {
-                            current_module->attributes.push_back(std::move(*it));
+                            hidden = true;
+                            it = fn.attributes.erase(it);
+                        } else if (it->name == "unhide") {
+                            hidden = false;
                             it = fn.attributes.erase(it);
                         } else {
                             ++it;
                         }
                     }
+                    if (hidden && !has_attr(fn.attributes, "public") && !has_attr(fn.attributes, "private")) {
+                        fn.attributes.push_back({"private", {}});
+                    }
                 },
                 [&](ast::StructDecl& str) {
                     for (auto it = str.attributes.begin(); it != str.attributes.end(); ) {
                         if (it->name == "hide") {
-                            current_module->attributes.push_back(std::move(*it));
+                            hidden = true;
+                            it = str.attributes.erase(it);
+                        } else if (it->name == "unhide") {
+                            hidden = false;
                             it = str.attributes.erase(it);
                         } else {
                             ++it;
+                        }
+                    }
+                    if (hidden && !has_attr(str.attributes, "public") && !has_attr(str.attributes, "private")) {
+                        str.attributes.push_back({"private", {}});
+                    }
+                    // Apply hidden state to struct methods and fields
+                    for (auto& value : str.fields) {
+                        if (auto* fn = std::get_if<ast::FuncStmt>(&value)) {
+                            for (auto it = fn->attributes.begin(); it != fn->attributes.end(); ) {
+                                if (it->name == "hide") {
+                                    hidden = true;
+                                    it = fn->attributes.erase(it);
+                                } else if (it->name == "unhide") {
+                                    hidden = false;
+                                    it = fn->attributes.erase(it);
+                                } else {
+                                    ++it;
+                                }
+                            }
+                            if (hidden && !has_attr(fn->attributes, "public") && !has_attr(fn->attributes, "private")) {
+                                fn->attributes.push_back({"private", {}});
+                            }
+                        } else if (auto* field = std::get_if<ast::StructField>(&value)) {
+                            for (auto it = field->attributes.begin(); it != field->attributes.end(); ) {
+                                if (it->name == "hide") {
+                                    hidden = true;
+                                    it = field->attributes.erase(it);
+                                } else if (it->name == "unhide") {
+                                    hidden = false;
+                                    it = field->attributes.erase(it);
+                                } else {
+                                    ++it;
+                                }
+                            }
+                            if (hidden && !has_attr(field->attributes, "public") && !has_attr(field->attributes, "private")) {
+                                field->attributes.push_back({"private", {}});
+                            }
                         }
                     }
                 },
                 [&](ast::VarDecl& var) {
                     for (auto it = var.attributes.begin(); it != var.attributes.end(); ) {
                         if (it->name == "hide") {
-                            current_module->attributes.push_back(std::move(*it));
+                            hidden = true;
+                            it = var.attributes.erase(it);
+                        } else if (it->name == "unhide") {
+                            hidden = false;
                             it = var.attributes.erase(it);
                         } else {
                             ++it;
                         }
                     }
+                    if (hidden && !has_attr(var.attributes, "public") && !has_attr(var.attributes, "private")) {
+                        var.attributes.push_back({"private", {}});
+                    }
                 },
                 [&](ast::EnumDecl& enm) {
                     for (auto it = enm.attributes.begin(); it != enm.attributes.end(); ) {
                         if (it->name == "hide") {
-                            current_module->attributes.push_back(std::move(*it));
+                            hidden = true;
+                            it = enm.attributes.erase(it);
+                        } else if (it->name == "unhide") {
+                            hidden = false;
                             it = enm.attributes.erase(it);
                         } else {
                             ++it;
                         }
                     }
+                    if (hidden && !has_attr(enm.attributes, "public") && !has_attr(enm.attributes, "private")) {
+                        enm.attributes.push_back({"private", {}});
+                    }
                 },
                 [&](ast::ModuleDecl& mod_decl) {
-                    // Module-level attributes (@hide etc.) now live on the decl itself
                     for (auto it = mod_decl.attributes.begin(); it != mod_decl.attributes.end(); ) {
                         if (it->name == "hide") {
-                            current_module->attributes.push_back(std::move(*it));
+                            hidden = true;
+                            current_module->attributes.push_back({"hide", {}});
+                            it = mod_decl.attributes.erase(it);
+                        } else if (it->name == "unhide") {
+                            hidden = false;
                             it = mod_decl.attributes.erase(it);
                         } else {
                             ++it;
@@ -724,41 +804,6 @@ void SemanticAnalyzer::analyze(const std::vector<ast::Stmt*>& stmts, modules::Mo
     }
 
     collect_declarations(stmts);
-
-    // If module has @hide, mark all non-@public symbols as private
-    if (current_module && has_attr(current_module->attributes, "hide")) {
-        for (auto* stmt : stmts) {
-            if (!stmt) continue;
-            std::visit(overloaded{
-                [&](const ast::FuncStmt& fn) {
-                    if (!has_attr(fn.attributes, "public")) {
-                        auto* sym = ctx.symbols.lookup(fn.name);
-                        if (sym) sym->attributes.push_back({"private", {}});
-                    }
-                },
-                [&](const ast::StructDecl& str) {
-                    if (!str.type_params.empty()) return; // generic — no symbol
-                    if (!has_attr(str.attributes, "public")) {
-                        auto* sym = ctx.symbols.lookup(str.name);
-                        if (sym) sym->attributes.push_back({"private", {}});
-                    }
-                },
-                [&](const ast::VarDecl& var) {
-                    if (!has_attr(var.attributes, "public")) {
-                        auto* sym = ctx.symbols.lookup(var.name);
-                        if (sym) sym->attributes.push_back({"private", {}});
-                    }
-                },
-                [&](const ast::EnumDecl& enm) {
-                    if (!has_attr(enm.attributes, "public")) {
-                        auto* sym = ctx.symbols.lookup(enm.name);
-                        if (sym) sym->attributes.push_back({"private", {}});
-                    }
-                },
-                [&](const auto&) {}
-            }, stmt->kind);
-        }
-    }
 
     for (auto* stmt : stmts) {
         analyze_stmt(stmt);
@@ -2012,7 +2057,7 @@ const ast::Type* SemanticAnalyzer::resolve_lvalue(const ast::Expr* expr) {
         const ast::Type* base_type = resolve_lvalue(field->base);
         if (!base_type) return nullptr;
 
-        return resolve_struct_field(ctx, base_type, field->field);
+        return resolve_struct_field(ctx, base_type, field->field, module_namespace);
     }
 
     if (const auto* index = std::get_if<ast::IndexExpr>(&expr->kind)) {
@@ -2114,7 +2159,7 @@ const ast::Type* SemanticAnalyzer::analyze_field(const ast::FieldExpr& node) {
         }
     }
 
-    return resolve_struct_field(ctx, base, node.field);
+    return resolve_struct_field(ctx, base, node.field, module_namespace);
 }
 
 namespace {
