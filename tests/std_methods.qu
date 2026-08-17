@@ -1,4 +1,4 @@
-// Method-style stdlib API: opt<T>, result<T, E>, either<L, R>, ordering and
+// Method-style stdlib API: option<T>, result<T, E>, either<L, R>, ordering and
 // std::arena::Region all expose methods in addition to the deprecated free
 // functions. Returns 0 when everything checks out.
 
@@ -10,20 +10,20 @@ using std::types;
 using std::cmp;
 
 @entry i32 main() {
-    // opt<T> methods
-    opt<i32> o = opt_some<i32>(42);
+    // option<T> methods
+    option<i32> o = option_some<i32>(42);
     if (!o.is_some()) { return 1; }
     if (o.is_none()) { return 2; }
     if (o.unwrap() != 42) { return 3; }
     if (o.unwrap_or(7) != 42) { return 4; }
 
-    opt<i32> n = opt_none<i32>();
+    option<i32> n = option_none<i32>();
     if (!n.is_none()) { return 5; }
     if (n.unwrap_or(9) != 9) { return 6; }
 
     // deprecated free-function wrappers still work
-    if (!opt_is_some(o)) { return 7; }
-    if (opt_unwrap_or(n, 3) != 3) { return 8; }
+    if (!option_is_some(o)) { return 7; }
+    if (option_unwrap_or(n, 3) != 3) { return 8; }
 
     // result<T, E> methods
     result<i32, str> ok = result_ok<i32, str>(10);

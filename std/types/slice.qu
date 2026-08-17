@@ -58,11 +58,11 @@ struct slice<T> {
         data[i] = val;
     }
 
-    // at - read element at `i`, returning opt<T>.
-    // Returns opt_none<T>() when the index is out of bounds.
-    opt<T> at(u64 i) {
-        if (i < len) { return opt_some<T>(data[i]); }
-        return opt_none<T>();
+    // at - read element at `i`, returning option<T>.
+    // Returns option_none<T>() when the index is out of bounds.
+    option<T> at(u64 i) {
+        if (i < len) { return option_some<T>(data[i]); }
+        return option_none<T>();
     }
 
     // sub - a view of elements [start, start + len).
@@ -138,9 +138,9 @@ void slice_set<T>(mut &slice<T> s, u64 i, T val) {
     s.set(i, val);
 }
 
-// slice_at - read element at `i`, returning opt<T>.
-// Returns opt_none<T>() when the index is out of bounds.
-opt<T> slice_at<T>(&slice<T> s, u64 i) {
+// slice_at - read element at `i`, returning option<T>.
+// Returns option_none<T>() when the index is out of bounds.
+option<T> slice_at<T>(&slice<T> s, u64 i) {
     return s.at(i);
 }
 

@@ -1,4 +1,4 @@
-// std::types - opt<T>
+// std::types - option<T>
 //
 // Optional value. Either contains something or nothing.
 // `has_value` starts as false. The @guard on `value` means you can't
@@ -7,13 +7,13 @@
 // Usage:
 //   load "std::types";
 //
-//   opt<i32> find(i32 x) {
-//       if (x > 0) { return opt_some<i32>(x * 2); }
-//       return opt_none<i32>();
+//   option<i32> find(i32 x) {
+//       if (x > 0) { return option_some<i32>(x * 2); }
+//       return option_none<i32>();
 //   }
 //
 //   i32 main() {
-//       opt<i32> r = find(5);
+//       option<i32> r = find(5);
 //       if (r.is_some()) {
 //           std::io::print(r.unwrap() as str);
 //       }
@@ -22,7 +22,7 @@
 
 module "std::types";
 
-struct opt<T> {
+struct option<T> {
     bool has_value = false;
 
     @init @guard(has_value)
@@ -52,39 +52,39 @@ struct opt<T> {
     }
 };
 
-// opt_some - create an option with a value.
-opt<T> opt_some<T>(T val) {
-    @init mut opt<T> o;
+// option_some - create an option with a value.
+option<T> option_some<T>(T val) {
+    @init mut option<T> o;
     o.has_value = true;
     o.value = val;
     return o;
 }
 
-// opt_none - create an empty option.
-opt<T> opt_none<T>() {
-    @init mut opt<T> o;
+// option_none - create an empty option.
+option<T> option_none<T>() {
+    @init mut option<T> o;
     o.has_value = false;
     return o;
 }
 
-// --- Deprecated free-function wrappers. Prefer the opt<T> methods. ---
+// --- Deprecated free-function wrappers. Prefer the option<T> methods. ---
 
-// opt_is_some - check if it has a value.
-bool opt_is_some<T>(opt<T> o) {
+// option_is_some - check if it has a value.
+bool option_is_some<T>(option<T> o) {
     return o.is_some();
 }
 
-// opt_is_none - check if it's empty.
-bool opt_is_none<T>(opt<T> o) {
+// option_is_none - check if it's empty.
+bool option_is_none<T>(option<T> o) {
     return o.is_none();
 }
 
-// opt_unwrap - get the value (panics if none).
-T opt_unwrap<T>(opt<T> o) {
+// option_unwrap - get the value (panics if none).
+T option_unwrap<T>(option<T> o) {
     return o.unwrap();
 }
 
-// opt_unwrap_or - get the value, or use `dflt` if it's none.
-T opt_unwrap_or<T>(opt<T> o, T dflt) {
+// option_unwrap_or - get the value, or use `dflt` if it's none.
+T option_unwrap_or<T>(option<T> o, T dflt) {
     return o.unwrap_or(dflt);
 }

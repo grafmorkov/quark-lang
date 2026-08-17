@@ -37,11 +37,11 @@ void main() {
         if (!s.in_bounds(9)) { std::io::print("BAD ib9\n"); return; }
         if (s.in_bounds(10)) { std::io::print("BAD ib10\n"); return; }
 
-        // at (bounds-checked, returns opt<T>)
-        opt<i32> a = s.at(1);
+        // at (bounds-checked, returns option<T>)
+        option<i32> a = s.at(1);
         if (!a.is_some()) { std::io::print("BAD at1\n"); return; }
         if (a.unwrap() != (100 as i32)) { std::io::print("BAD at1v\n"); return; }
-        opt<i32> b = s.at(20);
+        option<i32> b = s.at(20);
         if (!b.is_none()) { std::io::print("BAD at20\n"); return; }
 
         // ptr
