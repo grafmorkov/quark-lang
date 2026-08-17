@@ -65,3 +65,4 @@ coverage/
 *~
 /fasm/*
 quant-self-hosted/
+out
