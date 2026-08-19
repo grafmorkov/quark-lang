@@ -113,13 +113,19 @@ Other options: `--emit-ir`, `--emit-asm`, `--no-compile`, `--time`.
 
 ### Short-term
 
-* add more attributes
-* improve stdlib
+* fix all bugs 
+* improve diagnostics
+* rewrite front-end in Quant
 
 ### Long-term
 
 * optimizations
 * self-hosting compiler
+
+## Todo
+* Fix enums [x]
+* Fix for [ ]
+* Add library compilation [ ]
 
 ---
 

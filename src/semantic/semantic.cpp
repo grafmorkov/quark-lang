@@ -859,6 +859,11 @@ const ast::Type* SemanticAnalyzer::canonicalize_struct_type(const ast::Type* typ
         return type;
     }
 
+    // Enum names used as types resolve to i32.
+    if (std::holds_alternative<symb_t::EnumSymbol>(sym->data)) {
+        return ctx.types.get_builtin(TypeKind::I32);
+    }
+
     std::string canonical = support::join_namespace(sym->owning_module) + "::" + base;
     if (canonical == type->struct_name) {
         if (args_changed) return ctx.types.get_deferred_generic(base, new_args);
@@ -942,17 +947,35 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                         ctx.types.register_generic_struct(full_q, def);
                     }
                 } else {
+                    // Canonicalize AST field types before declare() so the
+                    for (auto& value : const_cast<std::vector<ast::StructValue>&>(str.fields)) {
+                        if (auto* field = std::get_if<ast::StructField>(&value)) {
+                            field->type = canonicalize_struct_type(field->type);
+                        }
+                    }
+                    for (auto& value : const_cast<std::vector<ast::StructValue>&>(str.fields)) {
+                        const auto* fn = std::get_if<ast::FuncStmt>(&value);
+                        if (!fn) continue;
+                        auto& f = const_cast<ast::FuncStmt&>(*fn);
+                        f.return_type = canonicalize_struct_type(f.return_type);
+                        for (auto& arg : f.args) {
+                            arg.type = canonicalize_struct_type(arg.type);
+                        }
+                    }
                     if (!ctx.symbols.declare(str)) {
                         ctx.errors.add("Struct redeclaration: " + str.name);
                         return;
                     }
-                    // Methods' parameter/return types are stored in the symbol
-                    // table as written in the source; canonicalize them so
-                    // method calls compare against the same qualified types
-                    // that free functions and variables use. The AST types are
-                    // canonicalized as well so the method body analysis sees
-                    // consistent types (e.g. returning another struct from the
-                    // same module).
+                    // Also canonicalize the symbol table's copy and
+                    // update TypeContext for cross-module type_size.
+                    auto* ssym = ctx.symbols.lookup(str.name);
+                    if (auto* ss = std::get_if<symb_t::StructSymbol>(&ssym->data)) {
+                        for (auto& ft : ss->field_types) {
+                            ft = canonicalize_struct_type(ft);
+                        }
+                    }
+                    // Canonicalize method parameter/return types in the symbol table and AST
+                    // so method calls and body analysis use consistent qualified types.
                     for (const auto& value : str.fields) {
                         const auto* fn = std::get_if<ast::FuncStmt>(&value);
                         if (!fn) continue;
@@ -972,6 +995,9 @@ void SemanticAnalyzer::collect_declarations(const std::vector<ast::Stmt*>& stmts
                     }
                     // Also register in TypeContext so type_size can find fields cross-module
                     std::vector<ast::StructField> fields = collect_fields(str.fields);
+                    for (auto& f : fields) {
+                        f.type = canonicalize_struct_type(f.type);
+                    }
                     std::vector<std::pair<std::string, const ast::Type*>> field_pairs;
                     for (const auto& f : fields) {
                         field_pairs.emplace_back(f.name, f.type);
