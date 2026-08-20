@@ -14,7 +14,7 @@ std::vector<uint8_t> NativeBackend::generate(const IRProgram& program, mc::Targe
         AArch64ISel isel;
         isel.generate(program);
 #ifdef _WIN32
-        return pe::write(isel.obj, arch);
+        return pe::write(isel.obj);
 #else
         return elf::write(isel.obj, arch);
 #endif
