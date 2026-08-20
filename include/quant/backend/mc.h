@@ -6,10 +6,22 @@
 
 namespace quant::codegen::mc {
 
+enum class TargetArch : uint8_t {
+    X86_64,
+    AARCH64,
+};
+
 enum class RelType : uint32_t {
     X86_64_64   = 1,   // S + A
     X86_64_PC32 = 2,   // S + A - P
     X86_64_PLT32 = 4,  // PLT(S) + A - P
+
+    AARCH64_ABS64           = 257,  // S + A
+    AARCH64_CALL26          = 283,  // (S + A - P) >> 2
+    AARCH64_JUMP26          = 282,  // (S + A - P) >> 2
+    AARCH64_ADR_PREL_PG_HI21 = 275, // (page(S+A) - page(P)) >> 12
+    AARCH64_LDST64_ABS_LO12_NC = 286, // (S + A) & 0xFFF  (for LDR/STR)
+    AARCH64_ADD_ABS_LO12_NC    = 277, // (S + A) & 0xFFF  (for ADD immediate)
 };
 
 struct Relocation {

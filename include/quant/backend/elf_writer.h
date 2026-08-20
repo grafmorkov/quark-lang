@@ -8,6 +8,6 @@
 namespace quant::codegen::elf {
 
 // Serialize a machine-code object into an ELF64 relocatable file (.o).
-std::vector<uint8_t> write(const mc::Object& obj);
+std::vector<uint8_t> write(const mc::Object& obj, mc::TargetArch arch = mc::TargetArch::X86_64);
 
 } // namespace quant::codegen::elf

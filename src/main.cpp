@@ -31,6 +31,13 @@ int main(int argc, char **argv)
             return 1;
         }
 
+        #ifdef _WIN32
+            if (opts.target_arch == quant::codegen::mc::TargetArch::AARCH64) {
+                utils::logger::error("AArch64 target is not supported on Windows. Use Linux for AArch64 cross-compilation.");
+                return 1;
+            }
+        #endif
+
         auto start = high_resolution_clock::now();
 
         quant::CompilerContext ctx;
@@ -114,7 +121,7 @@ int main(int argc, char **argv)
             // Native backend: IR -> instruction selection -> machine code -> PE executable
             {
                 quant::codegen::NativeBackend nativeBackend;
-                auto pe_bytes = nativeBackend.generate(irgen.program);
+                auto pe_bytes = nativeBackend.generate(irgen.program, opts.target_arch);
                 std::ofstream file(exe_path, std::ios::binary);
                 file.write(
                     reinterpret_cast<const char*>(pe_bytes.data()),
@@ -126,7 +133,7 @@ int main(int argc, char **argv)
             // Native backend: IR -> instruction selection -> machine code -> ELF object
             {
                 quant::codegen::NativeBackend nativeBackend;
-                auto elf_bytes = nativeBackend.generate(irgen.program);
+                auto elf_bytes = nativeBackend.generate(irgen.program, opts.target_arch);
                 std::ofstream file(obj_path, std::ios::binary);
                 file.write(
                     reinterpret_cast<const char*>(elf_bytes.data()),
@@ -134,13 +141,15 @@ int main(int argc, char **argv)
             }
 
             // Link with ld
-            std::string link_cmd = "ld -o " + exe_path.string() + " " + obj_path.string();
+            const char* ld_name = (opts.target_arch == quant::codegen::mc::TargetArch::AARCH64)
+                ? "ld.lld" : "ld";
+            std::string link_cmd = std::string(ld_name) + " -o " + exe_path.string() + " " + obj_path.string();
             if (std::system(link_cmd.c_str()) != 0) {
                 utils::logger::error("link failed\n");
                 return 1;
             }
 
-            std::filesystem::remove(obj_path);
+            //std::filesystem::remove(obj_path);
         #endif
 
         auto end = std::chrono::high_resolution_clock::now();

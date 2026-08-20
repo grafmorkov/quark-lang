@@ -26,6 +26,21 @@ namespace utils::options{
                 continue;
             }
 
+            if (arg == "--target") {
+                if (i + 1 >= argc) {
+                    throw std::runtime_error("Option '--target' requires a value (x86_64 or aarch64)");
+                }
+                std::string value = argv[++i];
+                if (value == "x86_64" || value == "x86-64") {
+                    opts.target_arch = TargetArch::X86_64;
+                } else if (value == "aarch64" || value == "arm64") {
+                    opts.target_arch = TargetArch::AARCH64;
+                } else {
+                    throw std::runtime_error("Unknown target: '" + value + "'. Supported: x86_64, aarch64");
+                }
+                continue;
+            }
+
             auto it = flag_map.find(arg);
             if (it != flag_map.end()) {
                 switch (it->second) {

@@ -104,6 +104,8 @@ add_library(libquant
     src/modules/modules.cpp
     src/backend/fasmcodegen.cpp
     src/backend/x86_64.cpp
+    src/backend/aarch_64.cpp
+    src/backend/aarch64_isel.cpp
     src/backend/isel.cpp
     src/backend/elf_writer.cpp
     src/backend/pe_writer.cpp

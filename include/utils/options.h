@@ -6,10 +6,13 @@
 #include <stdexcept>
 
 #include "logger.h"
+#include "quant/backend/mc.h"
 
 using namespace utils::logger;
 
 namespace utils::options {
+
+    using quant::codegen::mc::TargetArch;
 
     struct Options {
         bool emit_ir = false;
@@ -19,6 +22,7 @@ namespace utils::options {
         std::string input_file;
         std::string output_file;
         bool has_output = false;
+        TargetArch target_arch = TargetArch::X86_64;
     };
 
     enum class Flag {

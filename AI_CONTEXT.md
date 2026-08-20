@@ -379,6 +379,8 @@ extern void print(str text);
 @syscall(1) extern i64 sys_write(i64 fd, str buf, i64 len);
 ```
 
+- `@syscall(N)` uses x86-64 Linux syscall numbers in the source. The AArch64 backend remaps them automatically.
+
 ---
 
 ## 12. Attributes
@@ -495,6 +497,8 @@ On Linux, I/O uses `@syscall`. On Windows, `@import` for WinAPI.
 Source -> Lexer -> Parser -> AST -> Semantic Analysis -> IR -> Native Backend -> ELF/PE32+
 ```
 
+On Linux, the native backend links with `ld` (x86-64) or `ld.lld` (AArch64).
+
 ### Components
 
 | Directory       | Purpose                                          |
@@ -502,7 +506,7 @@ Source -> Lexer -> Parser -> AST -> Semantic Analysis -> IR -> Native Backend ->
 | `src/frontend/` | Lexer (`lexer.cpp`), Parser (`parser.cpp`), AST (`ast.cpp`) |
 | `src/semantic/` | Semantic analysis, symbol table, type checking   |
 | `src/ir/`       | IR generation (`ir_gen.cpp`), IR dump            |
-| `src/backend/`  | Instruction selection (`isel.cpp`), x86-64 code gen (`fasmcodegen.cpp`), ELF writer, PE writer |
+| `src/backend/`  | Instruction selection (x86-64 `isel.cpp`, AArch64 `aarch64_isel.cpp`), emitters (`fasmcodegen.cpp`, `aarch_64.cpp`), ELF writer, PE writer |
 | `src/modules/`  | Module loading                                   |
 | `src/support/`  | Type context, symbol path utilities              |
 | `src/utils/`    | Logger, error reporting, file manager            |
@@ -516,6 +520,8 @@ Source -> Lexer -> Parser -> AST -> Semantic Analysis -> IR -> Native Backend ->
 - `include/quant/frontend/ast.h` - all AST node definitions.
 - `include/quant/ir/ir.h` - all IR instruction definitions.
 - `include/quant/attributes/attributes.h` - attribute registry.
+- `src/backend/aarch64_isel.cpp` (~950 lines) - AArch64 instruction selection and code generation.
+- `src/backend/aarch_64.cpp` - AArch64 emitter (binary encoding for all instructions).
 
 ### IR
 
@@ -524,6 +530,16 @@ Register-based IR with labels. Key instructions: `IRLoadConst`, `IRBinary`, `IRC
 ### Struct return (sret)
 
 Functions returning structs pass a hidden pointer as the first argument. The caller allocates stack space and passes it; the callee writes the result there and returns 0.
+
+### Multi-target support
+
+The compiler targets x86-64 (default) and AArch64 (`--target aarch64`). Both backends share the same IR but differ in:
+
+- **Calling convention**: x86-64 uses RDI/RSI/RDX/RCX/R8/R9; AArch64 uses X0-X7 with X8 for sret (AAPCS64).
+- **Syscalls**: IR embeds x86-64 syscall numbers; the AArch64 backend remaps them (e.g., `write=1` → `64`, `mmap=9` → `222`).
+- **Stack frame**: x86-64 grows down (RBP-based); AArch64 uses SUB/ADD SP with FP+16-based local addressing.
+- **Registers**: x86-64 has 16 GPRs; AArch64 has 31 GPRs. Both use stack-based lowering for temps.
+- **ISA encoding**: x86-64 is variable-length; AArch64 is fixed 32-bit with specific bitfield layouts.
 
 ---
 

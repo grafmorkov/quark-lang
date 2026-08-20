@@ -718,6 +718,9 @@ The generated wrapper follows the System V calling convention: arguments arrive 
 `rdi, rsi, rdx, rcx, r8, r9` (up to 6), then `rcx` is moved to `r10`, the syscall
 number is loaded into `rax`, and `syscall` is executed. The result is returned in `rax`.
 
+On AArch64, syscall numbers are remapped from x86-64 to Linux AArch64 at codegen time.
+Arguments use `x0-x5`, the syscall number goes into `x8`, and `svc #0` is executed.
+
 ```
 extern void print(str text);   // error: @syscall requires extern
 @syscall("1") extern i64 bad(); // error: argument must be an integer literal
@@ -834,13 +837,14 @@ void main() {
 
 ```
 qu file.qu -o output          # compile to native binary (ELF/PE32+)
+qu file.qu --target aarch64   # cross-compile for AArch64 (ELF)
 qu file.qu --emit-ir          # print intermediate representation
 qu file.qu --emit-asm         # print generated assembly
 qu file.qu --time             # print compilation time
 qu file.qu --no-compile       # semantic analysis only
 ```
 
-The native backend generates machine code directly (x86-64): ELF on Linux, PE32+ on Windows. No external assembler is required.
+The native backend generates machine code directly: x86-64 (ELF/PE32+) and AArch64 (ELF). No external assembler is required. Use `--target aarch64` (or `--target arm64`) to cross-compile for AArch64. Cross-linking uses `ld.lld` for AArch64 targets.
 
 Requires: CMake 3.20+, C++20 compiler.
 

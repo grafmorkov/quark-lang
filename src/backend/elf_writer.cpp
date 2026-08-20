@@ -100,7 +100,7 @@ void write_shdr(Buf& b, uint32_t name, uint32_t type, uint64_t flags, uint64_t o
 
 } // namespace
 
-std::vector<uint8_t> write(const mc::Object& obj) {
+std::vector<uint8_t> write(const mc::Object& obj, mc::TargetArch arch) {
     // symbols (locals first, then globals)
     std::vector<const mc::Symbol*> syms;
     for (const auto& s : obj.symbols) {
@@ -150,7 +150,7 @@ std::vector<uint8_t> write(const mc::Object& obj) {
     b.u8(0);   // EI_ABIVERSION
     for (int i = 0; i < 7; ++i) b.u8(0); // padding
     b.u16(1);  // e_type: ET_REL
-    b.u16(62); // e_machine: EM_X86_64
+    b.u16(arch == mc::TargetArch::AARCH64 ? 183 : 62); // e_machine: EM_AARCH64 or EM_X86_64
     b.u32(1);  // e_version
     b.u64(0);  // e_entry
     b.u64(0);  // e_phoff
