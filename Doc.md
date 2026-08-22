@@ -877,6 +877,14 @@ ZeroPoint (`--target aarch64-zeropoint`) produces a position-independent static-
 
 Requires: CMake 3.20+, C++20 compiler.
 
+Per-platform builds live in dedicated toolchain files under `toolchains/`
+(`linux-x86_64`, `linux-aarch64`, `windows-x86_64` via MinGW-w64).
+`scripts/build-all.sh` configures and builds each of them
+(Ninja, Release, `-j$(nproc)`) into `build-<name>/bin/qu`; cross toolchains that
+are not installed are skipped with a notice. The ZeroPoint compiler build uses
+the same AArch64 Linux toolchain as the `aarch64` build (per the ZeroPoint
+author's request).
+
 ---
 
 ## Notes
