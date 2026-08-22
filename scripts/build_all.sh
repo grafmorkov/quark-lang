@@ -6,7 +6,7 @@
 #   aarch64   -> runs on AArch64 Linux (cross-built), targets AArch64 Linux
 #                and ZeroPoint
 #   windows   -> qu.exe built via MinGW-w64, targets x86_64-windows
-#   zeropoint -> same linux-aarch64 toolchain (per ZeroPoint author's request),
+#   zeropoint -> same x86_64 windows toolchain (per ZeroPoint author's request),
 #                targets aarch64-zeropoint only
 #
 # All builds: Ninja, Release, -j$(nproc). Missing cross toolchains are skipped.
@@ -50,7 +50,7 @@ build() {
 build linux     toolchains/linux-x86_64.cmake      g++                          "x86_64-linux;aarch64-linux" "x86_64-linux"
 build aarch64   toolchains/linux-aarch64.cmake     aarch64-unknown-linux-gnu-g++ "aarch64-linux;aarch64-zeropoint" "aarch64-linux"
 build windows   toolchains/windows-x86_64.cmake    x86_64-w64-mingw32-g++       "x86_64-windows"             "x86_64-windows"
-build zeropoint toolchains/linux-aarch64.cmake     aarch64-unknown-linux-gnu-g++ "aarch64-zeropoint"          "aarch64-zeropoint"
+build zeropoint toolchains/windows-x86_64.cmake    x86_64-w64-mingw32-g+        "aarch64-zeropoint"          "aarch64-zeropoint"
 
 echo
 echo "All builds finished:"
