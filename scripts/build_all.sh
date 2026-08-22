@@ -50,7 +50,7 @@ build() {
 build linux     toolchains/linux-x86_64.cmake      g++                          "x86_64-linux;aarch64-linux" "x86_64-linux"
 build aarch64   toolchains/linux-aarch64.cmake     aarch64-unknown-linux-gnu-g++ "aarch64-linux;aarch64-zeropoint" "aarch64-linux"
 build windows   toolchains/windows-x86_64.cmake    x86_64-w64-mingw32-g++       "x86_64-windows"             "x86_64-windows"
-build zeropoint toolchains/windows-x86_64.cmake    x86_64-w64-mingw32-g+        "aarch64-zeropoint"          "aarch64-zeropoint"
+build zeropoint toolchains/windows-x86_64.cmake    x86_64-w64-mingw32-g++        "aarch64-zeropoint"          "aarch64-zeropoint"
 
 echo
 echo "All builds finished:"
