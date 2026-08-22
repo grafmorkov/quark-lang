@@ -159,7 +159,7 @@ OS ABI is a small, self-contained change. See
 
 ## Todo
 * Fix enums [x]
-* Fix for [ ]
+* Fix for [x]
 * Add library compilation [ ]
 
 ---
@@ -175,5 +175,3 @@ Porting Quant to your own OS or adding its ABI is explicitly welcome — see
 
 ## License
 This project is under the [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) licence.
-
-```

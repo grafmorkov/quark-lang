@@ -1057,6 +1057,11 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
             const uint32_t cond_label = new_label();
             const uint32_t body_label = new_label();
             const uint32_t end_label  = new_label();
+            // For a desugared 'for' loop, 'continue' must run the step before
+            // the condition re-check, so it targets a label placed right
+            // before the step instead of the loop head.
+            const bool has_step = node.for_step != nullptr;
+            const uint32_t continue_label = has_step ? new_label() : cond_label;
 
             emit(IRJump{ cond_label });
 
@@ -1067,12 +1072,18 @@ void IRGenerator::gen_stmt(const ast::Stmt& stmt) {
             emit(IRLabel{ body_label });
             current_terminated = false;
             break_labels.push_back(end_label);
-            continue_labels.push_back(cond_label);
+            continue_labels.push_back(continue_label);
             if (node.body) {
                 gen_block(*node.body);
             }
             break_labels.pop_back();
             continue_labels.pop_back();
+
+            if (has_step) {
+                emit(IRLabel{ continue_label });
+                (void)gen_expr(*node.for_step);
+                current_terminated = false;
+            }
 
             if (!current_terminated) {
                 emit(IRJump{ cond_label });

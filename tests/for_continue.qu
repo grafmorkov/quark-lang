@@ -1,0 +1,22 @@
+// Regression test: 'continue' inside a 'for' loop must execute the step
+// expression before re-checking the condition (C semantics).
+// If the step were skipped, this loop never advances past i == 3 and hangs.
+@entry i32 main() {
+    mut i32 count = 0;
+    for (mut i32 i = 0; i < 6; i++) {
+        if (i == 3) { continue; }
+        count = count + 1;
+    }
+
+    // plain while keeps jumping straight to the condition
+    mut i32 wcount = 0;
+    mut i32 j = 0;
+    while (j < 6) {
+        j = j + 1;
+        if (j == 3) { continue; }
+        wcount = wcount + 1;
+    }
+
+    if (count == 5 && wcount == 5) { return 0; }
+    return 1;
+}

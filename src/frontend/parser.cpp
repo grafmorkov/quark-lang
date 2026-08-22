@@ -640,14 +640,9 @@ ast::WhileStmt Parser::parse_while() {
 }
 
 ast::Stmt Parser::parse_for() {
-    // `for (init; cond; step) body` is desugared into:
-    //   {
-    //       init;
-    //       while (cond) {
-    //           body
-    //           step;
-    //       }
-    //   }
+    // `for (init; cond; step) body` is desugared into a WhileStmt that keeps
+    // the step in `for_step`: the loop re-checks `cond` after `body` + `step`,
+    // and `continue` jumps to `step` (C semantics), not to the condition.
     const SourceLocation loc = previous.loc;
 
     expect(TOKEN_LPAREN, "Expected '(' after for");
@@ -694,12 +689,8 @@ ast::Stmt Parser::parse_for() {
             while_body->stmts.push_back(stmt);
         }
     }
-    if (step) {
-        while_body->stmts.push_back(
-            memory::make<ast::Stmt>(ctx.ast_arena, ast::ExprStmt{ step })
-        );
-    }
     while_node.body = while_body;
+    while_node.for_step = step;
 
     block->stmts.push_back(
         memory::make<ast::Stmt>(ctx.ast_arena, ast::WhileStmt{ while_node })

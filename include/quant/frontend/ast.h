@@ -231,6 +231,7 @@ namespace quant::ast {
     struct WhileStmt {
         Expr* condition;
         Block* body;
+        Expr* for_step;  // step of a desugared 'for' loop; 'continue' runs it before re-checking the condition (nullptr for plain while)
     };
 
     struct BlockStmt {

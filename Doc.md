@@ -151,7 +151,7 @@ Rules:
 - `init` is either a variable declaration or an expression, both end with `;`. Since the loop counter is mutated by `step`, declare it with `mut` (unless the `step` only reads it).
 - `cond` may be omitted (treated as `true`).
 - `step` may be omitted.
-- Since `for` is literally the while loop above, `continue` skips to the condition check and does **not** run the `step`.
+- `continue` in a `for` loop runs the `step` before re-checking the condition (same as C).
 
 ### break / continue
 

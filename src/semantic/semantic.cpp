@@ -1585,6 +1585,10 @@ void SemanticAnalyzer::analyze_while(const ast::WhileStmt& stmt) {
     }
     --loop_depth;
     --break_depth;
+
+    if (stmt.for_step) {
+        analyze_expr(stmt.for_step);
+    }
 }
 
 void SemanticAnalyzer::check_condition(const ast::Expr* condition, const std::string& what) {

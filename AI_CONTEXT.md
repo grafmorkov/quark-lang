@@ -184,18 +184,18 @@ becomes:
 { init; while (cond) { body; step; } }
 ```
 
-**Important:** `continue` jumps to the condition check and does **not** execute `step`. This differs from C.
+**Important:** `continue` jumps to the **step expression**, executes it, then re-checks the condition. This matches C semantics.
 
 ```
 for (mut i32 i = 0; i < 10; i++) {
-    if (i == 3) continue;  // i is NOT incremented here
+    if (i == 3) continue;  // i IS incremented here (step runs), loop progresses
 }
 ```
 
 ### break / continue
 
 - `break` exits the nearest `while` or `switch`.
-- `continue` jumps to the nearest enclosing `while` condition.
+- `continue` jumps to the nearest enclosing loop's continue target: for a plain `while` this is the condition check; for a desugared `for` this is the step expression (the step runs, then the condition is re-checked).
 - Both are checked at compile time.
 
 ### switch / case / default
@@ -583,7 +583,7 @@ ZeroPoint is an AArch64 ELF OS with its own minimal ABI ("Linux-like, different 
 
 9. **All struct fields occupy 8 bytes (qword)** regardless of their declared type. This is relevant for sizeof calculations and memory layout.
 
-10. **`for` loop `continue` does not execute `step`.** The `for` loop is desugared at parse time, and `continue` jumps to the condition check.
+10. **`for` loop `continue` executes the step.** The `for` loop is desugared at parse time into a `WhileStmt` that keeps its step expression in `for_step`; IR generation places the continue label right before the step. Plain `while` loops still jump straight to the condition (tests/for_continue.qu).
 
 ---
 
@@ -785,7 +785,7 @@ Doc.md does not mention that all struct fields occupy 8 bytes regardless of thei
 
 ### 2. `for` loop `continue` behavior
 
-Doc.md correctly states that `continue` does not run the `step` in `for` loops, but this is easily confused with C semantics. The implementation (`ir_gen.cpp:1070`) confirms `continue` targets the condition label, not the step.
+`continue` in a `for` loop executes the step expression before re-checking the condition (C semantics). The desugaring keeps the step in `WhileStmt::for_step`, and IR generation places the continue label before it (tests/for_continue.qu).
 
 ### 3. `switch` on `bool` type
 
