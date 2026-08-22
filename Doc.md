@@ -858,6 +858,21 @@ qu file.qu --no-compile       # semantic analysis only
 
 The native backend generates machine code directly: x86-64 (ELF/PE32+) and AArch64 (ELF). No external assembler is required. Use `--target aarch64` (or `--target arm64`) to cross-compile for AArch64. Cross-linking uses `ld.lld` for AArch64 targets.
 
+### Backend selection (CMake) vs target selection (--target)
+
+The set of backends compiled into the compiler binary is fixed at CMake configure time
+with `QUANT_BACKENDS`; `--target` then selects one of the enabled targets per compilation:
+
+```
+cmake -B build -DQUANT_BACKENDS="x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint"
+```
+
+- Defaults: `x86_64-windows` when building on Windows, otherwise `x86_64-linux;aarch64-linux;aarch64-zeropoint`.
+- Only the enabled backends are compiled into the binary: an x86_64-only build contains no AArch64 code generator and no PE writer, a Windows-only build contains no ELF writer, and so on.
+- Canonical target names: `x86_64-linux`, `aarch64-linux`, `x86_64-windows`, `aarch64-zeropoint`. Short aliases (`x86_64`, `arm64`, ...) are still accepted.
+- An unknown target name fails with the list of known names; a known name that was not enabled in this build fails with the list of enabled backends and a reconfigure hint. There is no fallback to another backend.
+- Without `--target`, the compiler uses its host's native backend (if enabled). For cross-compilation-oriented builds the default can be changed at CMake time: `-DQUANT_DEFAULT_TARGET=aarch64-zeropoint` (must be one of `QUANT_BACKENDS`; validated at configure time).
+
 ZeroPoint (`--target aarch64-zeropoint`) produces a position-independent static-PIE executable (`ld.lld -pie --image-base=0x40000000`): ET_DYN, no interpreter, stock load address 0x40000000. Syscalls follow the ZeroPoint ABI — a single `str buffer` in X0, number in X8, `SVC #0`; the OS computes everything else. After `main` returns the program parks on `WFE` (exit is not implemented in the kernel yet). The kernel has no malloc yet (MMU only), so `region`/`alloc`, `std::heap`, `std::arena` and the format runtime (`as str`) are unavailable; syscalls outside the ABI set are rejected at compile time.
 
 Requires: CMake 3.20+, C++20 compiler.

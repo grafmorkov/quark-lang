@@ -107,6 +107,15 @@ Quant is not tied to a specific operating system. The `@syscall(N)` attribute lo
 to the raw syscall interface of the selected target, while the standard library
 automatically selects the appropriate OS implementation (`std/win/`, `std/zp/`, ...).
 
+Backends are chosen at CMake configure time; `--target` then picks one of the enabled
+ones at compile time (a known-but-disabled target fails with a clear error, no silent fallback):
+
+```bash
+cmake -B build -DQUANT_BACKENDS="x86_64-linux;aarch64-linux;aarch64-zeropoint"
+# optional: pick a different default target for builds without the host backend
+cmake -B build -DQUANT_BACKENDS="aarch64-zeropoint" -DQUANT_DEFAULT_TARGET="aarch64-zeropoint"
+```
+
 | Target | Flag | Output | Status | Notes |
 |--------|------|--------|--------|-------|
 | Linux x86-64 | *(default)* | ELF | supported | Syscall numbers use the x86-64 Linux ABI |

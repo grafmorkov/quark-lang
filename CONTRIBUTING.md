@@ -55,7 +55,12 @@ PRs adding its ABI are welcome.
 A minimal ABI port touches these places:
 
 1. `include/quant/backend/mc.h` - add the OS to `TargetOS`.
-2. `src/utils/options.cpp` - accept `--target <arch>-<os>` (or reuse an existing architecture).
+2. Target registry (`src/backend/targets.cpp`) - add the canonical `<arch>-<os>` name
+   and any aliases, plus the same name to `QUANT_KNOWN_BACKENDS` in `CMakeLists.txt`
+   so it can be enabled via `-DQUANT_BACKENDS=...`. If it introduces a new
+   architecture or executable format, extend the `QUANT_HAS_*` derivation in
+   `CMakeLists.txt` and guard its dispatch in `src/backend/native_backend.cpp` so
+   builds without this backend exclude its code entirely.
 3. Backend (`src/backend/aarch64_isel.cpp` / `src/backend/isel.cpp`) — syscall lowering:
    number mapping, argument registers, and `_start` behavior. See
    `AArch64ISel::map_syscall` for the ZeroPoint example.

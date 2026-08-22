@@ -31,18 +31,8 @@ int main(int argc, char **argv)
             return 1;
         }
 
-        #ifdef _WIN32
-            if (opts.target_arch == quant::codegen::mc::TargetArch::AARCH64) {
-                utils::logger::error("AArch64 target is not supported on Windows. Use Linux for AArch64 cross-compilation.");
-                return 1;
-            }
-        #endif
-
-        if (opts.target_os == quant::codegen::mc::TargetOS::ZeroPoint &&
-            opts.target_arch != quant::codegen::mc::TargetArch::AARCH64) {
-            utils::logger::error("ZeroPoint target requires AArch64. Use --target aarch64-zeropoint.");
-            return 1;
-        }
+        // Target selection is fully resolved by parse_args against the
+        // backends enabled at CMake configure time (QUANT_BACKENDS).
 
         auto start = high_resolution_clock::now();
 
@@ -124,7 +114,7 @@ int main(int argc, char **argv)
 
         if(opts.has_output) exe_path = opts.output_file;
 
-        #ifdef _WIN32
+        if (opts.target_os == quant::codegen::mc::TargetOS::Windows) {
             if (!exe_path.has_extension()) {
                 exe_path += ".exe";
             }
@@ -132,13 +122,13 @@ int main(int argc, char **argv)
             // Native backend: IR -> instruction selection -> machine code -> PE executable
             {
                 quant::codegen::NativeBackend nativeBackend;
-                auto pe_bytes = nativeBackend.generate(irgen.program, opts.target_arch);
+                auto pe_bytes = nativeBackend.generate(irgen.program, opts.target_arch, opts.target_os);
                 std::ofstream file(exe_path, std::ios::binary);
                 file.write(
                     reinterpret_cast<const char*>(pe_bytes.data()),
                     static_cast<std::streamsize>(pe_bytes.size()));
             }
-        #else
+        } else {
             std::filesystem::path obj_path = exe_path.string() + ".o";
 
             // Native backend: IR -> instruction selection -> machine code -> ELF object
@@ -168,7 +158,7 @@ int main(int argc, char **argv)
             }
 
             //std::filesystem::remove(obj_path);
-        #endif
+        }
 
         auto end = std::chrono::high_resolution_clock::now();
 

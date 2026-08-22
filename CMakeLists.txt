@@ -27,6 +27,60 @@ option(QUANT_ENABLE_LTO "Enable interprocedural optimization in Release builds" 
 option(QUANT_ENABLE_ASAN "Enable AddressSanitizer/UBSan in Debug builds" OFF)
 option(QUANT_ENABLE_TESTS "Build tests" OFF)
 
+# Backends compiled into the compiler binary. CMake answers
+# "what targets can this compiler build for?"; --target then picks one of the
+# enabled entries at compile time (see src/backend/targets.cpp).
+set(QUANT_KNOWN_BACKENDS "x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint")
+if(NOT DEFINED QUANT_BACKENDS OR QUANT_BACKENDS STREQUAL "")
+  if(WIN32)
+    set(QUANT_BACKENDS "x86_64-windows")
+  else()
+    set(QUANT_BACKENDS "x86_64-linux;aarch64-linux;aarch64-zeropoint")
+  endif()
+endif()
+foreach(_backend ${QUANT_BACKENDS})
+  if(NOT _backend IN_LIST QUANT_KNOWN_BACKENDS)
+    message(FATAL_ERROR
+      "Unknown backend '${_backend}' in QUANT_BACKENDS. Known backends: ${QUANT_KNOWN_BACKENDS}")
+  endif()
+endforeach()
+message(STATUS "Quant backends: ${QUANT_BACKENDS}")
+
+# Optional default target used when no --target is given on the command line.
+# By default the compiler picks its host-native backend; set this for
+# cross-compilation-oriented builds (e.g. a ZeroPoint-only compiler).
+set(QUANT_DEFAULT_TARGET "" CACHE STRING
+    "Default --target when none is passed (must be one of QUANT_BACKENDS)")
+if(QUANT_DEFAULT_TARGET)
+  if(NOT QUANT_DEFAULT_TARGET IN_LIST QUANT_KNOWN_BACKENDS)
+    message(FATAL_ERROR
+      "Unknown backend '${QUANT_DEFAULT_TARGET}' in QUANT_DEFAULT_TARGET. Known backends: ${QUANT_KNOWN_BACKENDS}")
+  endif()
+  if(NOT QUANT_DEFAULT_TARGET IN_LIST QUANT_BACKENDS)
+    message(FATAL_ERROR
+      "Default target '${QUANT_DEFAULT_TARGET}' must also be enabled in QUANT_BACKENDS (${QUANT_BACKENDS})")
+  endif()
+endif()
+
+# Derive feature flags from the backend list: only the selected architectures
+# and executable flavors are compiled into the binary at all.
+set(QUANT_HAS_X86_64 OFF)
+set(QUANT_HAS_AARCH64 OFF)
+set(QUANT_HAS_PE OFF)
+set(QUANT_HAS_ELF OFF)
+foreach(_backend ${QUANT_BACKENDS})
+  if(_backend MATCHES "^x86_64")
+    set(QUANT_HAS_X86_64 ON)
+  elseif(_backend MATCHES "^aarch64")
+    set(QUANT_HAS_AARCH64 ON)
+  endif()
+  if(_backend MATCHES "-windows$")
+    set(QUANT_HAS_PE ON)
+  else()
+    set(QUANT_HAS_ELF ON)
+  endif()
+endforeach()
+
 # Compiler warnings / flags, branched per compiler
 add_library(quant_compiler_flags INTERFACE)
 
@@ -91,7 +145,26 @@ add_custom_command(
 # into a sources list (cleaner separation, avoids surprises with IDE file lists).
 add_custom_target(quant_std_embed DEPENDS "${STD_EMBED_HEADER}")
 
-# Library libquant (C++ files)
+# Library libquant (C++ files).
+# Backend sources are compiled in only when a backend that needs them is
+# enabled: an x86_64-only build contains no AArch64 codegen and no PE writer.
+set(QUANT_BACKEND_SOURCES
+    src/backend/native_backend.cpp
+    src/backend/targets.cpp
+)
+if(QUANT_HAS_X86_64)
+  list(APPEND QUANT_BACKEND_SOURCES src/backend/isel.cpp src/backend/x86_64.cpp)
+endif()
+if(QUANT_HAS_AARCH64)
+  list(APPEND QUANT_BACKEND_SOURCES src/backend/aarch64_isel.cpp src/backend/aarch_64.cpp)
+endif()
+if(QUANT_HAS_ELF)
+  list(APPEND QUANT_BACKEND_SOURCES src/backend/elf_writer.cpp)
+endif()
+if(QUANT_HAS_PE)
+  list(APPEND QUANT_BACKEND_SOURCES src/backend/pe_writer.cpp)
+endif()
+
 add_library(libquant
     src/frontend/ast.cpp
     src/frontend/lexer.cpp
@@ -102,14 +175,8 @@ add_library(libquant
     src/ir/ir_gen.cpp
     src/ir/ir_dump.cpp
     src/modules/modules.cpp
+    ${QUANT_BACKEND_SOURCES}
     src/backend/fasmcodegen.cpp
-    src/backend/x86_64.cpp
-    src/backend/aarch_64.cpp
-    src/backend/aarch64_isel.cpp
-    src/backend/isel.cpp
-    src/backend/elf_writer.cpp
-    src/backend/pe_writer.cpp
-    src/backend/native_backend.cpp
     src/utils/file_manager.cpp
     src/utils/options.cpp
     src/utils/errors.cpp
@@ -147,6 +214,28 @@ target_include_directories(libquant
 target_compile_definitions(libquant PUBLIC
     QUANT_ROOT="${PROJECT_SOURCE_DIR}"
 )
+# QUANT_BACKENDS is a CMake list (semicolons); pass it to C++ as a
+# comma-separated string literal so no escaping survives the command line.
+list(JOIN QUANT_BACKENDS "," QUANT_BACKENDS_CSV)
+set(QUANT_BACKEND_DEFINES
+    "QUANT_ENABLED_BACKENDS=\"${QUANT_BACKENDS_CSV}\""
+)
+if(QUANT_HAS_X86_64)
+  list(APPEND QUANT_BACKEND_DEFINES QUANT_HAS_X86_64)
+endif()
+if(QUANT_HAS_AARCH64)
+  list(APPEND QUANT_BACKEND_DEFINES QUANT_HAS_AARCH64)
+endif()
+if(QUANT_HAS_ELF)
+  list(APPEND QUANT_BACKEND_DEFINES QUANT_HAS_ELF)
+endif()
+if(QUANT_HAS_PE)
+  list(APPEND QUANT_BACKEND_DEFINES QUANT_HAS_PE)
+endif()
+if(QUANT_DEFAULT_TARGET)
+  list(APPEND QUANT_BACKEND_DEFINES "QUANT_DEFAULT_TARGET=\"${QUANT_DEFAULT_TARGET}\"")
+endif()
+target_compile_definitions(libquant PUBLIC ${QUANT_BACKEND_DEFINES})
 target_link_libraries(libquant PUBLIC quant-alloc)
 
 # Executable qu (main.cpp)

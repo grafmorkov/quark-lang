@@ -12,10 +12,18 @@ enum class TargetArch : uint8_t {
 };
 
 // Target operating system / ABI. Determines the syscall layer and
-// executable flavor (see AArch64ISel, elf_writer and main.cpp linking).
+// executable flavor (see targets.h, AArch64ISel, elf/pe writers).
 enum class TargetOS : uint8_t {
     Linux,
+    Windows,
     ZeroPoint,  // AArch64-only: single-buffer syscalls, PIC, no exit yet.
+};
+
+// An (architecture, OS) pair identifying one compilation target.
+// See targets.h for the registry of known/enabled targets.
+struct Target {
+    TargetArch arch = TargetArch::X86_64;
+    TargetOS os = TargetOS::Linux;
 };
 
 enum class RelType : uint32_t {
