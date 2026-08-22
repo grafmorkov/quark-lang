@@ -9,9 +9,10 @@
 
 namespace quant::codegen {
 
-std::vector<uint8_t> NativeBackend::generate(const IRProgram& program, mc::TargetArch arch) {
+std::vector<uint8_t> NativeBackend::generate(const IRProgram& program, mc::TargetArch arch, mc::TargetOS os) {
     if (arch == mc::TargetArch::AARCH64) {
         AArch64ISel isel;
+        isel.target_os = os;
         isel.generate(program);
 #ifdef _WIN32
         return pe::write(isel.obj);

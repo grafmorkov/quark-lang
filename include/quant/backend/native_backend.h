@@ -10,7 +10,9 @@ namespace quant::codegen {
 
 // Full native pipeline: IR -> instruction selection -> machine code -> ELF object.
 struct NativeBackend {
-    std::vector<uint8_t> generate(const IRProgram& program, mc::TargetArch arch = mc::TargetArch::X86_64);
+    std::vector<uint8_t> generate(const IRProgram& program,
+                                  mc::TargetArch arch = mc::TargetArch::X86_64,
+                                  mc::TargetOS os = mc::TargetOS::Linux);
 };
 
 } // namespace quant::codegen

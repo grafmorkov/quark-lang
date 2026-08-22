@@ -340,9 +340,16 @@ void AArch64ISel::emit_call(const IRProgram& program, const IRFunction& fn, cons
 
 // Syscall stub
 
-// Remap x86-64 syscall numbers (embedded in IR) to AArch64 Linux syscall numbers.
-static uint32_t remap_syscall(uint32_t x86_nr) {
-    switch (x86_nr) {
+// Map the syscall number embedded in IR (@syscall(N)) to the target OS.
+//   Linux:     source numbers follow the x86-64 convention and are remapped
+//              to AArch64 Linux numbers here.
+//   ZeroPoint: numbers are ZeroPoint ABI numbers used as-is
+//              (write=0, read=1, open=10, exit=20). The stub passes the
+//              single buffer argument in X0; everything else (length,
+//              descriptor, mode) is computed by the OS.
+uint32_t AArch64ISel::map_syscall(uint32_t nr) const {
+    if (target_os == mc::TargetOS::ZeroPoint) return nr;
+    switch (nr) {
         case 0:   return 63;   // read
         case 1:   return 64;   // write
         case 2:   return 56;   // open
@@ -356,16 +363,16 @@ static uint32_t remap_syscall(uint32_t x86_nr) {
         case 60:  return 93;   // exit
         case 74:  return 82;   // fsync
         case 257: return 56;   // openat (close=57, openat on x86=257 -> aarch64=56)
-        default:  return x86_nr; // pass-through for unknown
+        default:  return nr;   // pass-through for unknown
     }
 }
 
 void AArch64ISel::emit_syscall_stub(const IRFunction& fn) {
     ensure_symbol(abi_name(fn), mc::SymBind::Global, mc::SymType::Func,
                   false, 0, text.code.size(), 0);
-    // AArch64 Linux syscall: X8 = number, X0-X5 = args, SVC #0, result in X0.
+    // Syscall: X8 = number, X0-X5 = args, SVC #0, result in X0.
     // No register shuffling needed (unlike x86-64 where RCX -> R10).
-    text.mov_imm64(aarch64::X8, static_cast<uint64_t>(remap_syscall(fn.syscall_number)));
+    text.mov_imm64(aarch64::X8, static_cast<uint64_t>(map_syscall(static_cast<uint32_t>(fn.syscall_number))));
     text.svc();
     text.ret();
 }
@@ -378,6 +385,10 @@ void AArch64ISel::emit_syscall_stub(const IRFunction& fn) {
 //   [ptr+16] = capacity
 
 void AArch64ISel::emit_region_begin(const IRRegionBegin& x) {
+    // ZeroPoint has no mmap/munmap yet, so regions cannot be lowered.
+    if (target_os == mc::TargetOS::ZeroPoint) {
+        utils::logger::crash("region alloc is not supported on the ZeroPoint target");
+    }
     // Load region struct pointer into X9.
     text.ldr_imm(aarch64::X9, aarch64::X29, local_offset(x.region_local, {}));
 
@@ -846,10 +857,16 @@ void AArch64ISel::emit_start(const IRProgram& program) {
     }
     // BL main
     text.bl(function_name(*entry));
-    // MOV X0, X0 (result already in X0)
-    // MOV X8, #93; SVC #0  (exit syscall)
-    text.mov_imm64(aarch64::X8, 93);
-    text.svc();
+    if (target_os == mc::TargetOS::ZeroPoint) {
+        // ZeroPoint has no exit syscall yet (20 is reserved but unimplemented):
+        // park the core after main returns. PIC-safe: PC-relative loop only.
+        text.wfe();
+        text.b(-4);  // branch to self (WFE)
+    } else {
+        // MOV X8, #93; SVC #0  (exit syscall)
+        text.mov_imm64(aarch64::X8, 93);
+        text.svc();
+    }
 }
 
 void AArch64ISel::emit_strings(const IRProgram& program) {

@@ -45,6 +45,37 @@ AI-generated code must be understood, reviewed, built, and tested before submiss
 
 Use `AI_CONTEXT.md` as the main context for AI tools working with Quant.
 
+## Adding an OS ABI
+
+Quant is OS-agnostic by design: the IR carries raw syscall numbers, while each
+target defines how they are lowered and which standard library implementation is used.
+If your OS is not listed in the [README target table](README.md#supported-targets),
+PRs adding its ABI are welcome.
+
+A minimal ABI port touches these places:
+
+1. `include/quant/backend/mc.h` - add the OS to `TargetOS`.
+2. `src/utils/options.cpp` - accept `--target <arch>-<os>` (or reuse an existing architecture).
+3. Backend (`src/backend/aarch64_isel.cpp` / `src/backend/isel.cpp`) — syscall lowering:
+   number mapping, argument registers, and `_start` behavior. See
+   `AArch64ISel::map_syscall` for the ZeroPoint example.
+4. Standard library override in `std/<os>/` (e.g. `std/zp/io/io.qu`) - use the same
+   module name (`module "std::io";`). Implementations are resolved per target
+   automatically. Follow the pattern of `std/win/`.
+5. Linking - executable format and linker flags in `src/main.cpp` if your OS differs
+   from standard static ELF.
+6. Semantic restrictions (optional) - if your ABI exposes a limited syscall surface,
+   validate allowed `@syscall(N)` numbers in `src/semantic/semantic.cpp` so invalid
+   syscalls fail at compile time rather than inside the kernel.
+
+Then:
+
+1. Add tests. A hello-world program under the new target is enough to start.
+2. Update the target tables in `README.md`, `Doc.md`, and `AI_CONTEXT.md`.
+
+Keep new ABIs behind their own `--target` value. Never change the behavior of
+existing targets.
+
 ## Pull Requests
 
 Before submitting a PR:

@@ -1443,6 +1443,26 @@ void SemanticAnalyzer::analyze_func(const ast::FuncStmt& func) {
                 ctx.errors.add("@syscall argument must be an integer literal: " + func.name);
                 return;
             }
+            if (num->value < 0) {
+                ctx.errors.add("@syscall number must be non-negative: " + func.name);
+                return;
+            }
+            // The ZeroPoint ABI surface is intentionally tiny; reject anything
+            // outside it so undefined syscalls never reach the kernel.
+            if (ctx.target_os == codegen::mc::TargetOS::ZeroPoint) {
+                switch (num->value) {
+                    case 0:   // write
+                    case 1:   // read
+                    case 10:  // open (read-only)
+                    case 20:  // exit (reserved, unimplemented in the kernel yet)
+                        break;
+                    default:
+                        ctx.errors.add("@syscall(" + std::to_string(num->value) +
+                                       ") is not part of the ZeroPoint ABI "
+                                       "(0=write, 1=read, 10=open, 20=exit): " + func.name);
+                        return;
+                }
+            }
         }
         if (attr.name == "import") {
             if (!func.is_extern) {

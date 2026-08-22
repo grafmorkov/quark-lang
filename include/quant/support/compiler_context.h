@@ -11,6 +11,7 @@
 #include "quant/support/alloc.h"
 #include "quant/semantic/symbol_table.h"
 #include "quant/modules/module.h"
+#include "quant/backend/mc.h"
 #include "utils/errors.h"
 
 namespace quant {
@@ -26,6 +27,10 @@ namespace quant {
         SourceLocation srcloc;
 
         std::filesystem::path root_path;
+
+        // Target OS/ABI (set from --target). Selects the stdlib override
+        // tree (std/zp/ for ZeroPoint) and the syscall lowering layer.
+        codegen::mc::TargetOS target_os = codegen::mc::TargetOS::Linux;
 
         // Concrete instantiations of generic functions (monomorphization)
         struct GenericInstantiation {

@@ -13,6 +13,7 @@ using namespace utils::logger;
 namespace utils::options {
 
     using quant::codegen::mc::TargetArch;
+    using quant::codegen::mc::TargetOS;
 
     struct Options {
         bool emit_ir = false;
@@ -23,6 +24,7 @@ namespace utils::options {
         std::string output_file;
         bool has_output = false;
         TargetArch target_arch = TargetArch::X86_64;
+        TargetOS target_os = TargetOS::Linux;
     };
 
     enum class Flag {

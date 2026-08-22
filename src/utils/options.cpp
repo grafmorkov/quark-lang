@@ -28,15 +28,20 @@ namespace utils::options{
 
             if (arg == "--target") {
                 if (i + 1 >= argc) {
-                    throw std::runtime_error("Option '--target' requires a value (x86_64 or aarch64)");
+                    throw std::runtime_error("Option '--target' requires a value (x86_64, aarch64 or aarch64-zeropoint)");
                 }
                 std::string value = argv[++i];
                 if (value == "x86_64" || value == "x86-64") {
                     opts.target_arch = TargetArch::X86_64;
+                    opts.target_os = TargetOS::Linux;
                 } else if (value == "aarch64" || value == "arm64") {
                     opts.target_arch = TargetArch::AARCH64;
+                    opts.target_os = TargetOS::Linux;
+                } else if (value == "aarch64-zeropoint" || value == "arm64-zeropoint") {
+                    opts.target_arch = TargetArch::AARCH64;
+                    opts.target_os = TargetOS::ZeroPoint;
                 } else {
-                    throw std::runtime_error("Unknown target: '" + value + "'. Supported: x86_64, aarch64");
+                    throw std::runtime_error("Unknown target: '" + value + "'. Supported: x86_64, aarch64, aarch64-zeropoint");
                 }
                 continue;
             }

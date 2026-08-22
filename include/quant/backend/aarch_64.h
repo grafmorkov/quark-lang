@@ -223,6 +223,7 @@ public:
 
     // System
     void svc(uint16_t imm = 0);          // SVC #imm (syscall)
+    void wfe();                          // WFE (wait for event)
     void nop();
 };
 

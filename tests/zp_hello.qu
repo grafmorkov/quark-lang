@@ -1,0 +1,7 @@
+// ZeroPoint smoke test: single-buffer syscalls.
+load "std::io";
+
+@entry i32 main() {
+    std::io::print("hello zeropoint\n");
+    return 0;
+}

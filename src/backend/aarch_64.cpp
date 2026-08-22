@@ -577,4 +577,9 @@ void Emitter::nop() {
     emit32(0xD503201Fu);
 }
 
+void Emitter::wfe() {
+    // WFE = HINT #2
+    emit32(0xD503205Fu);
+}
+
 } // namespace quant::codegen::aarch64

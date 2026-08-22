@@ -38,9 +38,16 @@ int main(int argc, char **argv)
             }
         #endif
 
+        if (opts.target_os == quant::codegen::mc::TargetOS::ZeroPoint &&
+            opts.target_arch != quant::codegen::mc::TargetArch::AARCH64) {
+            utils::logger::error("ZeroPoint target requires AArch64. Use --target aarch64-zeropoint.");
+            return 1;
+        }
+
         auto start = high_resolution_clock::now();
 
         quant::CompilerContext ctx;
+        ctx.target_os = opts.target_os;
 
         {
             ctx.root_path = utils::io::get_executable_directory();
@@ -63,7 +70,11 @@ int main(int argc, char **argv)
 
         // Always compile the pure-Quant format runtime (used by `as str` casts).
         // It ships embedded in the binary; fall back to the source tree in dev builds.
-        if (mm.load_embedded("std::format") == nullptr) {
+        // Skipped on ZeroPoint: format depends on std::heap, and the ZeroPoint
+        // ABI has no allocation syscalls yet (kernel malloc is TODO), so the
+        // runtime is unusable there and its mmap syscalls are invalid.
+        if (opts.target_os != quant::codegen::mc::TargetOS::ZeroPoint &&
+            mm.load_embedded("std::format") == nullptr) {
             auto format_path = ctx.root_path / "std" / "format" / "format.qu";
             if (std::filesystem::exists(format_path)) {
                 mm.load_module(format_path);
@@ -133,17 +144,24 @@ int main(int argc, char **argv)
             // Native backend: IR -> instruction selection -> machine code -> ELF object
             {
                 quant::codegen::NativeBackend nativeBackend;
-                auto elf_bytes = nativeBackend.generate(irgen.program, opts.target_arch);
+                auto elf_bytes = nativeBackend.generate(irgen.program, opts.target_arch, opts.target_os);
                 std::ofstream file(obj_path, std::ios::binary);
                 file.write(
                     reinterpret_cast<const char*>(elf_bytes.data()),
                     static_cast<std::streamsize>(elf_bytes.size()));
             }
 
-            // Link with ld
+            // Link with ld (x86-64) or ld.lld (AArch64).
             const char* ld_name = (opts.target_arch == quant::codegen::mc::TargetArch::AARCH64)
                 ? "ld.lld" : "ld";
             std::string link_cmd = std::string(ld_name) + " -o " + exe_path.string() + " " + obj_path.string();
+            if (opts.target_os == quant::codegen::mc::TargetOS::ZeroPoint) {
+                // ZeroPoint: position-independent ET_DYN, no interpreter.
+                // (lld has no GNU-style -static-pie; -pie on a fully static
+                // input produces the same static-PIE image.)
+                // Stock load address is 0x40000000; PIC keeps it movable.
+                link_cmd += " -pie --image-base=0x40000000";
+            }
             if (std::system(link_cmd.c_str()) != 0) {
                 utils::logger::error("link failed\n");
                 return 1;

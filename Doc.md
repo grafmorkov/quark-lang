@@ -543,13 +543,13 @@ std::io::exit(0);
 extern void print(str text);
 ```
 
-Functions marked with `@syscall(N)` are lowered to the Linux syscall with number N:
+Functions marked with `@syscall(N)` are lowered to a raw syscall with number N (remapped per target; on ZeroPoint the number is the ABI number):
 
 ```
 @syscall(1) extern i64 sys_write(i64 fd, str buf, i64 len);
 ```
 
-The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) is written in pure Quant: on Linux on top of syscalls, on Windows on top of `@import` (WinAPI).
+The standard library (`std::io`, `std::heap`, `std::arena`, `std::string`, ...) is written in pure Quant: on Linux on top of syscalls, on Windows on top of `@import` (WinAPI), on ZeroPoint (`--target aarch64-zeropoint`) on top of single-buffer syscalls (`std/zp/io/io.qu`).
 
 ### `using`
 
@@ -585,7 +585,7 @@ Supported attributes:
 | `@private` | function / variable / field / struct | 0    | Hide symbol from other modules                       |
 | `@hide`    | any top-level declaration            | 0    | Make all following declarations private by default   |
 | `@unhide`  | any top-level declaration            | 0    | Reset @hide — following declarations are public      |
-| `@syscall` | function (extern only)               | 1    | Lower function to Linux syscall `N`                  |
+| `@syscall` | function (extern only)               | 1    | Lower function to raw syscall `N` (remapped per target) |
 | `@export`  | function                             | 1    | Use `name` as the function symbol in the object file |
 | `@import`  | function (extern only)               | 1-2  | Import a function from a Windows DLL                 |
 
@@ -707,7 +707,7 @@ i32 c = 3;           // public
 
 ### `@syscall`
 
-Declares an `extern` function implemented as a raw Linux syscall. The argument is the syscall number. (Windows uses `@import` instead.)
+Declares an `extern` function implemented as a raw syscall. The argument is the syscall number. (Windows uses `@import` instead.)
 
 ```
 @syscall(1) extern i64 sys_write(i64 fd, str buf, i64 len);
@@ -718,8 +718,19 @@ The generated wrapper follows the System V calling convention: arguments arrive 
 `rdi, rsi, rdx, rcx, r8, r9` (up to 6), then `rcx` is moved to `r10`, the syscall
 number is loaded into `rax`, and `syscall` is executed. The result is returned in `rax`.
 
-On AArch64, syscall numbers are remapped from x86-64 to Linux AArch64 at codegen time.
+On AArch64, source numbers follow the x86-64 convention and are remapped to Linux AArch64 at codegen time.
 Arguments use `x0-x5`, the syscall number goes into `x8`, and `svc #0` is executed.
+
+On the ZeroPoint target the number is used as-is (ZeroPoint ABI: write=0, read=1,
+open=10, exit=20). ZeroPoint syscalls take a single `str buffer` argument in `x0`;
+everything else (length, descriptor, mode) is computed by the OS.
+
+```
+// ZeroPoint ABI (std::zp::io / std/zp/io/io.qu)
+@syscall(0)  extern void sys_print(str buffer);
+@syscall(1)  extern void sys_read(str buffer);
+@syscall(10) extern void sys_open(str buffer);   // read-only
+```
 
 ```
 extern void print(str text);   // error: @syscall requires extern
@@ -838,6 +849,7 @@ void main() {
 ```
 qu file.qu -o output          # compile to native binary (ELF/PE32+)
 qu file.qu --target aarch64   # cross-compile for AArch64 (ELF)
+qu file.qu --target aarch64-zeropoint   # ZeroPoint OS (AArch64, static-PIE ELF)
 qu file.qu --emit-ir          # print intermediate representation
 qu file.qu --emit-asm         # print generated assembly
 qu file.qu --time             # print compilation time
@@ -845,6 +857,8 @@ qu file.qu --no-compile       # semantic analysis only
 ```
 
 The native backend generates machine code directly: x86-64 (ELF/PE32+) and AArch64 (ELF). No external assembler is required. Use `--target aarch64` (or `--target arm64`) to cross-compile for AArch64. Cross-linking uses `ld.lld` for AArch64 targets.
+
+ZeroPoint (`--target aarch64-zeropoint`) produces a position-independent static-PIE executable (`ld.lld -pie --image-base=0x40000000`): ET_DYN, no interpreter, stock load address 0x40000000. Syscalls follow the ZeroPoint ABI — a single `str buffer` in X0, number in X8, `SVC #0`; the OS computes everything else. After `main` returns the program parks on `WFE` (exit is not implemented in the kernel yet). The kernel has no malloc yet (MMU only), so `region`/`alloc`, `std::heap`, `std::arena` and the format runtime (`as str`) are unavailable; syscalls outside the ABI set are rejected at compile time.
 
 Requires: CMake 3.20+, C++20 compiler.
 

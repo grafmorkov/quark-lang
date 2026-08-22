@@ -379,7 +379,8 @@ extern void print(str text);
 @syscall(1) extern i64 sys_write(i64 fd, str buf, i64 len);
 ```
 
-- `@syscall(N)` uses x86-64 Linux syscall numbers in the source. The AArch64 backend remaps them automatically.
+- `@syscall(N)` source-level numbers follow the x86-64 Linux convention; the AArch64 backend remaps them automatically.
+- On the ZeroPoint target (`--target aarch64-zeropoint`) the number N is used as-is (ZeroPoint ABI: write=0, read=1, open=10, exit=20).
 
 ---
 
@@ -396,7 +397,7 @@ Syntax: `@name` or `@name(args)` before a declaration.
 | `@private` | function, variable, field, struct    | 0    | Hidden from other modules                      |
 | `@hide`    | any top-level declaration            | 0    | All following declarations private by default  |
 | `@unhide`  | any top-level declaration            | 0    | Reset @hide — following are public             |
-| `@syscall` | function (extern only)               | 1    | Lower to Linux syscall N                       |
+| `@syscall` | function (extern only)               | 1    | Lower to a raw syscall N (remapped per target) |
 | `@export`  | function                             | 1    | Fixed symbol name in object file               |
 | `@import`  | function (extern only)               | 1-2  | Import from Windows DLL                        |
 
@@ -483,7 +484,7 @@ All stdlib is written in pure Quant. Key modules:
 | `std::vector` | Generic `Vec<T>` backed by heap                |
 | `std::types`  | `option<T>`, `either<L,R>`, `pair<A,B>`, `slice<T>`, `result<T,E>` |
 
-On Linux, I/O uses `@syscall`. On Windows, `@import` for WinAPI.
+On Linux, I/O uses `@syscall`. On Windows, `@import` for WinAPI. On ZeroPoint (`std/zp/io/io.qu`), single-buffer syscalls: `print(str)`, `read(str)`, `open(str)` — the OS computes everything except the buffer.
 
 `option<T>` uses `@guard(has_value)` on the value field. `either<L,R>` uses guards on both variants.
 
@@ -533,13 +534,25 @@ Functions returning structs pass a hidden pointer as the first argument. The cal
 
 ### Multi-target support
 
-The compiler targets x86-64 (default) and AArch64 (`--target aarch64`). Both backends share the same IR but differ in:
+The compiler targets x86-64 (default), AArch64 (`--target aarch64`) and ZeroPoint AArch64 (`--target aarch64-zeropoint`). Backends share the same IR but differ in:
 
 - **Calling convention**: x86-64 uses RDI/RSI/RDX/RCX/R8/R9; AArch64 uses X0-X7 with X8 for sret (AAPCS64).
-- **Syscalls**: IR embeds x86-64 syscall numbers; the AArch64 backend remaps them (e.g., `write=1` → `64`, `mmap=9` → `222`).
+- **Syscalls**: IR embeds x86-64 syscall numbers; the AArch64 Linux backend remaps them (e.g., `write=1` → `64`, `mmap=9` → `222`). The ZeroPoint backend passes numbers through unchanged.
 - **Stack frame**: x86-64 grows down (RBP-based); AArch64 uses SUB/ADD SP with FP+16-based local addressing.
 - **Registers**: x86-64 has 16 GPRs; AArch64 has 31 GPRs. Both use stack-based lowering for temps.
 - **ISA encoding**: x86-64 is variable-length; AArch64 is fixed 32-bit with specific bitfield layouts.
+
+### ZeroPoint target
+
+ZeroPoint is an AArch64 ELF OS with its own minimal ABI ("Linux-like, different syscalls"):
+
+- **Syscalls**: one `str buffer` argument in X0, number in X8, `SVC #0`. Numbers: write=0, read=1, open=10, exit=20. Everything except the buffer (length, descriptor, mode) is computed by the OS; `open` is read-only and returns nothing (the OS prints/stores the contents itself).
+- **Output**: static-PIE (`ld.lld -pie --image-base=0x40000000`), ET_DYN, no interpreter; stock load address 0x40000000.
+- **_start**: after `main` returns it parks the core (`WFE` + branch-to-self loop) because exit(20) is not implemented in the kernel yet.
+- **Regions**: `region`/`alloc` are rejected at codegen time (no mmap/munmap in the ABI yet).
+- **Heap**: the kernel has no malloc yet (MMU exists, allocation syscalls are TODO). Any `@syscall(N)` outside the ABI set is a compile-time error, so loading `std::heap`/`std::arena` fails cleanly instead of emitting undefined syscalls.
+- **Format runtime**: `std::format` is not loaded on this target (`as str` casts fail at link time with undefined `qk_format_*`) until the kernel provides allocation.
+- **Stdlib override**: `load "std::io"` resolves to `std/zp/io/io.qu` when the target is ZeroPoint (same pattern as the Windows `std/win/` override).
 
 ---
 

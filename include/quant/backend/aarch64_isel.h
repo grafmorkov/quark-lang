@@ -16,6 +16,9 @@ struct AArch64ISel {
     aarch64::Emitter text;
     mc::Object obj;
 
+    // Target OS/ABI. Defaults to Linux; set before generate().
+    mc::TargetOS target_os = mc::TargetOS::Linux;
+
     void generate(const IRProgram& program);
 
 private:
@@ -57,6 +60,7 @@ private:
     void emit_inst(const IRProgram& program, const IRFunction& fn, const IRInst& inst);
     void emit_call(const IRProgram& program, const IRFunction& fn, const IRCall& x);
     void emit_syscall_stub(const IRFunction& fn);
+    uint32_t map_syscall(uint32_t nr) const;
     void emit_region_begin(const IRRegionBegin& x);
     void emit_region_alloc(const IRRegionAlloc& x, const IRFunction& fn);
     void emit_region_end(const IRRegionEnd& x);

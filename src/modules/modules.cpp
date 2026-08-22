@@ -129,6 +129,11 @@ Module* ModuleManager::load_embedded_module(const std::string& imp) {
     candidates.emplace_back("std/win/" + module_name_to_rel_path(rest), false);
     candidates.emplace_back("std/win/" + rest, true);
 #endif
+    // ZeroPoint target: syscall-based stdlib override (e.g. std::io -> std/zp/io).
+    if (ctx.target_os == codegen::mc::TargetOS::ZeroPoint) {
+        candidates.emplace_back("std/zp/" + module_name_to_rel_path(rest), false);
+        candidates.emplace_back("std/zp/" + rest, true);
+    }
     candidates.emplace_back("std/" + module_name_to_rel_path(rest), false);
     candidates.emplace_back("std/" + rest, true);
 
@@ -317,9 +322,8 @@ void ModuleManager::build_graph(Module* entry) {
             }
 
             // 2. Filesystem fallback (user modules, dev std overrides).
-            if (!dep)
+            if (!dep) {
 #ifdef _WIN32
-            {
                 // Windows native backend: std modules are implemented with @import
                 // and live in <root>/std/win/ (e.g. "std::io" -> std/win/io/io.qu).
                 if (imp.rfind("std::", 0) == 0) {
@@ -338,11 +342,29 @@ void ModuleManager::build_graph(Module* entry) {
                         }
                     }
                 }
-                // Pure-Quant std modules without a Windows override (e.g. std::string,
-                // std::vector) fall back to the shared std/ tree.
-                if (dep == nullptr)
 #endif
-                {
+                // ZeroPoint native backend: syscall-based stdlib override lives
+                // in <root>/std/zp/ (e.g. "std::io" -> std/zp/io/io.qu).
+                if (dep == nullptr && ctx.target_os == codegen::mc::TargetOS::ZeroPoint &&
+                    imp.rfind("std::", 0) == 0) {
+                    fs::path rest = module_name_to_path(imp.substr(5)); // "io.qu"
+                    fs::path zp_root = ctx.root_path / "std" / "zp";
+                    fs::path primary = zp_root / rest;
+                    fs::path dir = zp_root / rest.parent_path() / rest.stem();
+
+                    if (fs::exists(primary)) {
+                        dep = load_module(primary);
+                    } else if (fs::exists(dir) && fs::is_directory(dir)) {
+                        for (const auto& dirent : fs::directory_iterator(dir)) {
+                            if (dirent.path().extension() != ".qu") continue;
+                            auto* m = load_module(dirent.path());
+                            if (m->name == imp) dep = m;
+                        }
+                    }
+                }
+                // Pure-Quant std modules without a target override (e.g.
+                // std::string, std::vector) fall back to the shared std/ tree.
+                if (dep == nullptr) {
                     // Try loading as module name (e.g. "std::io")
                     fs::path mod_rel = module_name_to_path(imp);     // e.g. "std/io.qu"
                     fs::path mod_dir_rel = mod_rel.parent_path() / mod_rel.stem(); // e.g. "std/io"
@@ -373,9 +395,7 @@ void ModuleManager::build_graph(Module* entry) {
                         if (dep) break;
                     }
                 }
-#ifdef _WIN32
             }
-#endif
 
             if (!dep) {
                 ctx.errors.add("Unknown imported module: " + imp);

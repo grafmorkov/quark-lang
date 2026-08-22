@@ -1,10 +1,10 @@
 # Quant
 
-Quant is an experimental systems programming language focused on explicit state,
-predictable semantics, and transparent memory management.
+Quant is an OS-agnostic systems programming language.
 
-The compiler uses a native backend (IR -> x86-64 machine code) on both platforms:
-ELF executables on Linux, PE32+ executables on Windows. No external assembler is needed.
+The compiler uses a native backend (IR -> machine code, no external assembler):
+ELF executables on Linux and other ELF-based OSes, PE32+ on Windows.
+x86-64 and AArch64 are supported; third-party OS ABIs are welcome (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 > Note: Quant is still in development and not everything is done
 
@@ -54,12 +54,20 @@ Load modules -> AST -> semantic analysis -> IR -> native binary
 
 ## Features
 
-* minimal hidden behaviour
-* attributes
-* explicit behaviour
-* arena-based compiler memory management
-* stdlib written in pure Quant (io, format, heap, arena, vector, string)
-* Windows stdlib via `@import` (WinAPI), no assembly runtime
+* OS-agnostic, with support for third-party operating systems
+* Minimal hidden behavior
+* Explicit behavior
+* Attributes
+* Arena-based compiler memory management
+* Standard library written entirely in Quant
+  - `io`
+  - `format`
+  - `heap`
+  - `arena`
+  - `vector`
+  - `string`
+  - etc.
+* Windows standard library through `@import` and WinAPI, with no assembly runtime
 
 ---
 
@@ -91,6 +99,24 @@ Compile to a native executable:
 ```
 
 Other options: `--emit-ir`, `--emit-asm`, `--no-compile`, `--time`.
+
+---
+## Supported Targets
+
+Quant is not tied to a specific operating system. The `@syscall(N)` attribute lowers
+to the raw syscall interface of the selected target, while the standard library
+automatically selects the appropriate OS implementation (`std/win/`, `std/zp/`, ...).
+
+| Target | Flag | Output | Status | Notes |
+|--------|------|--------|--------|-------|
+| Linux x86-64 | *(default)* | ELF | supported | Syscall numbers use the x86-64 Linux ABI |
+| Linux AArch64 | `--target aarch64` | ELF | supported | Syscall numbers are mapped automatically |
+| Windows x86-64 | *(native on Windows)* | PE32+ | supported | WinAPI via `@import`, no direct syscalls |
+| [ZeroPoint](https://github.com/Operator-about/ZeroPoint) | `--target aarch64-zeropoint` | static-PIE ELF | experimental | Custom ABI with single-buffer syscalls, base `0x40000000` |
+
+Quant can target custom operating systems and architectures as well. Adding a new
+OS ABI is a small, self-contained change. See
+[CONTRIBUTING.md -> Adding an OS ABI](CONTRIBUTING.md).
 
 ---
 
@@ -132,6 +158,9 @@ Other options: `--emit-ir`, `--emit-asm`, `--no-compile`, `--time`.
 ## Contributing
 
 Contributions related to compilers and systems programming are welcome.
+
+Porting Quant to your own OS or adding its ABI is explicitly welcome — see
+[CONTRIBUTING.md → Adding an OS ABI](CONTRIBUTING.md).
 
 ---
 

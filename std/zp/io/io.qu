@@ -1,0 +1,50 @@
+// std::io - ZeroPoint implementation for the native (ELF) backend.
+//
+// ZeroPoint ABI (AArch64): every syscall takes a single `str buffer`
+// argument in X0; the syscall number goes to X8, SVC #0. Everything
+// else (length, descriptor, mode) is computed by the OS.
+//
+// Syscall numbers:
+//   0  - write (print)
+//   1  - read
+//   10 - open (read-only: prints the file/folder contents and stores
+//        them in an OS-owned global buffer that is cleared afterwards;
+//        returns nothing)
+//   20 - exit (reserved, not implemented in the kernel yet)
+//
+// Usage:
+//   load "std::io";
+//
+//   @entry i32 main() {
+//       std::io::print("hello\n");
+//       return 0;
+//   }
+
+module "std::io";
+
+@syscall(0) extern void sys_print(str buffer);
+@syscall(1) extern void sys_read(str buffer);
+@syscall(10) extern void sys_open(str buffer);
+
+// print - print a null-terminated string. The OS computes the length.
+void print(str text) {
+    sys_print(text);
+}
+
+// println - print a string followed by a newline.
+void println(str text) {
+    print(text);
+    print("\n");
+}
+
+// read_line - read input into a null-terminated string buffer.
+// The OS decides how much is read and null-terminates the buffer.
+void read(str buffer) {
+    sys_read(buffer);
+}
+
+// cat - show a file or folder contents (read-only open).
+// The OS prints the contents itself; nothing is returned.
+void open(str path) {
+    sys_open(path);
+}
