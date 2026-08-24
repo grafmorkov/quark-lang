@@ -1,11 +1,13 @@
 #pragma once
 #include <iostream>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace utils::colors {
 
 #ifdef _WIN32
-#include <windows.h>
-
 inline void set_color(WORD color) {
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color | FOREGROUND_INTENSITY);
 }

@@ -305,14 +305,10 @@ namespace {
 
         const auto& callee = program.functions[x.func_id];
         const std::size_t n = x.args.size();
+        const bool win_cc = (target_os == mc::TargetOS::Windows);
 
-#ifdef _WIN32
-        constexpr std::size_t max_reg = 4;
-        constexpr std::size_t shadow = 32;
-#else
-        constexpr std::size_t max_reg = 6;
-        constexpr std::size_t shadow = 0;
-#endif
+        const std::size_t max_reg = win_cc ? 4 : 6;
+        const std::size_t shadow = win_cc ? 32 : 0;
         const std::size_t stack_count = (n > max_reg) ? (n - max_reg) : 0;
         const std::size_t frame = shadow + stack_count * 8;
 
@@ -329,17 +325,17 @@ namespace {
         }
 
         // register args
-#ifdef _WIN32
-        static const char* const win_regs[] = {"rcx", "rdx", "r8", "r9"};
-        for (std::size_t i = 0; i < n && i < max_reg; ++i) {
-            emit_line("    mov " + std::string(win_regs[i]) + ", qword " + temp_slot(x.args[i], fn));
+        if (win_cc) {
+            static const char* const win_regs[] = {"rcx", "rdx", "r8", "r9"};
+            for (std::size_t i = 0; i < n && i < max_reg; ++i) {
+                emit_line("    mov " + std::string(win_regs[i]) + ", qword " + temp_slot(x.args[i], fn));
+            }
+        } else {
+            static const char* const linux_regs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+            for (std::size_t i = 0; i < n && i < max_reg; ++i) {
+                emit_line("    mov " + std::string(linux_regs[i]) + ", qword " + temp_slot(x.args[i], fn));
+            }
         }
-#else
-        static const char* const linux_regs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
-        for (std::size_t i = 0; i < n && i < max_reg; ++i) {
-            emit_line("    mov " + std::string(linux_regs[i]) + ", qword " + temp_slot(x.args[i], fn));
-        }
-#endif
 
         emit_line("    call " + abi_name(callee));
 
@@ -672,24 +668,25 @@ namespace {
     std::string FasmCodeGenerator::generate(const IRProgram& program) {
         out.str("");
         out.clear();
+        const bool win = (target_os == mc::TargetOS::Windows);
 
-#ifdef _WIN32
-        emit_line("format PE64 console");
-        emit_line("entry start");
-        emit_line();
-        emit_line("section '.text' code readable executable");
-#else
-        emit_line("format ELF64");
-        emit_line("section '.text' executable");
-#endif
-#ifndef _WIN32
-        for (const auto& fn : program.functions) {
-            if (fn.is_extern && fn.syscall_number < 0) {
-                emit_line("extrn " + abi_name(fn));
-            }
+        if (win) {
+            emit_line("format PE64 console");
+            emit_line("entry start");
+            emit_line();
+            emit_line("section '.text' code readable executable");
+        } else {
+            emit_line("format ELF64");
+            emit_line("section '.text' executable");
         }
-        emit_line("public _start");
-#endif
+        if (!win) {
+            for (const auto& fn : program.functions) {
+                if (fn.is_extern && fn.syscall_number < 0) {
+                    emit_line("extrn " + abi_name(fn));
+                }
+            }
+            emit_line("public _start");
+        }
         for (const auto& fn : program.functions) {
             if (fn.is_extern) {
                 if (fn.syscall_number >= 0) {
@@ -718,23 +715,23 @@ namespace {
             }
 
             for (uint32_t i = 0; i < fn.arg_count; ++i) {
-#ifdef _WIN32
-                if (i < 4) {
-                    static const char* regs[] = {"rcx", "rdx", "r8", "r9"};
-                    emit_line("    mov qword " + local_slot(i) + ", " + regs[i]);
+                if (win) {
+                    if (i < 4) {
+                        static const char* regs[] = {"rcx", "rdx", "r8", "r9"};
+                        emit_line("    mov qword " + local_slot(i) + ", " + regs[i]);
+                    } else {
+                        emit_line("    mov rax, qword [rbp + " + std::to_string(16u + (i - 4u) * 8u) + "]");
+                        emit_line("    mov qword " + local_slot(i) + ", rax");
+                    }
                 } else {
-                    emit_line("    mov rax, qword [rbp + " + std::to_string(16u + (i - 4u) * 8u) + "]");
-                    emit_line("    mov qword " + local_slot(i) + ", rax");
+                    if (i < 6) {
+                        static const char* regs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+                        emit_line("    mov qword " + local_slot(i) + ", " + regs[i]);
+                    } else {
+                        emit_line("    mov rax, qword [rbp + " + std::to_string(16u + (i - 6u) * 8u) + "]");
+                        emit_line("    mov qword " + local_slot(i) + ", rax");
+                    }
                 }
-#else
-                if (i < 6) {
-                    static const char* regs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
-                    emit_line("    mov qword " + local_slot(i) + ", " + regs[i]);
-                } else {
-                    emit_line("    mov rax, qword [rbp + " + std::to_string(16u + (i - 6u) * 8u) + "]");
-                    emit_line("    mov qword " + local_slot(i) + ", rax");
-                }
-#endif
             }
 
             for (const auto& inst : fn.body) {
@@ -750,7 +747,7 @@ namespace {
         // }
         // Removed because the linker is checking all the things now
 
-#ifdef _WIN32
+        if (win) {
         emit_line("start:");
         emit_line("    call qk_io_init");
         emit_line("    call " + function_name(*find_entry(program)));
@@ -809,22 +806,22 @@ namespace {
         emit_line("    dw 0");
         emit_line("    db 'VirtualFree',0");
         emit_line("kernel_name db 'KERNEL32.DLL',0");
-#else
+        } else {
         emit_line("_start:");
         emit_line("    call " + function_name(*find_entry(program)));
         emit_line("    mov rdi, rax");
         emit_line("    mov rax, 60");
         emit_line("    syscall");
-#endif
-#ifdef _WIN32
-        if (!program.strings.empty() || !program.globals.empty()) {
-            emit_line("section '.data' data readable writeable");
         }
-#else
-        if (!program.strings.empty() || !program.globals.empty()) {
-            emit_line("section '.data' writeable");
+        if (win) {
+            if (!program.strings.empty() || !program.globals.empty()) {
+                emit_line("section '.data' data readable writeable");
+            }
+        } else {
+            if (!program.strings.empty() || !program.globals.empty()) {
+                emit_line("section '.data' writeable");
+            }
         }
-#endif
 
         for (const auto& s : program.strings) {
             emit_line(string_label(s.id) + ":");

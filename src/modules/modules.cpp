@@ -125,10 +125,11 @@ Module* ModuleManager::load_embedded_module(const std::string& imp) {
     // Candidate embedded paths, most specific first: platform overrides,
     // then the shared std/ tree. Each is either a primary file or a directory.
     std::vector<std::pair<std::string, bool>> candidates;
-#ifdef _WIN32
-    candidates.emplace_back("std/win/" + module_name_to_rel_path(rest), false);
-    candidates.emplace_back("std/win/" + rest, true);
-#endif
+    // Windows target: WinAPI-based stdlib override (e.g. std::io -> std/win/io).
+    if (ctx.target_os == codegen::mc::TargetOS::Windows) {
+        candidates.emplace_back("std/win/" + module_name_to_rel_path(rest), false);
+        candidates.emplace_back("std/win/" + rest, true);
+    }
     // ZeroPoint target: syscall-based stdlib override (e.g. std::io -> std/zp/io).
     if (ctx.target_os == codegen::mc::TargetOS::ZeroPoint) {
         candidates.emplace_back("std/zp/" + module_name_to_rel_path(rest), false);
@@ -323,10 +324,10 @@ void ModuleManager::build_graph(Module* entry) {
 
             // 2. Filesystem fallback (user modules, dev std overrides).
             if (!dep) {
-#ifdef _WIN32
                 // Windows native backend: std modules are implemented with @import
                 // and live in <root>/std/win/ (e.g. "std::io" -> std/win/io/io.qu).
-                if (imp.rfind("std::", 0) == 0) {
+                if (ctx.target_os == codegen::mc::TargetOS::Windows &&
+                    imp.rfind("std::", 0) == 0) {
                     fs::path rest = module_name_to_path(imp.substr(5)); // "io.qu"
                     fs::path win_root = ctx.root_path / "std" / "win";
                     fs::path primary = win_root / rest;
@@ -342,7 +343,6 @@ void ModuleManager::build_graph(Module* entry) {
                         }
                     }
                 }
-#endif
                 // ZeroPoint native backend: syscall-based stdlib override lives
                 // in <root>/std/zp/ (e.g. "std::io" -> std/zp/io/io.qu).
                 if (dep == nullptr && ctx.target_os == codegen::mc::TargetOS::ZeroPoint &&

@@ -46,19 +46,6 @@ void _region_munmap(*void ptr, u64 size) {
     sys_virtual_free(ptr, 0, 32768);
 }
 
-// _region_bump - allocate `size` bytes from a region (16-byte aligned).
-// Returns NULL if the region has no space left.
-*void _region_bump(mut &Region reg, u64 size) {
-    mut u64 a = size + 15;
-    a = a & ((-16 as i64) as u64);
-    u64 off = reg.offset;
-    u64 end = off + a;
-    if (end > reg.capacity) { return 0 as! *void; }
-    u64 res = (reg.data as! u64) + off;
-    reg.offset = end;
-    return res as! *void;
-}
-
 // _create - create a new region backed by an allocated block of `size` bytes.
 Region _create(u64 size) {
     mut Region r;
@@ -68,7 +55,7 @@ Region _create(u64 size) {
     return r;
 }
 
-// --- Deprecated free-function wrappers. Prefer the Region methods. ---
+// Deprecated free-function wrappers. Prefer the Region methods.
 
 // _region_bump - allocate `size` bytes from a region (16-byte aligned).
 // Returns NULL if the region has no space left.

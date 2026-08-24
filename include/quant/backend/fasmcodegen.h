@@ -8,6 +8,7 @@
 #include <variant>
 
 #include "quant/ir/ir.h"
+#include "quant/backend/mc.h"
 #include "codegen.h"
 #include "utils/logger.h"
 
@@ -18,6 +19,9 @@ namespace quant::codegen {
 struct FasmCodeGenerator final : CodeGenerator {
     public:
         std::ostringstream out;
+        // Output OS (not host): selects PE64 vs ELF64 and the calling
+        // convention used when lowering calls.
+        mc::TargetOS target_os = mc::TargetOS::Linux;
         std::string generate(const IRProgram& program) override;
 
     private:

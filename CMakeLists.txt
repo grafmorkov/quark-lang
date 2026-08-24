@@ -31,13 +31,11 @@ option(QUANT_ENABLE_TESTS "Build tests" OFF)
 # "what targets can this compiler build for?"; --target then picks one of the
 # enabled entries at compile time (see src/backend/targets.cpp).
 set(QUANT_KNOWN_BACKENDS "x86_64-linux;aarch64-linux;x86_64-windows;aarch64-zeropoint")
-if(NOT DEFINED QUANT_BACKENDS OR QUANT_BACKENDS STREQUAL "")
-  if(WIN32)
-    set(QUANT_BACKENDS "x86_64-windows")
-  else()
-    set(QUANT_BACKENDS "x86_64-linux;aarch64-linux;aarch64-zeropoint")
+  if(NOT DEFINED QUANT_BACKENDS OR QUANT_BACKENDS STREQUAL "")
+    # The compiler is host-independent: every build can emit any target that
+    # was compiled in. Enable all known backends by default.
+    set(QUANT_BACKENDS "${QUANT_KNOWN_BACKENDS}")
   endif()
-endif()
 foreach(_backend ${QUANT_BACKENDS})
   if(NOT _backend IN_LIST QUANT_KNOWN_BACKENDS)
     message(FATAL_ERROR
@@ -89,6 +87,8 @@ if(MSVC)
         /W4
         /permissive-
         /Zc:__cplusplus
+        # Serialize PDB writes across parallel cl.exe instances (fixes C1041).
+        /FS
         $<$<CONFIG:Debug>:/RTC1>
     )
   if(QUANT_WARNINGS_AS_ERRORS)
@@ -111,6 +111,14 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_link_options(quant_compiler_flags INTERFACE
             $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
   endif()
+endif()
+
+# Recursive passes (parser/semantic/IRGen) need more than the 1 MB default
+# stack Windows gives an executable regardless of host compiler.
+if(MSVC)
+  string(APPEND CMAKE_EXE_LINKER_FLAGS " /STACK:16777216")
+elseif(WIN32)
+  string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--stack=16777216")
 endif()
 
 # LTO only for optimized configs, and only if the toolchain actually supports it

@@ -16,6 +16,10 @@ struct ISel {
     mc::Object obj;
     x86::Emitter text;
 
+    // Target OS for the OUTPUT binary (not the host): decides calling
+    // convention, syscalls vs WinAPI imports, and PE vs ELF layout.
+    mc::TargetOS target_os = mc::TargetOS::Linux;
+
     uint32_t next_region_label = 0;
 
     // symbol name -> index in obj.symbols

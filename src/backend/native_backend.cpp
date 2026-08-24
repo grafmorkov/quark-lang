@@ -52,6 +52,7 @@ std::vector<uint8_t> NativeBackend::generate(const IRProgram& program, mc::Targe
 
 #ifdef QUANT_HAS_X86_64
     ISel isel;
+    isel.target_os = os;
     isel.generate(program);
 #else
     backend_not_compiled("x86-64");

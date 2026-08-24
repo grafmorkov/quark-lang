@@ -105,6 +105,7 @@ int main(int argc, char **argv)
         // Codegen
         if (opts.emit_asm) {
             quant::codegen::FasmCodeGenerator fasmCodegen;
+            fasmCodegen.target_os = opts.target_os;
             std::string asm_code = fasmCodegen.generate(irgen.program);
             utils::logger::info("asm:");
             utils::logger::info(asm_code);
@@ -113,6 +114,26 @@ int main(int argc, char **argv)
         std::filesystem::path exe_path = "out";
 
         if(opts.has_output) exe_path = opts.output_file;
+
+        // Create the output directory if it does not exist yet; otherwise the
+        // ofstream below would silently fail and produce no executable.
+        if (exe_path.has_parent_path()) {
+            std::error_code ec;
+            std::filesystem::create_directories(exe_path.parent_path(), ec);
+        }
+
+        auto write_output = [](const std::filesystem::path& path,
+                               const std::vector<uint8_t>& bytes) {
+            std::ofstream file(path, std::ios::binary);
+            file.write(
+                reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+            if (!file) {
+                utils::logger::error("failed to write output file: " + path.string());
+                return false;
+            }
+            return true;
+        };
 
         if (opts.target_os == quant::codegen::mc::TargetOS::Windows) {
             if (!exe_path.has_extension()) {
@@ -123,10 +144,7 @@ int main(int argc, char **argv)
             {
                 quant::codegen::NativeBackend nativeBackend;
                 auto pe_bytes = nativeBackend.generate(irgen.program, opts.target_arch, opts.target_os);
-                std::ofstream file(exe_path, std::ios::binary);
-                file.write(
-                    reinterpret_cast<const char*>(pe_bytes.data()),
-                    static_cast<std::streamsize>(pe_bytes.size()));
+                if (!write_output(exe_path, pe_bytes)) return 1;
             }
         } else {
             std::filesystem::path obj_path = exe_path.string() + ".o";
@@ -135,10 +153,7 @@ int main(int argc, char **argv)
             {
                 quant::codegen::NativeBackend nativeBackend;
                 auto elf_bytes = nativeBackend.generate(irgen.program, opts.target_arch, opts.target_os);
-                std::ofstream file(obj_path, std::ios::binary);
-                file.write(
-                    reinterpret_cast<const char*>(elf_bytes.data()),
-                    static_cast<std::streamsize>(elf_bytes.size()));
+                if (!write_output(obj_path, elf_bytes)) return 1;
             }
 
             // Link with ld (x86-64) or ld.lld (AArch64).

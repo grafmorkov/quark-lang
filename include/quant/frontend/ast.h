@@ -203,11 +203,11 @@ namespace quant::ast {
     // Statements
 
     struct ExprStmt {
-        Expr* expr;
+        Expr* expr = nullptr;
     };
 
     struct ReturnStmt {
-        Expr* value;
+        Expr* value = nullptr;
     };
 
     struct BreakStmt {};
@@ -215,39 +215,39 @@ namespace quant::ast {
     struct ContinueStmt {};
 
     struct IfStmt {
-        Expr* condition;
-        Block* then_block;
-        ElseIfStmt* else_if;  // first else-if branch in the chain (nullptr if none)
-        Block* else_block;
+        Expr* condition = nullptr;
+        Block* then_block = nullptr;
+        ElseIfStmt* else_if = nullptr;  // first else-if branch in the chain (nullptr if none)
+        Block* else_block = nullptr;
     };
 
     struct ElseIfStmt {
-        Expr* condition;
-        Block* then_block;
-        Block* else_block;  // plain else block (nullptr if the chain continues)
-        ElseIfStmt* next;   // next else-if branch in the chain (nullptr if none)
+        Expr* condition = nullptr;
+        Block* then_block = nullptr;
+        Block* else_block = nullptr;  // plain else block (nullptr if the chain continues)
+        ElseIfStmt* next = nullptr;   // next else-if branch in the chain (nullptr if none)
     };
 
     struct WhileStmt {
-        Expr* condition;
-        Block* body;
-        Expr* for_step;  // step of a desugared 'for' loop; 'continue' runs it before re-checking the condition (nullptr for plain while)
+        Expr* condition = nullptr;
+        Block* body = nullptr;
+        Expr* for_step = nullptr;  // step of a desugared 'for' loop; 'continue' runs it before re-checking the condition (nullptr for plain while)
     };
 
     struct BlockStmt {
-        Block* body;
+        Block* body = nullptr;
     };
 
     struct CaseStmt {
         std::vector<Expr*> values;                            // one or more constant case values sharing one body
-        Block* body;
+        Block* body = nullptr;
         std::vector<std::optional<int64_t>> const_values;     // constant values, filled by semantic analysis
     };
 
     struct SwitchStmt {
-        Expr* condition;
+        Expr* condition = nullptr;
         std::vector<CaseStmt> cases;
-        Block* default_block;   // nullptr if no default
+        Block* default_block = nullptr;   // nullptr if no default
     };
 
     struct FuncArg {
@@ -284,18 +284,18 @@ namespace quant::ast {
     struct FuncStmt {
         std::string name;
         std::vector<FuncArg> args;
-        const Type* return_type;
+        const Type* return_type = nullptr;
         std::vector<std::string> type_params;
 
-        bool is_extern;
-        bool is_forward;
-        bool is_entry;
-        bool has_body;
+        bool is_extern = false;
+        bool is_forward = false;
+        bool is_entry = false;
+        bool has_body = false;
         bool is_private = false;
 
         const char* struct_name = nullptr;
 
-        Block* body;
+        Block* body = nullptr;
         std::vector<Attribute> attributes;
     };
     struct Attribute {
@@ -304,7 +304,7 @@ namespace quant::ast {
     };
     struct NamespaceStmt {
         std::string name;
-        Block* body;
+        Block* body = nullptr;
     };
     struct ModuleDecl {
         std::string name;
@@ -318,7 +318,7 @@ namespace quant::ast {
     };
     struct RegionStmt{
         std::string name;
-        Block* body;
+        Block* body = nullptr;
     };
 
     struct EnumDecl {
