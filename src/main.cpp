@@ -38,6 +38,7 @@ int main(int argc, char **argv)
 
         quant::CompilerContext ctx;
         ctx.target_os = opts.target_os;
+        ctx.emit_start = !opts.static_lib;
 
         {
             ctx.root_path = utils::io::get_executable_directory();
@@ -45,6 +46,24 @@ int main(int argc, char **argv)
             auto parent = ctx.root_path.parent_path();
             if (std::filesystem::exists(parent / "std" / "io" / "io.qu")) {
                 ctx.root_path = parent;
+            }
+        }
+
+        // Auto-detect pre-compiled static stdlib (.a) for Linux targets.
+        // Searches for lib/qu-<arch>-<os>.a next to the compiler binary,
+        // then in the parent directory (covers build layout where root_path
+        // stays at build/bin/ but .a lives in build/lib/).
+        if (opts.target_os == quant::codegen::mc::TargetOS::Linux && !opts.static_lib) {
+            const char* arch_str = (opts.target_arch == quant::codegen::mc::TargetArch::AARCH64)
+                ? "aarch64" : "x86_64";
+            auto lib_name = std::string("libqu-") + arch_str + "-linux.a";
+            auto lib_path = ctx.root_path / "lib" / lib_name;
+            if (!std::filesystem::exists(lib_path)) {
+                lib_path = ctx.root_path.parent_path() / "lib" / lib_name;
+            }
+            if (std::filesystem::exists(lib_path)) {
+                ctx.use_static_std = true;
+                ctx.static_std_path = lib_path;
             }
         }
 
@@ -87,9 +106,12 @@ int main(int argc, char **argv)
         }
         if (ctx.errors.has_errors()) return 1;
 
-        // Linker validation
-        linker.validate();
-        if (ctx.errors.has_errors()) return 1;
+        // Windows only, because Linux has compile only flag(-c) and checks @entry before ld cmd;
+        if (opts.target_os == quant::codegen::mc::TargetOS::Windows) {
+            // Linker validation
+            linker.validate();
+            if (ctx.errors.has_errors()) return 1;
+        }
 
         // IRGen
         quant::codegen::IRGenerator irgen(ctx);
@@ -136,6 +158,7 @@ int main(int argc, char **argv)
         };
 
         if (opts.target_os == quant::codegen::mc::TargetOS::Windows) {
+
             if (!exe_path.has_extension()) {
                 exe_path += ".exe";
             }
@@ -143,40 +166,69 @@ int main(int argc, char **argv)
             // Native backend: IR -> instruction selection -> machine code -> PE executable
             {
                 quant::codegen::NativeBackend nativeBackend;
-                auto pe_bytes = nativeBackend.generate(irgen.program, opts.target_arch, opts.target_os);
+                auto pe_bytes = nativeBackend.generate(irgen.program, ctx, opts.target_arch, opts.target_os);
                 if (!write_output(exe_path, pe_bytes)) return 1;
             }
-        } else {
+        } else if (opts.static_lib) {
             if (!exe_path.has_extension()) {
-                exe_path += ".o";
+                exe_path += ".a";
             }
-            std::filesystem::path obj_path = exe_path.string();
+            std::filesystem::path obj_path = exe_path.parent_path() / (exe_path.stem().string() + ".o");
 
-            // Native backend: IR -> instruction selection -> machine code -> ELF object
             {
                 quant::codegen::NativeBackend nativeBackend;
-                auto elf_bytes = nativeBackend.generate(irgen.program, opts.target_arch, opts.target_os);
+                auto elf_bytes = nativeBackend.generate(irgen.program, ctx, opts.target_arch, opts.target_os);
                 if (!write_output(obj_path, elf_bytes)) return 1;
             }
+
+            std::string ar_bin = opts.ar_name.empty() ? "ar" : opts.ar_name;
+            std::string archive_cmd = ar_bin + " rcs " + exe_path.string() + " " + obj_path.string();
+            if (std::system(archive_cmd.c_str()) != 0) {
+                utils::logger::error("ar failed: " + archive_cmd + "\n");
+                return 1;
+            }
+            std::filesystem::remove(obj_path);
+        } else {
+            std::filesystem::path obj_path = exe_path;
+            if (opts.compile_only) {
+                if (!obj_path.has_extension()) {
+                    obj_path += ".o";
+                }
+            } else {
+                obj_path = obj_path.parent_path() / ("." + obj_path.stem().string() + ".o");
+            }
+
+            {
+                quant::codegen::NativeBackend nativeBackend;
+                auto elf_bytes = nativeBackend.generate(irgen.program, ctx, opts.target_arch, opts.target_os);
+                if (!write_output(obj_path, elf_bytes)) return 1;
+            }
+
             if(!opts.compile_only){
-                // Link with ld (x86-64) or ld.lld (AArch64).
-                const char* ld_name = (opts.target_arch == quant::codegen::mc::TargetArch::AARCH64)
-                    ? "ld.lld" : "ld";
-                std::string link_cmd = std::string(ld_name) + " -o " + exe_path.string() + " " + obj_path.string();
+                linker.validate();
+                if (ctx.errors.has_errors()) return 1;
+
+                std::string ld_name;
+                if (!opts.linker_name.empty()) {
+                    ld_name = opts.linker_name;
+                    if (ld_name == "lld") ld_name = "ld.lld";
+                } else {
+                    ld_name = (opts.target_arch == quant::codegen::mc::TargetArch::AARCH64)
+                        ? "ld.lld" : "ld";
+                }
+                std::string link_cmd = ld_name + " --gc-sections -o " + exe_path.string() + " " + obj_path.string();
+                if (ctx.use_static_std) {
+                    link_cmd += " " + ctx.static_std_path.string();
+                }
                 if (opts.target_os == quant::codegen::mc::TargetOS::ZeroPoint) {
-                    // ZeroPoint: position-independent ET_DYN, no interpreter.
-                    // (lld has no GNU-style -static-pie; -pie on a fully static
-                    // input produces the same static-PIE image.)
-                    // Stock load address is 0x40000000; PIC keeps it movable.
                     link_cmd += " -pie --image-base=0x40000000";
                 }
                 if (std::system(link_cmd.c_str()) != 0) {
                     utils::logger::error("link failed\n");
                     return 1;
                 }
+                std::filesystem::remove(obj_path);
             }
-
-            //std::filesystem::remove(obj_path);
         }
 
         auto end = std::chrono::high_resolution_clock::now();

@@ -109,6 +109,7 @@ struct IRString {
 struct IRGlobal {
     std::string name;
     uint32_t size;   // bytes in .data (8-byte aligned)
+    bool is_extern = false;  // resolved from .a archive, not emitted in .o
 };
 
 struct IRRegionBegin {

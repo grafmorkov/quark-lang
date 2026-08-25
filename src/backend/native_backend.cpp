@@ -1,6 +1,7 @@
 #include "quant/backend/native_backend.h"
 
 #include "quant/backend/mc.h"
+#include "quant/support/compiler_context.h"
 
 #ifdef QUANT_HAS_ELF
 #include "quant/backend/elf_writer.h"
@@ -27,7 +28,7 @@ namespace {
 
 } // namespace
 
-std::vector<uint8_t> NativeBackend::generate(const IRProgram& program, mc::TargetArch arch, mc::TargetOS os) {
+std::vector<uint8_t> NativeBackend::generate(const IRProgram& program, CompilerContext& ctx, mc::TargetArch arch, mc::TargetOS os) {
     // Executable flavor is decided by the target OS, not by the host:
     // the elf/pe writers are portable byte emitters. CMake compiles in only
     // the writers and instruction selectors that some enabled backend needs.
@@ -37,6 +38,7 @@ std::vector<uint8_t> NativeBackend::generate(const IRProgram& program, mc::Targe
 #ifdef QUANT_HAS_AARCH64
         AArch64ISel isel;
         isel.target_os = os;
+        isel.should_emit_start = ctx.emit_start;
         isel.generate(program);
 #else
         backend_not_compiled("AArch64");
@@ -51,7 +53,7 @@ std::vector<uint8_t> NativeBackend::generate(const IRProgram& program, mc::Targe
     }
 
 #ifdef QUANT_HAS_X86_64
-    ISel isel;
+    ISel isel(ctx);
     isel.target_os = os;
     isel.generate(program);
 #else

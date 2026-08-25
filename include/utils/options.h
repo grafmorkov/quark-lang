@@ -25,6 +25,10 @@ namespace utils::options {
         std::string output_file;
         bool has_output = false;
         bool compile_only = false;
+        bool static_lib = false;
+
+        std::string ar_name;
+        std::string linker_name;
 
         // Resolved compilation target. Defaults to the host's native backend
         // if it is enabled in this build; otherwise --target is mandatory.
@@ -38,7 +42,8 @@ namespace utils::options {
         EmitAsm,
         NoCompile,
         Time,
-        CompileOnly
+        CompileOnly,
+        StaticLib,
     };
 
     Options parse_args(int argc, char** argv);

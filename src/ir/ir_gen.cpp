@@ -1,6 +1,7 @@
 #include <functional>
 #include <utility>
 #include <variant>
+#include <unordered_set>
 
 #include "quant/ir/ir_gen.h"
 #include "quant/attributes/attributes.h"
@@ -373,23 +374,31 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
         return id;
     };
 
+    // When using the pre-compiled static stdlib, track which function/global IDs
+    // belong to std modules so we can mark them as extern later
+    std::unordered_set<uint32_t> std_func_ids;
+    std::unordered_set<uint32_t> std_global_ids;
+
     auto collect_functions_in_stmts =
         [&](auto&& self,
             const std::vector<ast::Stmt*>& stmts,
             const modules::Module* module) -> void
     {
+        bool is_std = ctx.use_static_std && module->name.rfind("std::", 0) == 0;
+
         for (const auto* stmt : stmts) {
             if (!stmt) continue;
 
             std::visit(overloaded{
                 [&](const ast::FuncStmt& fn) {
-                    register_function(
+                    uint32_t id = register_function(
                         support::qualify_name(
                             module->namespace_path,
                             namespace_stack,
                             fn.name
                         )
                     );
+                    if (is_std) std_func_ids.insert(id);
                 },
                 [&](const ast::StructDecl& str) {
                     // Register the struct's methods under
@@ -400,13 +409,14 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
                     for (const auto& value : str.fields) {
                         const auto* fn = std::get_if<ast::FuncStmt>(&value);
                         if (!fn || !fn->type_params.empty()) continue;
-                        register_function(
+                        uint32_t id = register_function(
                             support::qualify_name(
                                 module->namespace_path,
                                 namespace_stack,
                                 str.name + "::" + fn->name
                             )
                         );
+                        if (is_std) std_func_ids.insert(id);
                     }
                 },
                 [&](const ast::NamespaceStmt& ns) {
@@ -460,26 +470,28 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
         [&](auto&& self,
             const std::vector<ast::Stmt*>& stmts,
             const modules::Module* module) -> void
-    {
-        for (const auto* stmt : stmts) {
-            if (!stmt) continue;
+        {
+            bool is_std = ctx.use_static_std && module->name.rfind("std::", 0) == 0;
+            for (const auto* stmt : stmts) {
+                if (!stmt) continue;
 
-            std::visit(overloaded{
-                [&](const ast::VarDecl& v) {
-                    auto* sym = ctx.symbols.lookup(v.name);
-                    if (!sym) {
-                        return;
-                    }
-                    auto* vs = std::get_if<quant::symb_t::VarSymbol>(&sym->data);
-                    if (!vs) {
-                        return;
-                    }
+                std::visit(overloaded{
+                    [&](const ast::VarDecl& v) {
+                        auto* sym = ctx.symbols.lookup(v.name);
+                        if (!sym) {
+                            return;
+                        }
+                        auto* vs = std::get_if<quant::symb_t::VarSymbol>(&sym->data);
+                        if (!vs) {
+                            return;
+                        }
 
-                    const std::string qname = support::qualify_name(
-                        sym->owning_module, {}, v.name
-                    );
-                    register_global(qname, vs->type);
-                },
+                        const std::string qname = support::qualify_name(
+                            sym->owning_module, {}, v.name
+                        );
+                        uint32_t gid = register_global(qname, vs->type);
+                        if (is_std) std_global_ids.insert(gid);
+                    },
                 [&](const ast::NamespaceStmt& ns) {
                     namespace_stack.push_back(ns.name);
                     if (ns.body) {
@@ -505,7 +517,20 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
 
     for (auto* mod : modules) {
         if (!mod) continue;
+
+        // Static stdlib is linked from .a, so skip its IR generation.
+        if (ctx.use_static_std && mod->name.rfind("std::", 0) == 0) continue;
+
         gen_module(*mod);
+    }
+
+    // Mark static stdlib symbols as extern for linker resolution.
+    if (ctx.use_static_std) {
+        for (uint32_t id : std_func_ids)
+            program.functions[id].is_extern = true;
+
+        for (uint32_t id : std_global_ids)
+            program.globals[id].is_extern = true;
     }
 
     // Generate IR for concrete generic instantiations
@@ -517,6 +542,12 @@ void IRGenerator::gen_program(std::span<quant::modules::Module* const> modules) 
         auto it = function_ids.find(fkey);
         if (it == function_ids.end()) {
             ctx.errors.add("Generic instantiation not registered: " + fkey); return;
+        }
+
+        // Skip codegen for static stdlib generics.
+        if (ctx.use_static_std && std_func_ids.count(it->second)) {
+            program.functions[it->second].is_extern = true;
+            continue;
         }
 
         IRFunction* saved_func = current_func;

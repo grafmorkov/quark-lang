@@ -31,7 +31,8 @@ namespace utils::options{
             	{"--emit-asm", Flag::EmitAsm},
             	{"--no-compile", Flag::NoCompile},
             	{"--time", Flag::Time},
-                {"-c", Flag::CompileOnly}
+                {"-c", Flag::CompileOnly},
+                {"--static-lib", Flag::StaticLib}
         	};
 
         for (int i = 1; i < argc; ++i) {
@@ -43,6 +44,20 @@ namespace utils::options{
                 }
                 opts.output_file = argv[++i];
                 opts.has_output = true;
+                continue;
+            }
+            if(arg == "--ar"){
+                if (i + 1 >= argc) {
+                    throw std::runtime_error("Option '--ar' requires an ar(GNU ar, LLVM etc.)");
+                }
+                opts.ar_name = argv[++i];
+                continue;
+            }
+            if(arg == "--ld"){
+                if (i + 1 >= argc) {
+                    throw std::runtime_error("Option '--ld' requires a linker (ld, lld, mold, or path)");
+                }
+                opts.linker_name = argv[++i];
                 continue;
             }
 
@@ -85,6 +100,7 @@ namespace utils::options{
                     case Flag::NoCompile: opts.no_compile = true; break;
                     case Flag::Time: opts.time = true; break;
                     case Flag::CompileOnly: opts.compile_only = true; break;
+                    case Flag::StaticLib: opts.static_lib = true; break;
                 }
             } else {
                 if (!opts.input_file.empty()) {

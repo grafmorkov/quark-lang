@@ -19,6 +19,8 @@ struct AArch64ISel {
     // Target OS/ABI. Defaults to Linux; set before generate().
     mc::TargetOS target_os = mc::TargetOS::Linux;
 
+    bool should_emit_start = true;
+
     void generate(const IRProgram& program);
 
 private:

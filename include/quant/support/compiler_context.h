@@ -25,12 +25,18 @@ namespace quant {
         symb_t::SymbolTable symbols;
 
         SourceLocation srcloc;
+        bool emit_start;
 
         std::filesystem::path root_path;
 
         // Target OS/ABI (set from --target). Selects the stdlib override
         // tree (std/zp/ for ZeroPoint) and the syscall lowering layer.
         codegen::mc::TargetOS target_os = codegen::mc::TargetOS::Linux;
+
+        // When true, std modules are skipped during IR gen / codegen and
+        // the pre-compiled static stdlib (.a) is linked instead.
+        bool use_static_std = false;
+        std::filesystem::path static_std_path;
 
         // Concrete instantiations of generic functions (monomorphization)
         struct GenericInstantiation {

@@ -8,6 +8,7 @@
 #include "quant/backend/mc.h"
 #include "quant/backend/x86_64.h"
 #include "quant/ir/ir.h"
+#include "quant/support/compiler_context.h"
 
 namespace quant::codegen {
 
@@ -38,7 +39,11 @@ struct ISel {
 
     void generate(const IRProgram& program);
 
+    ISel(CompilerContext& _ctx): ctx(_ctx){}
+
 private:
+    CompilerContext& ctx;
+
     x86::Mem local_slot(Local l);
     x86::Mem temp_slot(Reg r, const IRFunction& fn);
 

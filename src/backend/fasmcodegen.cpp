@@ -42,7 +42,7 @@ namespace {
         if (!fn.export_name.empty()) {
             return fn.export_name;
         }
-        return "fn_" + std::to_string(fn.id) + "__" + asm_mangle(fn.name);
+        return "qk_" + asm_mangle(fn.name);
     }
     std::string abi_name(const IRFunction& fn) {
         if (fn.is_extern) {

@@ -87,7 +87,7 @@ std::string ISel::function_name(const IRFunction& fn) {
     if (!fn.export_name.empty()) {
         return fn.export_name;
     }
-    return "fn_" + std::to_string(fn.id) + "__" + asm_mangle(fn.name);
+    return "qk_" + asm_mangle(fn.name);
 }
 
 std::string ISel::abi_name(const IRFunction& fn) {
@@ -833,6 +833,7 @@ void ISel::emit_strings(const IRProgram& program) {
 void ISel::emit_globals(const IRProgram& program) {
     for (uint32_t i = 0; i < program.globals.size(); ++i) {
         const auto& g = program.globals[i];
+        if (g.is_extern) continue;
         while (obj.data.size() % 8u != 0) {
             obj.data.push_back(0);
         }
@@ -892,7 +893,7 @@ void ISel::generate(const IRProgram& program) {
         add_import_symbol("kernel32.dll", "ExitProcess");
     }
 
-    emit_start(program);
+    if(ctx.emit_start) emit_start(program);
     emit_strings(program);
     emit_globals(program);
     patch_fixups();

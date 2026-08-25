@@ -1,0 +1,13 @@
+// std.qu - all stdlib file/module. It's used for libquant.a compilation
+
+module "std";
+
+load "std::arena";
+load "std::cmp";
+load "std::format";
+load "std::heap";
+load "std::io";
+load "std::math";
+load "std::string";
+load "std::types";
+load "std::vector";
