@@ -147,7 +147,10 @@ int main(int argc, char **argv)
                 if (!write_output(exe_path, pe_bytes)) return 1;
             }
         } else {
-            std::filesystem::path obj_path = exe_path.string() + ".o";
+            if (!exe_path.has_extension()) {
+                exe_path += ".o";
+            }
+            std::filesystem::path obj_path = exe_path.string();
 
             // Native backend: IR -> instruction selection -> machine code -> ELF object
             {
@@ -155,21 +158,22 @@ int main(int argc, char **argv)
                 auto elf_bytes = nativeBackend.generate(irgen.program, opts.target_arch, opts.target_os);
                 if (!write_output(obj_path, elf_bytes)) return 1;
             }
-
-            // Link with ld (x86-64) or ld.lld (AArch64).
-            const char* ld_name = (opts.target_arch == quant::codegen::mc::TargetArch::AARCH64)
-                ? "ld.lld" : "ld";
-            std::string link_cmd = std::string(ld_name) + " -o " + exe_path.string() + " " + obj_path.string();
-            if (opts.target_os == quant::codegen::mc::TargetOS::ZeroPoint) {
-                // ZeroPoint: position-independent ET_DYN, no interpreter.
-                // (lld has no GNU-style -static-pie; -pie on a fully static
-                // input produces the same static-PIE image.)
-                // Stock load address is 0x40000000; PIC keeps it movable.
-                link_cmd += " -pie --image-base=0x40000000";
-            }
-            if (std::system(link_cmd.c_str()) != 0) {
-                utils::logger::error("link failed\n");
-                return 1;
+            if(!opts.compile_only){
+                // Link with ld (x86-64) or ld.lld (AArch64).
+                const char* ld_name = (opts.target_arch == quant::codegen::mc::TargetArch::AARCH64)
+                    ? "ld.lld" : "ld";
+                std::string link_cmd = std::string(ld_name) + " -o " + exe_path.string() + " " + obj_path.string();
+                if (opts.target_os == quant::codegen::mc::TargetOS::ZeroPoint) {
+                    // ZeroPoint: position-independent ET_DYN, no interpreter.
+                    // (lld has no GNU-style -static-pie; -pie on a fully static
+                    // input produces the same static-PIE image.)
+                    // Stock load address is 0x40000000; PIC keeps it movable.
+                    link_cmd += " -pie --image-base=0x40000000";
+                }
+                if (std::system(link_cmd.c_str()) != 0) {
+                    utils::logger::error("link failed\n");
+                    return 1;
+                }
             }
 
             //std::filesystem::remove(obj_path);

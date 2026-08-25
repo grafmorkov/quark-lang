@@ -31,6 +31,7 @@ namespace utils::options{
             	{"--emit-asm", Flag::EmitAsm},
             	{"--no-compile", Flag::NoCompile},
             	{"--time", Flag::Time},
+                {"-c", Flag::CompileOnly}
         	};
 
         for (int i = 1; i < argc; ++i) {
@@ -83,6 +84,7 @@ namespace utils::options{
                     case Flag::EmitAsm: opts.emit_asm = true; break;
                     case Flag::NoCompile: opts.no_compile = true; break;
                     case Flag::Time: opts.time = true; break;
+                    case Flag::CompileOnly: opts.compile_only = true; break;
                 }
             } else {
                 if (!opts.input_file.empty()) {

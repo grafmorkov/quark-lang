@@ -24,6 +24,7 @@ namespace utils::options {
         std::string input_file;
         std::string output_file;
         bool has_output = false;
+        bool compile_only = false;
 
         // Resolved compilation target. Defaults to the host's native backend
         // if it is enabled in this build; otherwise --target is mandatory.
@@ -36,8 +37,9 @@ namespace utils::options {
         EmitIR,
         EmitAsm,
         NoCompile,
-        Time
+        Time,
+        CompileOnly
     };
 
-    Options parse_args(int argc, char** argv); 
+    Options parse_args(int argc, char** argv);
 }
