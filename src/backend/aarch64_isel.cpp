@@ -2,6 +2,7 @@
 #include <variant>
 
 #include "quant/backend/aarch64_isel.h"
+#include "quant/backend/mc.h"
 #include "utils/logger.h"
 
 namespace quant::codegen {
@@ -98,7 +99,7 @@ aarch64::Cond float_cmp_op_to_cond(IRBinaryOp op) {
 
 } // namespace
 
-// ── naming ──────────────────────────────────────────────────────────────────
+// Naming
 
 std::string AArch64ISel::asm_mangle(std::string name) {
     for (char& ch : name) {
@@ -210,7 +211,7 @@ uint32_t AArch64ISel::region_alloc_label() {
     return next_region_label++;
 }
 
-// ── prologue / epilogue ─────────────────────────────────────────────────────
+// Prologue / epilogue
 
 void AArch64ISel::emit_prologue(const IRFunction& fn) {
     const std::size_t frame_size = align16(
@@ -461,7 +462,7 @@ void AArch64ISel::emit_region_end(const IRRegionEnd& x) {
     text.svc();
 }
 
-// Per-instruction lowering───
+// Per-instruction lowering
 
 void AArch64ISel::emit_inst(const IRProgram& program, const IRFunction& fn, const IRInst& inst) {
     std::visit(overloaded{
@@ -944,6 +945,8 @@ void AArch64ISel::generate(const IRProgram& program) {
     text.relocs.clear();
     next_region_label = 0;
 
+    if(should_emit_start && target_os == mc::TargetOS::ZeroPoint) emit_start(program);
+
     for (const auto& fn : program.functions) {
         if (fn.is_extern) {
             if (fn.syscall_number >= 0) {
@@ -956,7 +959,7 @@ void AArch64ISel::generate(const IRProgram& program) {
         emit_func(program, fn);
     }
 
-    if(should_emit_start) emit_start(program);
+    if(should_emit_start && target_os != mc::TargetOS::ZeroPoint ) emit_start(program);
     emit_strings(program);
     emit_globals(program);
     patch_fixups();
