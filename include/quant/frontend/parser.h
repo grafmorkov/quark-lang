@@ -48,6 +48,7 @@ namespace quant::ps {
             ast::VarDecl parse_var_decl();
             ast::StructDecl parse_struct_decl();
             ast::Block* parse_block();
+            ast::Block* parse_statement_body();
             ast::NamespaceStmt parse_namespace_stmt();
             ast::ModuleDecl parse_module_decl();
             ast::LoadStmt parse_load();

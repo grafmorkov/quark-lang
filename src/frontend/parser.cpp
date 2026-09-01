@@ -586,7 +586,7 @@ ast::IfStmt Parser::parse_if() {
     ret.condition = parse_expr(0);
     expect(TOKEN_RPAREN, "Expected ')'");
 
-    ret.then_block = parse_block();
+    ret.then_block = parse_statement_body();
 
     ret.else_if = nullptr;
     ret.else_block = nullptr;
@@ -596,7 +596,7 @@ ast::IfStmt Parser::parse_if() {
             advance();
             ret.else_if = parse_else_if();
         } else {
-            ret.else_block = parse_block();
+            ret.else_block = parse_statement_body();
         }
     }
 
@@ -610,7 +610,7 @@ ast::ElseIfStmt* Parser::parse_else_if() {
     ret->condition = parse_expr(0);
     expect(TOKEN_RPAREN, "Expected ')'");
 
-    ret->then_block = parse_block();
+    ret->then_block = parse_statement_body();
 
     ret->else_block = nullptr;
     ret->next = nullptr;
@@ -620,7 +620,7 @@ ast::ElseIfStmt* Parser::parse_else_if() {
             advance();
             ret->next = parse_else_if();
         } else {
-            ret->else_block = parse_block();
+            ret->else_block = parse_statement_body();
         }
     }
 
@@ -634,7 +634,7 @@ ast::WhileStmt Parser::parse_while() {
     ret.condition = parse_expr(0);
     expect(TOKEN_RPAREN, "Expected ')'");
 
-    ret.body = parse_block();
+    ret.body = parse_statement_body();
 
     return ret;
 }
@@ -672,7 +672,7 @@ ast::Stmt Parser::parse_for() {
     }
     expect(TOKEN_RPAREN, "Expected ')' after for clauses");
 
-    ast::Block* body = parse_block();
+    ast::Block* body = parse_statement_body();
 
     auto* block = memory::make_default<ast::Block>(ctx.ast_arena);
 
@@ -714,7 +714,7 @@ ast::SwitchStmt Parser::parse_switch() {
     ret.default_block = nullptr;
 
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
-        if (match(TOKEN_CASE)) {
+if (match(TOKEN_CASE)) {
             ast::CaseStmt cs;
             while (true) {
                 cs.values.push_back(parse_expr(0));
@@ -722,14 +722,14 @@ ast::SwitchStmt Parser::parse_switch() {
                 if (!check(TOKEN_CASE)) break;
                 advance(); // consume the next 'case' keyword (shared body)
             }
-            cs.body = parse_block();
+            cs.body = parse_statement_body();
             ret.cases.push_back(std::move(cs));
         } else if (match(TOKEN_DEFAULT)) {
             if (ret.default_block) {
                 ctx.errors.add(previous.loc, previous.text.length(), "Multiple 'default' blocks in switch");
             }
             expect(TOKEN_COLON, "Expected ':' after default");
-            ret.default_block = parse_block();
+            ret.default_block = parse_statement_body();
         } else {
             ctx.errors.add(current.loc, current.text.length(), "Expected 'case' or 'default' in switch body");
             while (!check(TOKEN_EOF) && !check(TOKEN_CASE) &&
@@ -880,6 +880,27 @@ ast::NamespaceStmt Parser::parse_namespace_stmt() {
     ret.name = expect(TOKEN_IDENT, "Expected namespace name").text;
     ret.body = parse_block();
     return ret;
+}
+
+// Parse a statement; if it's a single statement not wrapped in braces
+// (e.g. if (x) return 1;), the statement itself is the body
+ast::Block* Parser::parse_statement_body() {
+    auto* block = memory::make_default<ast::Block>(ctx.ast_arena);
+    if (check(TOKEN_LBRACE)) {
+        advance();
+        while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
+            block->stmts.push_back(
+                memory::make<ast::Stmt>(ctx.ast_arena, parse_statement())
+            );
+        }
+        expect(TOKEN_RBRACE, "Expected '}'");
+        return block;
+    }
+
+    block->stmts.push_back(
+        memory::make<ast::Stmt>(ctx.ast_arena, parse_statement())
+    );
+    return block;
 }
 
 ast::Block* Parser::parse_block() {

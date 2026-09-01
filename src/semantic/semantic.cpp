@@ -803,6 +803,16 @@ void SemanticAnalyzer::analyze(const std::vector<ast::Stmt*>& stmts, modules::Mo
         ctx.symbols.enter_namespace(part);
     }
 
+    // Resolve module-level `using` imports before declaration collection so
+    // that bare imported names (structs, enums, functions) in signatures get
+    // canonicalized to their owning-module types during collect_declarations.
+    for (auto* stmt : stmts) {
+        if (!stmt) continue;
+        if (std::holds_alternative<ast::UsingStmt>(stmt->kind)) {
+            analyze_using(std::get<ast::UsingStmt>(stmt->kind));
+        }
+    }
+
     collect_declarations(stmts);
 
     for (auto* stmt : stmts) {
