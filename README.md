@@ -158,8 +158,8 @@ OS ABI is a small, self-contained change. See
 * self-hosting compiler
 
 ## Todo
-* [ ] Basic optimizations 
-* [ ] Windows .lib support
+* [x] Basic optimizations 
+* [ ] Windows .lib supportss
 * [ ] Rewrite front-end in Quant; make linking with qu & cpp in CMake and -DQUANT_FRONTEND flag
 
 ---
