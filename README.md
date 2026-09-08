@@ -158,9 +158,9 @@ OS ABI is a small, self-contained change. See
 * self-hosting compiler
 
 ## Todo
-* Fix enums [x]
-* Fix for [x]
-* Add library compilation [ ]
+[ ] Basic optimizations 
+[ ] Windows .lib support
+[ ] Rewrite front-end in Quant; make linking with qu & cpp in CMake and -DQUANT_FRONTEND flag
 
 ---
 
