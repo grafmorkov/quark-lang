@@ -854,6 +854,8 @@ qu file.qu --emit-ir          # print intermediate representation
 qu file.qu --emit-asm         # print generated assembly
 qu file.qu --time             # print compilation time
 qu file.qu --no-compile       # semantic analysis only
+
+qu file.qu -O2 output # optimizations (O2 is default; you can set 0-3 level of optimizations)
 ```
 
 The native backend generates machine code directly: x86-64 (ELF/PE32+) and AArch64 (ELF). No external assembler is required. Use `--target aarch64` (or `--target arm64`) to cross-compile for AArch64. Cross-linking uses `ld.lld` for AArch64 targets.

@@ -13,6 +13,7 @@
 #include "utils/logger.h"
 
 #include "quant/ir/ir_gen.h"
+#include "quant/ir/opt.h"
 #include "quant/backend/fasmcodegen.h"
 #include "quant/backend/native_backend.h"
 
@@ -118,6 +119,13 @@ int main(int argc, char **argv)
         irgen.gen_program(mm.ordered_modules());
         if (ctx.errors.has_errors()) return 1;
 
+        // IR optimization (backend-agnostic, runs for every target).
+        quant::codegen::optimize(
+            irgen.program,
+            static_cast<quant::codegen::OptLevel>(opts.opt_level),
+            opts.static_lib
+        );
+
         if (opts.emit_ir) {
              irgen.program.dump();
         }
@@ -182,6 +190,9 @@ int main(int argc, char **argv)
             }
 
             std::string ar_bin = opts.ar_name.empty() ? "ar" : opts.ar_name;
+            // Rebuild the archive from scratch: ar rcs only ADDS/replaces a
+            // member, so a stale archive would accumulate duplicate members.
+            std::filesystem::remove(exe_path);
             std::string archive_cmd = ar_bin + " rcs " + exe_path.string() + " " + obj_path.string();
             if (std::system(archive_cmd.c_str()) != 0) {
                 utils::logger::error("ar failed: " + archive_cmd + "\n");

@@ -30,6 +30,10 @@ namespace utils::options {
         std::string ar_name;
         std::string linker_name;
 
+        // Optimization level, -O0 .. -O3 (default -O2). -Og maps to -O1,
+        // -Os maps to -O2.
+        int opt_level = 2;
+
         // Resolved compilation target. Defaults to the host's native backend
         // if it is enabled in this build; otherwise --target is mandatory.
         std::string target_name;   // canonical, e.g. "aarch64-zeropoint"

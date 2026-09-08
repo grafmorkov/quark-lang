@@ -61,6 +61,11 @@ namespace utils::options{
                 continue;
             }
 
+            if (arg == "-O0") { opts.opt_level = 0; continue; }
+            if (arg == "-O1" || arg == "-O" || arg == "-Og") { opts.opt_level = 1; continue; }
+            if (arg == "-O2" || arg == "-Os") { opts.opt_level = 2; continue; }
+            if (arg == "-O3") { opts.opt_level = 3; continue; }
+
             if (arg == "--target") {
                 if (i + 1 >= argc) {
                     throw std::runtime_error(

@@ -182,6 +182,7 @@ add_library(libquant
     src/utils/logger.cpp
     src/ir/ir_gen.cpp
     src/ir/ir_dump.cpp
+    src/ir/opt.cpp
     src/modules/modules.cpp
     ${QUANT_BACKEND_SOURCES}
     src/backend/fasmcodegen.cpp

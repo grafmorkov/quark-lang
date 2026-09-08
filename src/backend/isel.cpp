@@ -608,8 +608,10 @@ void ISel::emit_inst(const IRProgram& program, const IRFunction& fn, const IRIns
                         else                  text.mov_r64_mem(int_arg_reg, src);
                     }
                     if (is_signed_int(x.src_kind)) {
+                        add_runtime_symbol("qk_format_i64");
                         text.call_rel32("qk_format_i64");
                     } else {
+                        add_runtime_symbol("qk_format_u64");
                         text.call_rel32("qk_format_u64");
                     }
                 } else if (x.src_kind == ast::TypeKind::F32) {
@@ -617,9 +619,11 @@ void ISel::emit_inst(const IRProgram& program, const IRFunction& fn, const IRIns
                     text.cvt_ss_to_sd_rr(0, 0);
                     text.movsd_mem_r64(dst, 0);
                     text.mov_r64_mem(int_arg_reg, dst);
+                    add_runtime_symbol("qk_format_f64");
                     text.call_rel32("qk_format_f64");
                 } else {
                     text.mov_r64_mem(int_arg_reg, src);
+                    add_runtime_symbol("qk_format_f64");
                     text.call_rel32("qk_format_f64");
                 }
                 text.mov_mem_r64(dst, x86::RAX);
